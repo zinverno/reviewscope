@@ -24,7 +24,7 @@ results in a Streamlit dashboard.
 * **Keywords** — general, sentiment-split and emerging keywords (§9).
 * **Streamlit UI** — place picker, Overview, Topics, Anomalies, Duplicates,
   Reviewers, Reviewed Places (map) and Data Quality pages (§26–§31).
-* **Demo dataset** — deterministic 1 051-review generator with several
+* **Demo dataset** — deterministic 1 058-review generator with several
   documented manipulation injections (§7).
 
 ## Architecture
@@ -45,9 +45,14 @@ reviewscope/
 
 ## Installation
 
+ReviewScope embeds review texts with a sentence-transformer model. Install the
+CPU wheel of PyTorch first so the default `pip install` resolves the large
+GPU build for nothing:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e .
 ```
 
@@ -57,7 +62,7 @@ pip install -e .
 python scripts/generate_demo_data.py
 ```
 
-This creates `data/demo_reviews.csv` (1 051 reviews) and a DuckDB database
+This creates `data/demo_reviews.csv` (1 058 reviews) and a DuckDB database
 at `data/reviewscope.duckdb`.
 
 ## Run
@@ -108,12 +113,41 @@ the score. Confidence: HIGH (≥ 65), MEDIUM (≥ 35), LOW.
 
 ### Per-review weight (§22)
 
+Each review is weighted in `[0.25, 2.0]` from the caller-provided quality
+signals and the graded manipulation probabilities. Inputs are normalized to
+0..1 first:
+
+- `specificity` (0..100) → `specificity / 100`
+- `category_experience` (0..100) → `category_experience / 100`
+- `reviewer_relevance` (0..100) → `reviewer_relevance / 100`
+- `recency` is already normalized to 0..1
+
 ```text
-raw = specificity×0.35 + category_experience×0.20
-    + reviewer_relevance×0.25 + recency×0.20
-    - duplicate×0.30 - templated×0.25 - coordinated×0.20
-weight = clamp(raw, 0.25, 2.0)
+quality =
+    0.35 * specificity
+  + 0.20 * category_experience
+  + 0.25 * reviewer_relevance
+  + 0.20 * recency
+
+neutral_quality = 0.50
+excess = max(0, quality - neutral_quality)
+
+rise_factor = 2.0
+
+penalty =
+    0.30 * duplicate_probability
+  + 0.25 * templated_probability
+  + 0.20 * coordinated_probability
+
+raw_weight = 1.0 + rise_factor * excess - penalty
+weight = clamp(raw_weight, 0.25, 2.0)
 ```
+
+- Neutral reviews (quality ≈ 0.50, no penalties) stay around weight 1.0.
+- High-quality reviews (specific, category-experienced, relevant, fresh)
+  elevate `quality` above the neutral threshold and can exceed 1.0.
+- Duplicate / templated / coordinated signals reduce the weight.
+- The final value is always bounded to `[0.25, 2.0]`.
 
 ### Weighted rating (§23)
 
