@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Streamlit / runtime state
+.streamlit/
+
+# Data (generated at runtime)
+data/*.csv
+data/*.json
+data/*.duckdb
+data/*.duckdb.wal
+data/.cache/
+embeddings_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Reports
+smoke_out/

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reviewscope"
+version = "0.1.0"
+description = "ReviewScope: local analytics for review informativeness and coordinated-activity signals"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "pandas>=2.2",
+    "duckdb>=1.1",
+    "scikit-learn>=1.5",
+    "sentence-transformers>=3.0",
+    "hdbscan>=0.8.38",
+    "rapidfuzz>=3.9",
+    "datasketch>=1.6",
+    "plotly>=5.22",
+    "streamlit>=1.37",
+    "pytest>=8.0",
+    "pydantic>=2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+reviewscope = ["resources/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
