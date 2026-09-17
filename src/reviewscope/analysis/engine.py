@@ -35,6 +35,7 @@ from reviewscope.analysis.reviewer import (
 from reviewscope.analysis.scoring import (
     compute_review_weights,
     coordinated_activity_score,
+    coordinated_review_probabilities,
     weighted_rating,
 )
 from reviewscope.analysis.specificity import specificity_score
@@ -151,38 +152,37 @@ class AnalysisEngine:
             cat_map[r.review_id] = cat.value
             rel_map[r.review_id] = rel.value
 
-        dup_flagged = {
-            rid
-            for g in dup_groups
-            if len(g.review_ids) >= 3
-            for rid in g.review_ids
+        # Graded probabilities for the §22 penalties (audit §22): duplicate
+        # coverage and templated strength are probabilities, and coordinated
+        # participation is a graded 0..1 signal, not a binary flag.
+        dup_prob: dict[str, float] = {}
+        for g in dup_groups:
+            if len(g.review_ids) >= 3:
+                avg_sim = min(1.0, max(getattr(g, "mean_similarity", getattr(g, "avg_similarity", 0.0)) or 0.0, 0.5))
+                prob = round(min(1.0, len(g.review_ids) / 5.0) * avg_sim, 3)
+                for rid in g.review_ids:
+                    dup_prob[rid] = max(dup_prob.get(rid, 0.0), prob)
+        tpl_prob = {
+            reviews[i].review_id: round(min(1.0, res.value / 100.0), 3)
+            for i, res in enumerate(templated)
         }
-        templated_flagged = {
-            reviews[i].review_id for i, res in enumerate(templated) if res.value >= 65
-        }
-        # --- coordinated-evidence review ids (for §22 penalty) ----------------
-        burst_dates = {e.date.isoformat() for e in bursts}
-        coordinated_flagged = {
-            r.review_id
-            for r in reviews
-            if r.published_at and r.published_at[:10] in burst_dates
-        } | {
-            rid
-            for g in dup_groups
-            if len(g.review_ids) >= 3
-            for rid in g.review_ids
-        } | {
-            reviews[i].review_id for i, res in enumerate(templated) if res.value >= 65
-        }
+        coord_prob = coordinated_review_probabilities(
+            reviews,
+            burst_events=bursts,
+            rating_anomalies=anomalies,
+            dup_groups=dup_groups,
+            templated_results=templated,
+            clusters=clusters,
+        )
 
         weights = compute_review_weights(
             reviews,
             specificity_map=specs,
             category_experience_map=cat_map,
             reviewer_relevance_map=rel_map,
-            dup_flagged_ids=dup_flagged,
-            templated_flagged_ids=templated_flagged,
-            coordinated_flagged_ids=coordinated_flagged,
+            duplicate_probability=dup_prob,
+            templated_probability=tpl_prob,
+            coordinated_probability=coord_prob,
         )
         raw, weighted, w_result = weighted_rating(reviews, weights)
 

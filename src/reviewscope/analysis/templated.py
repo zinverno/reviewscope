@@ -1,24 +1,42 @@
 """Synthetic / templated text score (SPEC.md §16).
 
 This is deliberately NOT an "AI detector". It measures how strongly a review
-resembles a reused template / other reviews in the same organization:
+participates in a *reusable template family* inside the same organization.
+A single well-written review has no cohort of reused peers and therefore
+stays low, no matter how polished.
 
-* semantic similarity  (with its closest textual peers)
-* phrase reuse         (shared content bigrams across the group)
-* structure similarity (sentence-length profile matches group centroid)
-* generic language     (inverse of the specificity score)
-* vocabulary diversity (low type/token ratio reads as formulaic)
-* stylistic uniformity (group-level uniformity of sentence structure)
-* temporal clustering  (peer reviews published in a narrow window)
+Signals (SPEC.md §16):
 
-All signals are contextual: a single well-written review has no peers to
-match and stays below the anomaly band (SPEC.md §16).
+* phrase reuse        — share of the review's text covered by content n-grams
+                        that are genuinely reused by a substantial part of the
+                        same place's cohort (not just 1-2 close neighbours);
+* peer similarity     — *fraction* of the place cohort that is near-identical
+                        to the review at the semantic-duplicate level. A large
+                        fraction = the review repeats a corpus-wide template;
+* structure similarity— sentence-length profile matches the group centroid;
+* low specificity     — inverse of the specificity score (generic language);
+* low unique detail   — share of the review's content words that are *not*
+                        reused by the cohort (length-robust, replaces raw TTR);
+* stylistic uniformity— group-level uniformity of sentence structure;
+* temporal clustering — peer reviews published in a narrow window.
+
+Design invariants (from the forensic remediation):
+
+1. one well-written, specific, unique review must NOT score high merely
+   because it is polished — all strong signals are cohort-relative;
+2. a cohort sharing phrase reuse / structure / peers / window scores
+   materially higher;
+3. semantic similarity alone must not imply templating — it is measured as
+   *fraction of the cohort* at near-duplicate level, never as similarity to
+   the closest neighbour;
+4. temporal proximity alone is a small component (0.05 weight);
+5. HIGH confidence requires several independent signals at once.
 """
 
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter
 from datetime import date
 from statistics import mean
 
@@ -40,6 +58,11 @@ def _sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_RE.split(text or "") if s.strip()]
 
 
+def _content_tokens(text: str) -> list[str]:
+    """Lower-cased content tokens (stop words removed), positional order kept."""
+    return [w.lower() for w in _TOKEN_RE.findall(text or "") if w.lower() not in _STOPWORDS]
+
+
 def _sentence_length_profile(text: str, bins: int = 6, bin_width: int = 8) -> np.ndarray:
     """Histogram of sentence word-counts, fixed bins -> structure fingerprint."""
     profile = np.zeros(bins, dtype=np.float32)
@@ -54,15 +77,17 @@ def _sentence_length_profile(text: str, bins: int = 6, bin_width: int = 8) -> np
 
 
 def _content_bigrams(text: str) -> list[tuple[str, str]]:
-    words = [w.lower() for w in _TOKEN_RE.findall(text or "") if w.lower() not in _STOPWORDS]
+    """Content bigrams covering consecutive *positions* (repeats preserved)."""
+    words = _content_tokens(text)
     return list(zip(words, words[1:], strict=False))
 
 
-def _vocab_diversity(text: str) -> float:
-    words = [w.lower() for w in _TOKEN_RE.findall(text or "") if w.lower() not in _STOPWORDS]
-    if not words:
-        return 0.0
-    return len(set(words)) / len(words)
+def _ngrams(words: list[str], sizes: tuple[int, ...] = (2, 3)) -> set[tuple[str, ...]]:
+    out: set[tuple[str, ...]] = set()
+    for size in sizes:
+        for start in range(0, max(len(words) - size + 1, 0)):
+            out.add(tuple(words[start : start + size]))
+    return out
 
 
 def _scale(value: float, lo: float, hi: float) -> float:
@@ -78,61 +103,98 @@ class TemplatedTextScorer:
     def __init__(self, config: TemplatedConfig = CONFIG.templated) -> None:
         self.config = config
 
-    def _semantic_signal(
-        self, reviews: list[NormalizedReview], embeddings: np.ndarray | None, same_place: list[bool]
-    ) -> list[float]:
-        """Mean cosine of each review against its nearest structural peers.
+    # -- cohort helpers -------------------------------------------------------
 
-        Uses the embedding matrix when provided; otherwise falls back to a
-        content-bigram cosine so the signal works text-only too (SPEC.md §16
-        must still fire for 30 very similar reviews even without embeddings).
-        """
+    def _n_same_place_peers(self, same_place: list[bool], i: int) -> int:
+        return max(0, sum(1 for j, sp in enumerate(same_place) if sp and j != i))
+
+    def _similarity_matrix(
+        self, reviews: list[NormalizedReview], embeddings: np.ndarray | None
+    ) -> np.ndarray:
+        """Pairwise cosine similarity matrix for the input reviews."""
         n = len(reviews)
         if n < 2:
-            return [0.0] * n
-        if embeddings is None:
-            bags = [set(_content_bigrams(r.text_or_empty())) for r in reviews]
-            sim = np.zeros((n, n), dtype=np.float32)
-            for i in range(n):
-                for j in range(i + 1, n):
-                    inter = len(bags[i] & bags[j])
-                    denom = len(bags[i]) + len(bags[j]) - inter
-                    sim[i, j] = sim[j, i] = (inter / denom) if denom else 0.0
-            return self._neighbor_signal(sim, same_place)
-        if embeddings.shape[0] != n:
-            return [0.0] * n
-        norm = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-9)
-        sim = norm @ norm.T
-        return self._neighbor_signal(sim, same_place)
+            return np.zeros((n, n), dtype=np.float32)
+        if embeddings is not None and embeddings.shape[0] == n:
+            norm = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-9)
+            return norm @ norm.T
+        # Text-only fallback: content-bigram cosine (SPEC.md §16 must still
+        # fire for 30 byte-similar reviews without embeddings).
+        bags = [set(_content_bigrams(r.text_or_empty())) for r in reviews]
+        sim = np.zeros((n, n), dtype=np.float32)
+        for i in range(n):
+            for j in range(i + 1, n):
+                inter = len(bags[i] & bags[j])
+                denom = len(bags[i]) + len(bags[j]) - inter
+                sim[i, j] = sim[j, i] = (inter / denom) if denom else 0.0
+        return sim
 
-    def _neighbor_signal(self, sim: np.ndarray, same_place: list[bool]) -> list[float]:
-        signals: list[float] = []
+    # -- signals --------------------------------------------------------------
+
+    def _peer_similarity_signal(
+        self, sim: np.ndarray, same_place: list[bool]
+    ) -> list[float]:
+        """Absolute count of same-place peers near-identical to a review.
+
+        A template family makes every member a near-identical twin of the
+        whole batch, so each member has many near-identical peers (batch
+        counts are place-size independent). A genuinely unique review has
+        few or none no matter how similar its closest neighbour is.
+        """
+        n = sim.shape[0]
         place = np.array(same_place, dtype=bool)
-        for i in range(sim.shape[0]):
-            peers = np.flatnonzero(place)
-            peers = peers[peers != i]
-            if peers.size == 0:
+        signals: list[float] = []
+        for i in range(n):
+            peers = place.copy()
+            peers[i] = False
+            if not peers.any():
                 signals.append(0.0)
                 continue
-            k = min(self.config.high_match_count, int(peers.size))
-            top = np.sort(sim[i, peers])[::-1][:k]
-            signals.append(_scale(float(top.mean()), 0.5, 0.82))
+            count = int(np.count_nonzero(sim[i, peers] >= self.config.peer_similarity_threshold))
+            signals.append(
+                _scale(count, self.config.peer_similarity_min_peers, self.config.peer_similarity_ceiling)
+            )
         return signals
 
     def _phrase_reuse_signal(self, reviews: list[NormalizedReview]) -> list[float]:
-        bigram_owners: dict[tuple[str, str], int] = defaultdict(int)
-        per_review = [set(_content_bigrams(r.text_or_empty())) for r in reviews]
-        for bg in per_review:
-            for b in bg:
-                bigram_owners[b] += 1
+        """Token coverage of each review by content n-grams reused by the cohort.
+
+        ``coverage`` is the fraction of the review's own content tokens that
+        belong to a 2- or 3-gram shared (in identical wording) by at least
+        ``K = phrase_reuse_min_peers`` distinct *other* reviews of the same
+        place. The reuse bar is absolute so template detection does not fade
+        as the place grows: a whole template batch reuses the skeleton among
+        every member, while a phrase shared by a handful of organic reviews
+        covers only a few tokens and stays below the coverage band.
+        """
+        token_seqs = [_content_tokens(r.text_or_empty()) for r in reviews]
+        ngram_owners: dict[tuple[str, ...], int] = Counter()
+        for seq in token_seqs:
+            for g in _ngrams(seq):
+                ngram_owners[g] += 1
+
         signals: list[float] = []
-        threshold = self.config.high_match_count
-        for bg in per_review:
-            if not bg:
+        k = self.config.phrase_reuse_min_peers
+        for seq in token_seqs:
+            if not seq:
                 signals.append(0.0)
                 continue
-            shared = sum(1 for b in bg if bigram_owners[b] > threshold)
-            signals.append(float(shared / len(bg)))
+            covered_positions: set[int] = set()
+            for start in range(len(seq) - 1):
+                if ngram_owners[(seq[start], seq[start + 1])] - 1 >= k:
+                    covered_positions.update((start, start + 1))
+            for start in range(len(seq) - 2):
+                key = (seq[start], seq[start + 1], seq[start + 2])
+                if key in ngram_owners and ngram_owners[key] - 1 >= k:
+                    covered_positions.update((start, start + 1, start + 2))
+            coverage = len(covered_positions) / len(seq)
+            signals.append(
+                _scale(
+                    coverage,
+                    self.config.phrase_reuse_coverage_floor,
+                    self.config.phrase_reuse_coverage_cap,
+                )
+            )
         return signals
 
     def _structure_signal(self, reviews: list[NormalizedReview]) -> list[float]:
@@ -148,7 +210,47 @@ class TemplatedTextScorer:
             peers = peers[peers != i]
             k = min(self.config.high_match_count, int(peers.size))
             top = np.sort(sim[i, peers])[::-1][:k]
-            signals.append(_scale(float(top.mean()), 0.5, 0.85))
+            # Near-identical sentence-length profiles only (signal ~0 for a
+            # broadly similar but not identical structure).
+            signals.append(_scale(float(top.mean()), 0.6, 0.95))
+        return signals
+
+    def _low_specificity_signal(self, reviews: list[NormalizedReview]) -> list[float]:
+        from reviewscope.analysis.specificity import specificity_score
+
+        signals: list[float] = []
+        for r in reviews:
+            spec = specificity_score(r.text_or_empty()).value
+            signals.append(_scale(100.0 - spec, 50.0, 100.0))
+        return signals
+
+    def _low_unique_detail_signal(
+        self, reviews: list[NormalizedReview], same_place: list[bool]
+    ) -> list[float]:
+        """Length-robust diversity: share of content words not reused by peers.
+
+        A template family reuses the same content words across the whole
+        batch (low unique detail); an organic specific review introduces
+        words its peers never use (high unique detail). This is a *fraction*,
+        not a raw type/token ratio, so text length does not distort it.
+        """
+        n = len(reviews)
+        word_owners: dict[str, int] = Counter()
+        per_review_words: list[set[str]] = []
+        for r in reviews:
+            words = set(_content_tokens(r.text_or_empty()))
+            per_review_words.append(words)
+            for w in words:
+                word_owners[w] += 1
+        signals: list[float] = []
+        for i in range(n):
+            words = per_review_words[i]
+            if not words:
+                signals.append(0.0)
+                continue
+            rare = sum(1 for w in words if word_owners[w] - 1 <= 2)
+            unique_fraction = rare / len(words)
+            signals.append(_scale(1.0 - unique_fraction, 0.0, 0.5))
         return signals
 
     def _style_uniformity_signal(self, reviews: list[NormalizedReview]) -> list[float]:
@@ -184,6 +286,8 @@ class TemplatedTextScorer:
             signals[i] = _scale(float(peers), 0, float(self.config.high_match_count))
         return signals
 
+    # -- main ----------------------------------------------------------------
+
     def score(
         self,
         reviews: list[NormalizedReview],
@@ -203,16 +307,12 @@ class TemplatedTextScorer:
             )
 
         w = self.config
-        semantic = self._semantic_signal(reviews, embeddings, same_place)
+        sim = self._similarity_matrix(reviews, embeddings)
+        semantic = self._peer_similarity_signal(sim, same_place)
         phrase = self._phrase_reuse_signal(reviews)
         structure = self._structure_signal(reviews)
-        vec_diversity = [_scale(0.9 - _vocab_diversity(r.text_or_empty()), 0.0, 0.5) for r in reviews]
-        generic = []
-        for r in reviews:
-            from reviewscope.analysis.specificity import specificity_score
-
-            spec = specificity_score(r.text_or_empty()).value
-            generic.append(_scale(100.0 - spec, 50.0, 100.0))
+        generic = self._low_specificity_signal(reviews)
+        unique_detail = self._low_unique_detail_signal(reviews, same_place)
         uniform = self._style_uniformity_signal(reviews)
         temporal = self._temporal_signal(reviews)
 
@@ -220,47 +320,53 @@ class TemplatedTextScorer:
         for i in range(n):
             signals: list[str] = []
             counter: list[str] = []
-            total = 0.0
-            sem, phr, strc, gen, div, uni, tmp = (
+            sem, phr, strc, gen, uniq, uni, tmp = (
                 semantic[i],
                 phrase[i],
                 structure[i],
                 generic[i],
-                vec_diversity[i],
+                unique_detail[i],
                 uniform[i],
                 temporal[i],
             )
             total = (
-                w.semantic_group_weight * sem
-                + w.phrase_reuse_weight * phr
+                w.phrase_reuse_weight * phr
+                + w.peer_similarity_weight * sem
                 + w.structure_weight * strc
                 + w.low_specificity_weight * gen
-                + w.vocabulary_diversity_weight * div
+                + w.low_unique_detail_weight * uniq
                 + w.stylistic_uniformity_weight * uni
                 + w.temporal_clustering_weight * tmp
             )
             score = round(100.0 * total, 1)
+            active = sum(1 for v in (phr, sem, strc, gen, uniq, uni, tmp) if v >= 0.5)
 
             if sem >= 0.5:
-                signals.append("high semantic similarity with peers")
+                signals.append("high fraction of near-identical peer reviews")
             else:
                 counter.append("textually distinct from peers")
-            if phr >= 0.3:
+            if phr >= 0.5:
                 signals.append("repeated generic phrases across reviews")
             if strc >= 0.5:
                 signals.append("high structural similarity with peers")
             if gen >= 0.5:
-                signals.append("low unique detail density")
-            if div >= 0.5:
-                signals.append("low vocabulary diversity")
+                signals.append("low specificity (generic language)")
+            if uniq >= 0.5:
+                signals.append("few unique details vs the review cohort")
+            else:
+                counter.append("high unique detail density")
             if uni >= 0.5:
                 signals.append("stylistically uniform with group")
             if tmp >= 0.5:
                 signals.append("reviews published in narrow time window")
 
-            confidence = ConfidenceLevel.HIGH if score >= 65 else (
-                ConfidenceLevel.MEDIUM if score >= 40 else ConfidenceLevel.LOW
-            )
+            if score >= w.high_threshold and active >= w.min_signals_for_high:
+                confidence = ConfidenceLevel.HIGH
+            elif score >= w.medium_threshold:
+                confidence = ConfidenceLevel.MEDIUM
+            else:
+                confidence = ConfidenceLevel.LOW
+
             results.append(
                 ScoreResult(
                     name="Synthetic-like",
@@ -273,7 +379,7 @@ class TemplatedTextScorer:
                         "phrase_reuse": round(phr, 3),
                         "structure": round(strc, 3),
                         "generic": round(gen, 3),
-                        "vocab_diversity": round(div, 3),
+                        "unique_detail": round(uniq, 3),
                         "stylistic_uniformity": round(uni, 3),
                         "temporal": round(tmp, 3),
                     },

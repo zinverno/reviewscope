@@ -134,6 +134,36 @@ class TestLocalFamiliarity:
         assert result.value < 30
         assert any("outside" in s for s in result.counter_signals)
 
+    def test_same_region_different_city_counts_partially(self) -> None:
+        # Forensic regression (audit §20): a reviewer whose history is all in
+        # the same *region* but different city used to score 0.0 because the
+        # region evidence was computed into a dead variable. It now contributes
+        # a partial score from the region component.
+        history = _history("u1", 8, "coffee", "Khimki", "MO", date(2026, 1, 1), place_prefix="kh")
+        result = local_familiarity_score(history, "Moscow", "MO")
+        assert result.details["city_reviews"] == 0
+        assert result.details["region_reviews"] == 8
+        assert result.value > 0.0
+        assert result.value >= 30
+
+    def test_exact_city_and_region_are_partitioned(self) -> None:
+        # Reviews pointing at the region must not swallow exact-city reviews
+        # (the old `r.region == region or (region and r.region)` matched any
+        # non-empty region and made the region bucket useless).
+        history = _history("u1", 5, "coffee", "Moscow", "MO", date(2026, 1, 1), place_prefix="mc") + \
+            _history("u1", 3, "coffee", "Khimki", "MO", date(2026, 2, 1), place_prefix="kh")
+        result = local_familiarity_score(history, "Moscow", "MO")
+        assert result.details["city_reviews"] == 5
+        assert result.details["region_reviews"] == 3
+
+    def test_region_only_history_when_city_missing(self) -> None:
+        # No city metadata on the requested place -> pure region fallback still
+        # gives non-zero familiarity instead of an empty LOW.
+        history = _history("u1", 6, "coffee", "Moscow", "MO", date(2026, 1, 1), place_prefix="mc")
+        result = local_familiarity_score(history, None, "MO")
+        assert result.value > 0.0
+        assert "no exact-city history" in " ".join(result.signals)
+
 
 class TestReviewerRelevance:
     def test_strong_reviewer_relevant(self) -> None:

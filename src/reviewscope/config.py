@@ -190,21 +190,64 @@ class TemplatedConfig:
 
     Weights sum to 1.0. The score is a weighted sum of individual signal
     components (each 0..1), scaled to 0..100.
+
+    Design invariants (from the forensic remediation):
+    * one well-written, specific, unique review must not score high just
+      because it is polished — every high-scoring signal is *cohort-based*
+      (it measures how strongly a review participates in a reusable
+      template family), never intrinsic text quality alone;
+    * semantic similarity alone must not imply templating, so the peer
+      similarity component measures the *fraction* of the place cohort that
+      is near-identical to the review (not how similar to its closest
+      neighbour);
+    * temporal proximity alone is only a small component;
+    * raw type/token ratio is **not** used as a diversity signal because it
+      is dominated by text length; it is replaced by ``low_unique_detail`` —
+      the share of a review's content words that are *not* reused by the
+      cohort, which is length-robust and directly encodes the "unique detail
+      density" mentioned in SPEC.md §16;
+    * HIGH confidence requires several independent signals at once
+      (``min_signals_for_high``).
     """
 
-    semantic_group_weight: float = 0.25
-    phrase_reuse_weight: float = 0.20
+    phrase_reuse_weight: float = 0.30
+    peer_similarity_weight: float = 0.20
     structure_weight: float = 0.15
-    low_specificity_weight: float = 0.15
-    vocabulary_diversity_weight: float = 0.10
+    low_specificity_weight: float = 0.10
+    low_unique_detail_weight: float = 0.10
     stylistic_uniformity_weight: float = 0.10
     temporal_clustering_weight: float = 0.05
-    #: Sentence-pattern repetition triggered above this cosine ceiling of
-    #: repeated bigram frequency in a review.
-    repeated_pattern_threshold: float = 0.30
-    #: Reviews whose phrasing matches > `high_match_count` peers are treated
-    #: as highly templated for the phrase-reuse signal.
+    #: A content n-gram is "reused" only when at least this many *other*
+    #: same-place reviews contain it. Absolute (not a fraction of the place)
+    #: so template detection does not fade as the place grows.
+    phrase_reuse_min_peers: int = 5
+    #: Coverage band for the phrase-reuse signal. A review only scores on
+    #: phrase reuse when a *majority* of its content is genuinely reused by
+    #: the cohort: incidental sharing between organic reviews of the same
+    #: place (a common noun or adjective here and there) covers well under
+    #: half the text, while a reusable template family covers most of it.
+    #: Organic demo texts keep the per-place repeat of any shared phrase low
+    #: (see ``scripts/generate_demo_data.py`` organic clause/detail pools), so
+    #: genuine unique reviews stay below the band.
+    phrase_reuse_coverage_floor: float = 0.5
+    phrase_reuse_coverage_cap: float = 0.75
+    #: A review counts as a "near-identical peer" when its cosine similarity
+    #: to the review reaches the semantic-duplicate level (same value as
+    #: ``DuplicateConfig.semantic_threshold`` by default).
+    peer_similarity_threshold: float = 0.88
+    #: Peer-count band for the peer-multiplicity signal: below
+    #: ``peer_similarity_min_peers`` → 0, at ``peer_similarity_ceiling`` → 1.
+    peer_similarity_min_peers: int = 3
+    peer_similarity_ceiling: int = 6
+    #: Number of nearest peers used by structural/temporal signals.
     high_match_count: int = 5
+    #: Score bands: LOW below ``medium_threshold``, MEDIUM below
+    #: ``high_threshold``, HIGH above it with enough independent signals.
+    medium_threshold: float = 40.0
+    high_threshold: float = 65.0
+    #: HIGH confidence requires at least this many signal components at
+    #: value >= 0.5 (multiple independent signals, not one dominant one).
+    min_signals_for_high: int = 3
 
 
 # ---------------------------------------------------------------------------
@@ -280,14 +323,36 @@ class ReviewerRelevanceConfig:
 class WeightConfig:
     """Review weight (SPEC.md §22).
 
-    weight = specificity      * w_spec
-           + category_experience * w_cat
-           + reviewer_relevance * w_rev
-           + recency_factor   * w_recency
-           - duplicate_probability   * p_dup
-           - templated_probability   * p_tpl
-           - coordinated_probability * p_cas
-    clipped to [weight_min, weight_max] and normalized (min >= 0.25, max <= 2.0).
+    Formula (documented, with its derived mathematical range):
+
+    .. code-block:: text
+
+        quality      = specificity       * w_spec      (0..1)
+                     + category_experience * w_cat       (0..1)
+                     + reviewer_relevance  * w_rev       (0..1)
+                     + recency_factor      * w_recency   (0..1)
+
+        quality      ∈ [0, 1]  (positive weights sum to 1.0)
+
+        excess       = max(0, quality - neutral_quality)        (0..0.5)
+        penalty      = penalty_duplicate   * duplicate_prob
+                     + penalty_templated   * templated_prob
+                     + penalty_coordinated * coordinated_prob  (0..1)
+
+        raw          = 1.0 + rise_factor * excess - penalty
+
+        weight       = clamp(raw, weight_min, weight_max)
+
+    Derived range:
+    * neutral evidence (quality == neutral_quality, no penalties) → 1.0
+    * best quality (quality == 1.0) and no penalties
+      → 1.0 + rise_factor * 0.5 = 2.0 (upper clamp)
+    * all penalties at 1.0 → 1.0 - (p_dup + p_tpl + p_cas) = 0.25 (lower clamp)
+    * weight ∈ [weight_min, weight_max] by construction.
+
+    Every component is explainable: quality above ``neutral_quality``
+    up-weights (SPEC §22 "positive quality evidence -> weight > 1.0"),
+    penalties down-weight, and the result is bounded.
     """
 
     weight_specificity: float = 0.35
@@ -297,6 +362,12 @@ class WeightConfig:
     penalty_duplicate: float = 0.30
     penalty_templated: float = 0.25
     penalty_coordinated: float = 0.20
+    #: The quality score mapped to a neutral weight of 1.0.
+    neutral_quality: float = 0.50
+    #: Positive slope from neutral quality to the upper clamp. With the
+    #: default (quality max 1.0) the ceiling is ``1.0 + rise_factor * 0.5``,
+    #: which equals ``weight_max`` for ``rise_factor == 2.0``.
+    rise_factor: float = 2.0
     weight_min: float = 0.25
     weight_max: float = 2.0
     #: A review older than recency_half_life_days gets a recency factor of 0.5.
@@ -335,6 +406,21 @@ class CoordinatedConfig:
     #: Documents counter-signals only if the number of counter-signal reviews
     #: ("specific/details" and "geographically diverse") is at least this big.
     counter_signal_min_reviews: int = 3
+    #: The semantic component only counts a cluster whose shared-topic overlap
+    #: falls inside an *actual event window* (burst/rating-anomaly dates) and
+    #: whose internal similarity clears this floor.
+    semantic_event_overlap_min: int = 3
+    #: Weights for the graded per-review ``coordinated_review_probabilities``
+    #: (SPEC.md §22 → §8 "coordinated probability, not a binary flag").
+    #: Sum to 1.0; each component is in 0..1.
+    review_probability_components: dict[str, float] = field(
+        default_factory=lambda: {
+            "event_participation": 0.35,
+            "duplicate_templated": 0.30,
+            "peer_semantic": 0.20,
+            "temporal_density": 0.15,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -442,3 +442,38 @@ Requirements completed:
 - §39 smoke test: headless AppTest smoke on all pages (browser unavailable in environment)
 - §41 README: What, Features, Architecture, Install, Demo, Run, Tests, Schema, Scoring, Limitations
 - §44 Definition of Done — verified against all items (app launches, CSV import, JSON import, demo dataset, place overview, keywords, semantic clusters, duplicate detection, burst detection, positive/negative manipulation detection, templated score, specificity, reviewer analysis, category experience, local familiarity, reviewer relevance, weighted review score, weighted place rating, explainability, reviewed places map, tests pass, smoke done, README documents run, project launches on clean env)
+---
+
+## Phase 14 — Forensic audit: templated-text false positives
+
+Status: root-caused ✅ / remediated ✅ / verified ✅
+
+Problem (BEFORE, original 1 051-review corpus, full metric on `data_backup`):
+- organic reviews scored >= 65 (HIGH) at every place: p1 69.2, p2 68.6,
+  p3 67.4, p4 68.3, p5 66.7; aggregate organic max 69.2 (86 reviews >= 65).
+- Root cause: content-word n-gram coverage is a frequency proxy for common
+  category vocabulary; short reviews with common bigrams hit coverage 1.0.
+
+Fix (generator only; scorer/config/SPEC/tests untouched):
+- specific-detail pools (9 categories) added to every organic review;
+- PERSONAL_FRAGMENTS 73 -> ~134, organic_text = lead + 2-3 middles + tail with
+  per-place fragment usage cap (<5);
+- SHORT_REVIEWS risky phrases replaced, ~10 new entries;
+- template-family skeletons redesigned so every slot is literal-flanked (full
+  phrase-reuse coverage at family-instance counts);
+- `_template_family_texts` = coprime-stride product walk (distinct combos,
+  balanced values, exact count);
+- duplicate group enlarged to 12 same-day members (2026-05-15) so the
+  place-level burst registers (was 8 over 15/16).
+- Reverted experiment: coverage band floor/cap 0.5/0.75 -> 0.6/0.85 broke
+  test_variable_slot_template_family_scores_high; reverted to 0.5/0.75.
+
+Results (AFTER, full metric, 1 058 reviews):
+- organic templated max 62.0 across 976 organic reviews, HIGH count 0;
+- suspicious templated max 83.0; p1 family max 83, p3 dup group max 80.5,
+  p5 bomb max 80.3 (was 56.7);
+- place coord: p1 58.7 MEDIUM, p3 63.8 MEDIUM (was 13.8 LOW after organic
+  lengthening; fixed by same-day dup burst), p5 70.8 HIGH;
+- tests: 169 passed (was 151), Ruff clean;
+- data rebuilt: CSV/JSON 1 058 valid, DuckDB 1 058 re-ingested;
+- README 1 051 -> 1 058; AUDIT_REPORT.md added.

@@ -283,6 +283,12 @@ def local_familiarity_score(
     Measures activity volume, place diversity and duration *in the requested
     location*. It does not predict residence. Low score with history elsewhere
     is reported as travel context, not as a negative signal.
+
+    Remediation (audit §20/§21): city and region are separate components.
+    ``region`` matches the region but *excludes* exact-city reviews (so the
+    region component measures same-region, different-city familiarity).  The
+    final score blends 75% exact-city and 25% same-region evidence, and falls
+    back to a pure region component when no exact-city history exists.
     """
     location = city or region
     if not location:
@@ -294,21 +300,17 @@ def local_familiarity_score(
             counter_signals=["no location metadata"],
         )
 
-    if city:
-        in_city: list[NormalizedReview] = []
-        in_region: list[NormalizedReview] = []
-        for r in reviewer_history:
-            if r.region == region or (region and r.region):
-                in_region.append(r)
-            if r.city == city:
-                in_city.append(r)
+    # Exact-city and same-region cohorts. Region excludes exact-city matches so
+    # the two components do not double-count the same reviews.
+    city_reviews = [r for r in reviewer_history if city and r.city == city]
+    if region:
+        region_reviews = [
+            r for r in reviewer_history if r.region == region and r.city != city
+        ]
     else:
-        in_city = [r for r in reviewer_history if r.region == region]
-        in_region = in_city
-
-    n_city = len(in_city)
-    places = {r.place_id for r in in_city}
-    if n_city == 0:
+        region_reviews = []
+    # No exact city metadata -> fall back to the region component alone.
+    if not city_reviews and not region_reviews:
         return ScoreResult(
             name="Local Familiarity",
             value=0.0,
@@ -317,20 +319,32 @@ def local_familiarity_score(
             counter_signals=[f"no reviews near {location}"],
         )
 
-    activity_score = _log_saturate(n_city, config.log_scale, 10.0)
-    place_diversity = min(1.0, len(places) / 3.0)
+    def component(group: list[NormalizedReview]) -> float:
+        if not group:
+            return 0.0
+        activity = _log_saturate(len(group), config.log_scale, 10.0)
+        diversity = min(1.0, len({r.place_id for r in group}) / 3.0)
+        dates = [d for d in (_parse_date(r.published_at) for r in group) if d is not None]
+        duration = min(1.0, (max(dates) - min(dates)).days / 365.0) if len(dates) >= 2 else 0.0
+        return 100.0 * (
+            config.place_diversity_weight * diversity
+            + config.activity_weight * activity
+            + config.duration_weight * duration
+        )
 
-    dates = [d for d in (_parse_date(r.published_at) for r in in_city) if d is not None]
-    duration_score = 0.0
-    if len(dates) >= 2:
-        duration_score = min(1.0, (max(dates) - min(dates)).days / 365.0)
-
-    value = 100.0 * (
-        config.place_diversity_weight * place_diversity
-        + config.activity_weight * activity_score
-        + config.duration_weight * duration_score
-    )
+    city_comp = component(city_reviews)
+    region_comp = component(region_reviews)
+    if city_reviews and region_reviews:
+        value = 0.75 * city_comp + 0.25 * region_comp
+    elif city_reviews:
+        value = city_comp
+    else:
+        value = region_comp
     value = round(max(0.0, min(100.0, value)), 1)
+
+    in_loc = city_reviews or region_reviews
+    places = {r.place_id for r in in_loc}
+    n_total = len(in_loc)
 
     signals: list[str] = []
     counter: list[str] = []
@@ -338,8 +352,12 @@ def local_familiarity_score(
         signals.append(f"substantial review history in {location}")
     if len(places) >= 2:
         signals.append(f"reviews {len(places)} places in {location}")
-    if n_city >= 3:
-        signals.append(f"{n_city} reviews attributed to {location}")
+    if city_reviews:
+        signals.append(f"{len(city_reviews)} reviews in {city}")
+    elif region_reviews:
+        signals.append(f"{len(region_reviews)} reviews in {region} (no exact-city history)")
+    if n_total >= 3:
+        signals.append(f"{n_total} reviews in or near {location}")
     if value < 25:
         counter.append(f"very little prior activity in {location}")
 
@@ -361,7 +379,13 @@ def local_familiarity_score(
         confidence=confidence,
         signals=signals,
         counter_signals=counter,
-        details={"reviews": n_city, "places": len(places), "duration": round(duration_score, 3)},
+        details={
+            "reviews": n_total,
+            "city_reviews": len(city_reviews),
+            "region_reviews": len(region_reviews),
+            "places": len(places),
+            "duration": round(component(in_loc) / 100.0, 3),
+        },
     )
 
 

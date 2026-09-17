@@ -130,6 +130,6 @@ class TestDemoDataDuplicateGroup:
         provider = SentenceTransformerProvider()
         emb = provider.encode([r.text for r in p3])
         groups = DuplicateDetector().detect(p3, embeddings=emb)
-        injected = {f"rdup_{p}{i:03d}" for p in ("e", "n") for i in range(4)}
+        injected = {f"rdup_e{i:03d}" for i in range(4)} | {f"rdup_n{i:03d}" for i in range(8)}
         captured = set().union(*(set(g.review_ids) for g in groups)) & injected
-        assert captured == injected, f"expected all 8 injected P3 reviews, got {captured}"
+        assert captured == injected, f"expected all 12 injected P3 reviews, got {captured}"
