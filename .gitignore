@@ -37,4 +37,4 @@ embeddings_cache/
 htmlcov/
 
 # Reports
-smoke_out/
+smoke_out/SPEC.md
