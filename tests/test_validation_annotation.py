@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from reviewscope.validation.annotation import AnnotationStore, now_iso
+import pytest
+
+from reviewscope.validation.annotation import (
+    AnnotationStore,
+    BatchFinalizedError,
+    FingerprintMismatchError,
+    now_iso,
+)
 from reviewscope.validation.models import (
     DuplicateLabel,
     ReviewHumanLabel,
@@ -99,3 +106,92 @@ def test_blank_cells_map_to_none(tmp_path):
         row = store.get_label("r1")
         assert row.templated_label is None
         assert row.labeled_at is not None
+
+
+def test_batch_is_open_by_default(tmp_path):
+    with AnnotationStore(tmp_path / "ann.duckdb") as store:
+        assert store.batch_status() == "OPEN"
+        assert store.is_finalized() is False
+        assert store.batch_metadata() is None
+
+
+def test_finalize_persists_metadata_and_resumes(tmp_path):
+    path = tmp_path / "ann.duckdb"
+    with AnnotationStore(path) as store:
+        store.save_label(ReviewHumanLabel(review_id="r1", templated_label=TemplatedLabel.ORGANIC))
+        store.save_label(ReviewHumanLabel(review_id="r2", templated_label=TemplatedLabel.TEMPLATED))
+        metadata = store.finalize(annotator_id="alice", dataset_fingerprint="fp-123")
+        assert metadata["status"] == "FINALIZED"
+        assert metadata["annotator_id"] == "alice"
+        assert metadata["dataset_fingerprint"] == "fp-123"
+        assert metadata["label_count"] == 2, "label count defaults to the stored verdicts"
+        assert metadata["finalized_at"]
+        assert store.is_finalized() is True
+        assert store.verify_fingerprint("fp-123") is True
+
+    with AnnotationStore(path) as resumed:
+        assert resumed.is_finalized() is True
+        assert resumed.batch_metadata()["dataset_fingerprint"] == "fp-123"
+        assert len(resumed.labelset().labels) == 2
+
+
+def test_finalized_batch_rejects_writes(tmp_path):
+    with AnnotationStore(tmp_path / "ann.duckdb") as store:
+        store.save_label(ReviewHumanLabel(review_id="r1", templated_label=TemplatedLabel.ORGANIC))
+        store.finalize(annotator_id="alice", dataset_fingerprint="fp-1")
+        with pytest.raises(BatchFinalizedError):
+            store.save_label(
+                ReviewHumanLabel(review_id="r2", templated_label=TemplatedLabel.TEMPLATED)
+            )
+        with pytest.raises(BatchFinalizedError):
+            store.save_label(
+                ReviewHumanLabel(review_id="r1", templated_label=TemplatedLabel.TEMPLATED)
+            )
+        assert store.get_label("r1").templated_label == TemplatedLabel.ORGANIC
+        assert store.labeled_ids() == ["r1"]
+
+
+def test_override_archives_previous_verdict(tmp_path):
+    with AnnotationStore(tmp_path / "ann.duckdb") as store:
+        store.save_label(
+            ReviewHumanLabel(
+                review_id="r1",
+                templated_label=TemplatedLabel.ORGANIC,
+                annotator_id="alice",
+            )
+        )
+        store.finalize(annotator_id="alice", dataset_fingerprint="fp-1")
+        store.save_label(
+            ReviewHumanLabel(review_id="r1", templated_label=TemplatedLabel.TEMPLATED),
+            override=True,
+        )
+        assert store.get_label("r1").templated_label == TemplatedLabel.TEMPLATED
+        assert store.revision_count() == 1
+        revision = store.revisions("r1")[0]
+        assert revision["previous_label"]["templated_label"] == "organic"
+        assert revision["previous_label"]["annotator_id"] == "alice"
+
+
+def test_refinalize_requires_override(tmp_path):
+    with AnnotationStore(tmp_path / "ann.duckdb") as store:
+        store.finalize(annotator_id="alice", dataset_fingerprint="fp-1")
+        with pytest.raises(BatchFinalizedError):
+            store.finalize(annotator_id="bob", dataset_fingerprint="fp-1")
+        metadata = store.finalize(annotator_id="bob", dataset_fingerprint="fp-1", override=True)
+        assert metadata["annotator_id"] == "bob"
+
+
+def test_fingerprint_mismatch_is_rejected(tmp_path):
+    with AnnotationStore(tmp_path / "ann.duckdb") as store:
+        store.finalize(annotator_id="alice", dataset_fingerprint="fp-A")
+        with pytest.raises(FingerprintMismatchError):
+            store.finalize(annotator_id="alice", dataset_fingerprint="fp-B", override=True)
+        with pytest.raises(FingerprintMismatchError):
+            store.verify_fingerprint("fp-B")
+        assert store.batch_metadata()["dataset_fingerprint"] == "fp-A"
+
+
+def test_verify_fingerprint_requires_finalized_batch(tmp_path):
+    with AnnotationStore(tmp_path / "ann.duckdb") as store:
+        with pytest.raises(FingerprintMismatchError):
+            store.verify_fingerprint("fp-A")

@@ -119,6 +119,29 @@ def test_labeling_app_boots_blind_and_saves(tmp_path, monkeypatch):
         assert saved.templated_label is not None
 
 
+def test_labeling_app_locks_finalized_batch(tmp_path, monkeypatch):
+    vdir = _provision_validation_dir(tmp_path)
+    monkeypatch.setenv("RS_VALIDATION_DIR", str(vdir))
+    monkeypatch.setenv("RS_ANNOTATOR_ID", "smoke-tester")
+
+    from reviewscope.validation.annotation import AnnotationStore
+    from reviewscope.validation.models import ReviewHumanLabel, TemplatedLabel
+
+    with AnnotationStore(vdir / "annotations.duckdb") as ann:
+        ann.save_label(ReviewHumanLabel(review_id="sel-1", templated_label=TemplatedLabel.ORGANIC))
+        ann.finalize(annotator_id="smoke-tester", dataset_fingerprint="fp-smoke")
+
+    at = _app()
+    at.run()
+    assert not list(at.exception), [e.value for e in at.exception]
+    rendered = "\n".join(m.value for m in at.markdown)
+    assert "FINALIZED" in "\n".join(s.value for s in at.success)
+    assert "fp-smoke" in rendered
+    # The review form and its save action must not be reachable when locked.
+    assert not [b for b in at.button if b.label == "Save & Next"]
+    assert not list(at.subheader)
+
+
 def test_labeling_app_rejects_missing_selection(tmp_path, monkeypatch):
     vdir = tmp_path  # no files provisioned
     monkeypatch.setenv("RS_VALIDATION_DIR", str(vdir))

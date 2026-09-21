@@ -246,6 +246,22 @@ def write_label_template(
     )
 
 
+_SELECTION_HEADER_FIELDS = ("fingerprint", "seed", "evaluation_count", "challenge_counts")
+
+
+def load_selection_header(path: str | Path) -> dict:
+    """Load only the reproducibility header of ``sample_selection.json``.
+
+    Unlike :func:`load_selection_json` (which returns the per-review entry
+    map), this exposes the top-level metadata — in particular the
+    ``fingerprint`` that binds an annotation batch to its dataset.
+    """
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return {}
+    return {key: raw.get(key) for key in _SELECTION_HEADER_FIELDS if key in raw}
+
+
 def load_selection_json(path: str | Path) -> dict[str, dict]:
     """Load ``sample_selection.json`` into ``review_id -> entry`` map.
 

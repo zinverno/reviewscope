@@ -38,3 +38,13 @@ htmlcov/
 
 # Reports
 smoke_out/SPEC.md
+
+# Real-world validation data (PRIVATE — never commit real datasets, labels or
+# reports). Public synthetic fixtures live under tests/data/fixtures/ instead.
+validation_data/
+annotations.duckdb
+labels.csv
+score_table.json
+sample_selection.json
+validation_report.md
+validation_report.json

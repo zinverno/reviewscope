@@ -37,7 +37,10 @@ st.set_page_config(page_title="ReviewScope — Blind Labeling", layout="wide")
 
 from reviewscope.storage import DuckDBStore  # noqa: E402
 from reviewscope.validation.annotation import AnnotationStore  # noqa: E402
-from reviewscope.validation.loader import load_selection_json  # noqa: E402
+from reviewscope.validation.loader import (  # noqa: E402
+    load_selection_header,
+    load_selection_json,
+)
 from reviewscope.validation.models import (  # noqa: E402
     DuplicateLabel,
     ReviewHumanLabel,
@@ -52,6 +55,16 @@ DEFAULT_ANNOTATOR = os.environ.get("RS_ANNOTATOR_ID", "")
 def _fail(message: str) -> None:
     st.error(message)
     st.stop()
+
+
+def _fingerprint_from_store(store: DuckDBStore) -> str | None:
+    """Read the dataset fingerprint written by the scoring stage, if any."""
+    if not store.table_exists("validation_metadata"):
+        return None
+    row = store.connection().execute(
+        "SELECT value FROM validation_metadata WHERE key = 'dataset_fingerprint'"
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
 
 
 def _build_label(
@@ -134,12 +147,16 @@ def main() -> None:
         _fail(f"Dataset store not found: {dataset_file}")
 
     selection = load_selection_json(selection_file)
+    selection_header = load_selection_header(selection_file)
     queue = list(selection.keys())
     if not queue:
         _fail(f"Selection file contains no reviews: {selection_file}")
 
     with DuckDBStore(dataset_file, read_only=True) as store:
         reviews_by_id = {r.review_id: r for r in store.fetch_reviews()}
+        dataset_fingerprint = selection_header.get("fingerprint") or _fingerprint_from_store(
+            store
+        )
     missing = [rid for rid in queue if rid not in reviews_by_id]
     if missing:
         _fail(
@@ -148,6 +165,23 @@ def main() -> None:
         )
 
     with AnnotationStore(annotation_store) as ann:
+        if ann.is_finalized():
+            meta = ann.batch_metadata() or {}
+            st.success("This annotation batch is FINALIZED and read-only.")
+            recorded = meta.get("label_count")
+            st.markdown(
+                f"**Finalized at:** {meta.get('finalized_at') or '—'}  \n"
+                f"**Annotator:** {meta.get('annotator_id') or '—'}  \n"
+                f"**Labels recorded:** {recorded if recorded is not None else '—'}  \n"
+                f"**Dataset fingerprint:** "
+                f"`{meta.get('dataset_fingerprint') or 'not recorded'}`"
+            )
+            st.caption(
+                "Scores are never shown in this app. Generate the report with "
+                "`scripts/validation_report.py`."
+            )
+            st.stop()
+
         labeled = set(ann.labeled_ids())
         skipped = set(st.session_state.get("_skipped", []))
         unlabeled = [rid for rid in queue if rid not in labeled and rid not in skipped]
@@ -157,13 +191,26 @@ def main() -> None:
             f"({len(skipped)} skipped this session)."
         )
         st.progress(len(labeled) / max(len(queue), 1), text="annotation progress")
+        st.caption(f"Batch status: {ann.batch_status()}")
 
         if not unlabeled:
             if skipped:
                 st.success("All remaining reviews are skipped for this session.")
             else:
-                st.success("Annotation batch complete. Export with: "
-                           "`python scripts/validation_report.py --annotation-store ...`")
+                st.success("Annotation batch complete.")
+                if dataset_fingerprint:
+                    if st.button("Finalize batch (lock labels)", type="primary"):
+                        ann.finalize(
+                            annotator_id=annotator_id,
+                            dataset_fingerprint=dataset_fingerprint,
+                            label_count=len(labeled),
+                        )
+                        st.rerun()
+                else:
+                    st.info(
+                        "No dataset fingerprint found; finalize from the CLI with "
+                        "`scripts/validation_finalize.py` once the dataset is scored."
+                    )
             st.stop()
 
         current_id = unlabeled[0]

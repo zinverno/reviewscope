@@ -154,6 +154,28 @@ weight = clamp(raw_weight, 0.25, 2.0)
 Per-place average where each review contributes `rating × weight / Σweights`.
 The delta from the raw average and its direction are always explained.
 
+## Real-data validation (Phase 15)
+
+The detector outputs can be measured against independent human labels on a real
+dataset through a separate, score-blind workflow:
+
+1. `scripts/validation_sample.py` scores the full dataset with the **production**
+   detectors and builds a deterministic evaluation + challenge selection;
+2. `app_labeling.py` is a blind annotation app that never loads or shows any
+   detector output;
+3. `scripts/validation_finalize.py` locks the batch and binds it to the dataset
+   fingerprint;
+4. `scripts/validation_report.py` joins scores + labels + sampling and writes
+   the report.
+
+It is a **measurement baseline, not a calibration tool** — no detector,
+threshold or weight is changed. Validation data is private: keep it under the
+gitignored `validation_data/` directory.
+
+See [docs/REAL_DATA_VALIDATION.md](docs/REAL_DATA_VALIDATION.md) for the full
+protocol, and [the public synthetic example](docs/examples/real_data_validation_example.md)
+for an offline, model-free sample report.
+
 ## Limitations
 
 * A **coordinated activity anomaly is not proof of fraud**. It is a

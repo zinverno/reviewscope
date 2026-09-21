@@ -477,3 +477,109 @@ Results (AFTER, full metric, 1 058 reviews):
 - tests: 169 passed (was 151), Ruff clean;
 - data rebuilt: CSV/JSON 1 058 valid, DuckDB 1 058 re-ingested;
 - README 1 051 -> 1 058; AUDIT_REPORT.md added.
+
+---
+
+## Phase 15 — Real-Data Validation Framework
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ / smoke verified ✅
+
+Files changed:
+- `src/reviewscope/validation/` — new package: `models.py` (label/selection schema),
+  `loader.py` (tolerant dataset/label I/O), `sampling.py` (deterministic
+  evaluation + challenge selection), `scoring.py` (production detectors over a
+  full dataset + fingerprint-gated store), `metrics.py` (templated / specificity
+  / duplicate metrics + disagreements), `report.py` (Markdown + JSON report),
+  `annotation.py` (DuckDB annotation store)
+- `app_labeling.py` — **new** blind human-labeling Streamlit app
+- `scripts/validation_sample.py`, `scripts/validation_report.py` — **new** stage
+  1/3 CLIs
+- `tests/test_validation_models.py`, `test_validation_loader.py`,
+  `test_validation_sampling.py`, `test_validation_scoring.py`,
+  `test_validation_metrics.py`, `test_validation_report.py`,
+  `test_validation_annotation.py`, `tests/test_app_labeling_smoke.py` — new tests
+
+Implementation notes:
+- Measurement only: orchestrates the exact production detectors
+  (`TemplatedTextScorer`, `DuplicateDetector`, `specificity_score`) per place;
+  no detector logic, threshold or weight is duplicated or changed.
+- Two partitions kept strictly apart: representative evaluation SRS (headline
+  metrics) vs score/duplicate-stratified challenge (diagnostic only).
+- `sample_selection.json` is score-free to preserve annotator blindness.
+- Bugs found and fixed during verification: `scoring._write_metadata` needed
+  `CREATE TABLE IF NOT EXISTS`; `metrics.specificity_metrics` crosstab keyed by
+  lowercase human labels + `_specificity_near_far` adjacency; `report._partition_block`
+  projected to 2-tuples before metrics; `loader.read_labels` omits missing
+  columns; `sampling.Selection` field renamed to `fingerprint`.
+
+Command results:
+- `pytest -o addopts="" -q` — **239 passed**, 0 failed
+- Phase 15 subset (`tests/test_validation_*.py tests/test_app_labeling_smoke.py`)
+  — **70 passed**
+- `ruff check .` — All checks passed
+
+Requirements completed:
+- Score a real dataset with production detectors; deterministic evaluation +
+  challenge sampling; blind annotation app; score/label/sample join; Markdown +
+  JSON report with confusion metrics, specificity agreement and duplicate
+  pair metrics; documented limitations and no-calibration disclaimer.
+
+---
+
+## Phase 15.1 — Validation Hardening
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ / smoke verified ✅
+
+Files changed:
+- `.gitignore` — ignore `validation_data/` plus the common private artifact names
+  (`annotations.duckdb`, `labels.csv`, `score_table.json`,
+  `sample_selection.json`, `validation_report.md`, `validation_report.json`)
+- `src/reviewscope/validation/annotation.py` — batch lifecycle: OPEN/FINALIZED
+  singleton row, `finalize`, `batch_metadata`, `batch_status`, `is_finalized`,
+  `verify_fingerprint`, revision-archiving overrides, `BatchFinalizedError` /
+  `FingerprintMismatchError`
+- `src/reviewscope/validation/loader.py` — `load_selection_header` (exposes the
+  score-free top-level fingerprint/seed without loading entries)
+- `app_labeling.py` — batch status caption, read-only locked view for finalized
+  batches, in-app finalize button bound to the dataset fingerprint
+- `scripts/validation_finalize.py` — **new** lock-the-batch CLI
+- `scripts/generate_example_report.py` — **new** offline, model-free example
+  generator (fixed `generated_at`, `use_embeddings=False`)
+- `tests/data/fixtures/example_reviews.csv`,
+  `tests/data/fixtures/example_labels.csv` — public synthetic fixture
+- `docs/REAL_DATA_VALIDATION.md` — full protocol (privacy, pipeline, schema,
+  sampling, blindness, finalization/fingerprint, metrics, leakage risk)
+- `docs/examples/real_data_validation_example.md` / `.json` — committed example
+  report (regenerated deterministically; byte-identical across runs)
+- `README.md` — Phase 15 section linking the docs and the privacy rule
+- `tests/test_validation_annotation.py` — finalization/lock/revision/fingerprint
+  tests; `tests/test_validation_loader.py` — selection-header test;
+  `tests/test_app_labeling_smoke.py` — finalized-batch lock smoke test
+
+Implementation notes:
+- Once FINALIZED, `save_label` raises unless `override=True`; overrides archive
+  the superseded verdict in `annotation_revisions` rather than destroying
+  provenance.
+- A stored dataset fingerprint can never be replaced by a different one;
+  `verify_fingerprint` rejects reports built against a mutated dataset.
+- Fixture is fully synthetic; the example report is generated offline with the
+  text-bigram fallback (no model download) and a pinned timestamp.
+
+Command results:
+- `pytest -o addopts="" -q` — **248 passed**, 0 failed (0:06:00)
+- `ruff check .` — All checks passed
+- `python scripts/generate_example_report.py` — 22 reviews / 22 labels;
+  evaluation templated TP=3 FP=0 TN=6 FN=1; 10 disagreements; deterministic
+  (identical md5 on re-run)
+- `python scripts/validation_finalize.py` — OPEN -> FINALIZED, then refuses
+  re-finalization without `--force`
+- `git check-ignore` confirms `validation_data/` and the private artifact names
+  are ignored; `git diff --check` clean
+
+Requirements completed:
+- Private validation data cannot be committed accidentally
+- Annotation batch is explicitly OPEN/FINALIZED; finalization persists
+  `finalized_at`, `annotator_id`, dataset fingerprint and label count; overrides
+  are revision-archived
+- Docs, README link, public example and PROJECT_STATE are in place
+- No production detector, threshold, weight, demo generator or main UI change
