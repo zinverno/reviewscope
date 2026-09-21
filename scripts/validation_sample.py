@@ -25,6 +25,7 @@ Example::
     python scripts/validation_sample.py data/demo_reviews.csv \
         --out-dir validation_data/demo
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,7 +44,7 @@ from reviewscope.validation.scoring import (  # noqa: E402
 DEFAULT_SEED = 20260901
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Score a full dataset with production detectors and build "
         "the deterministic evaluation + challenge label selection."
@@ -73,7 +74,7 @@ def main() -> int:
         action="store_true",
         help="Rebuild/re-stamp an existing store instead of raising StoreConflictError.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -81,12 +82,19 @@ def main() -> int:
 
     result = load_reviews(args.dataset)
     reviews = result.reviews
-    if result.warnings:
-        for warning in result.warnings:
-            print(f"[warning] {warning}")
+    report = result.report
+    print(f"Import diagnostics for {args.dataset}:")
+    print(f"  imported: {report.total_rows}")
+    print(f"  valid: {report.valid}")
+    print(f"  skipped: {report.skipped}")
+    print(f"  warnings: {report.warning_count}")
+    for warning in report.warnings:
+        print(f"[warning] {warning}")
 
     print(f"Loaded {len(reviews)} reviews from {args.dataset}")
-    print(f"Scoring with production detectors (embeddings={'on' if not args.no_embeddings else 'off'}) ...")
+    print(
+        f"Scoring with production detectors (embeddings={'on' if not args.no_embeddings else 'off'}) ..."
+    )
     table = compute_reviewscope_outputs(
         reviews,
         store_path=store_path,
