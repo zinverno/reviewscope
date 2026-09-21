@@ -1,19 +1,30 @@
 """Reviewed Places page (SPEC.md §25): reviewer timeline map.
 
 Timeline is based on review publication timestamps and does not represent
-verified physical movement — the UI states this explicitly.
+verified physical movement — the UI states this explicitly. The map zoom
+adapts to how spread out the reviewer's locations are.
 """
 
 from __future__ import annotations
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
-from plotly import graph_objects as go
 
 from reviewscope.analysis.engine import AnalysisEngine
 from reviewscope.storage import DuckDBStore
 
-from .common import FilterState
+from .common import FilterState, has_coordinates, info_state
+
+
+def _adaptive_zoom(frame: pd.DataFrame) -> int:
+    """Zoom in for tightly clustered data, out for scattered locations."""
+    n_locations = frame[["latitude", "longitude"]].drop_duplicates().shape[0]
+    if n_locations == 1:
+        return 11
+    if n_locations <= 5:
+        return 8
+    return 5
 
 
 def render_reviewed_places_page(
@@ -24,8 +35,24 @@ def render_reviewed_places_page(
 ) -> None:
     p = engine.analyze(place_id)
     st.header("Reviewed Places")
+    st.caption(
+        "Where a reviewer left reviews, mapped from the coordinates stored in "
+        "the review metadata."
+    )
+    st.caption(
+        "Keep in mind: locations come from review timestamps and coordinates. "
+        "They do not represent verified physical movement, and no home, work, "
+        "or travel route is inferred."
+    )
 
     reviewer_ids = sorted({r.reviewer_id for r in p.reviews})
+    if not reviewer_ids:
+        info_state(
+            "No reviewers",
+            "There are no reviews for this place in the dataset.",
+        )
+        return
+
     selected = st.selectbox("Reviewer", reviewer_ids)
     if not selected:
         return
@@ -45,21 +72,29 @@ def render_reviewed_places_page(
             "text": r.text_or_empty()[:80],
         }
         for r in history
-        if r.latitude is not None and r.longitude is not None
+        if has_coordinates(r)
     ]
     if not rows:
-        st.info("No reviews with coordinates in this reviewer's history.")
+        info_state(
+            "No mapped locations",
+            "No reviews with coordinates exist in this reviewer's history.",
+            hint="The Reviewed Places map needs coordinates; they can be absent in the source data.",
+        )
         return
 
     frame = pd.DataFrame(rows).sort_values("published_at")
+    n_locations = frame[["latitude", "longitude"]].drop_duplicates().shape[0]
 
-    st.caption(
-        "Timeline is based on review publication timestamps and does not "
-        "represent verified physical movement."
+    st.markdown(
+        f"**{selected}** — {len(frame)} mapped review{'s' if len(frame) != 1 else ''} "
+        f"across {n_locations} location{'s' if n_locations != 1 else ''}"
     )
+
+    st.caption("Timeline is based on review publication timestamps and does not represent verified physical movement.")
     st.dataframe(
-        frame[["published_at", "place_name", "place_category", "rating", "city", "region"]],
+        frame[["published_at", "place_name", "place_category", "rating", "city", "region", "text"]],
         width="stretch",
+        hide_index=True,
     )
 
     lat_center = float(frame["latitude"].mean())
@@ -83,7 +118,7 @@ def render_reviewed_places_page(
         map=go.layout.Map(
             style="light",
             center=go.layout.map.Center(lat=lat_center, lon=lon_center),
-            zoom=5,
+            zoom=_adaptive_zoom(frame),
         ),
         height=480,
         margin=dict(l=0, r=0, t=0, b=0),

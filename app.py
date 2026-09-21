@@ -1,7 +1,7 @@
 """ReviewScope — Streamlit app (SPEC.md §26).
 
-Sidebar: dataset, place, date range, rating, category. Pages: Overview,
-Topics, Anomalies, Duplicates, Reviewers, Reviewed Places, Data Quality.
+Sidebar: dataset, place, review filters, page.  Pages: Overview, Topics,
+Anomalies, Duplicates, Reviewers, Reviewed Places, Data Quality.
 
 Run: ``streamlit run app.py``
 """
@@ -23,10 +23,13 @@ from reviewscope.ui.common import DEFAULT_DB_PATH, FilterState, db_exists, get_e
 
 st.set_page_config(page_title="ReviewScope", layout="wide")
 
+_PAGE_ORDER = ["Overview", "Topics", "Anomalies", "Duplicates", "Reviewers", "Reviewed Places", "Data Quality"]
+
 
 def _sidebar() -> tuple[str, str, str, FilterState]:
     with st.sidebar:
         st.title("ReviewScope")
+        st.caption("Dataset → place → filters → page")
         db_path = st.text_input("Dataset (duckdb path)", value=DEFAULT_DB_PATH)
         if not db_exists(db_path):
             st.error(f"Database not found at {db_path!r}. Generate the demo dataset first.")
@@ -46,17 +49,23 @@ def _sidebar() -> tuple[str, str, str, FilterState]:
         choice = st.selectbox("Place", place_options, format_func=lambda pid: place_labels[place_options.index(pid)])
         place_id = str(choice)
 
-        date_from = st.date_input("From", value=None)
-        date_to = st.date_input("To", value=None)
-        ratings = st.multiselect("Rating", [1, 2, 3, 4, 5])
-        categories = st.multiselect("Category", sorted(places["place_category"].dropna().unique().tolist() or []))
-        reviewers_all = st.toggle("Restrict to reviewers", value=False)
+        flt = FilterState()
+        with st.expander("Review filters", expanded=False):
+            date_from = st.date_input("From", value=None)
+            date_to = st.date_input("To", value=None)
+            ratings = st.multiselect("Rating", [1, 2, 3, 4, 5])
+            categories = st.multiselect("Category", sorted(places["place_category"].dropna().unique().tolist() or []))
+            flt = FilterState(
+                date_from=date_from.isoformat() if date_from else None,
+                date_to=date_to.isoformat() if date_to else None,
+                ratings=tuple(int(r) for r in ratings),
+                categories=tuple(categories),
+            )
 
-        flt = FilterState(
-            date_from=date_from.isoformat() if date_from else None,
-            date_to=date_to.isoformat() if date_to else None,
-            ratings=tuple(int(r) for r in ratings),
-            categories=tuple(categories),
+        reviewers_all = st.toggle(
+            "Restrict to specific reviewers",
+            value=False,
+            help="Turn this on to filter the dashboard to one or more reviewer accounts.",
         )
         if reviewers_all:
             engine = get_engine(db_path)
@@ -71,9 +80,11 @@ def _sidebar() -> tuple[str, str, str, FilterState]:
                 reviewers=tuple(chosen),
             )
 
+        st.divider()
         page = st.radio(
             "Page",
-            ["Overview", "Topics", "Anomalies", "Duplicates", "Reviewers", "Reviewed Places", "Data Quality"],
+            _PAGE_ORDER,
+            help="Each page focuses on a different aspect of the review data.",
         )
     return db_path, place_id, page, flt
 
@@ -83,20 +94,24 @@ def main() -> None:
     store = get_store(db_path)
     engine = get_engine(db_path)
 
-    if page == "Overview":
-        render_overview_page(store, engine, place_id, flt)
-    elif page == "Topics":
-        render_topics_page(store, engine, place_id, flt)
-    elif page == "Anomalies":
-        render_anomalies_page(store, engine, place_id, flt)
-    elif page == "Duplicates":
-        render_duplicates_page(store, engine, place_id, flt)
-    elif page == "Reviewers":
-        render_reviewers_page(store, engine, place_id, flt)
-    elif page == "Reviewed Places":
-        render_reviewed_places_page(store, engine, place_id, flt)
-    elif page == "Data Quality":
-        render_data_quality_page(store, engine, place_id, flt)
+    dispatch = {
+        "Overview": render_overview_page,
+        "Topics": render_topics_page,
+        "Anomalies": render_anomalies_page,
+        "Duplicates": render_duplicates_page,
+        "Reviewers": render_reviewers_page,
+        "Reviewed Places": render_reviewed_places_page,
+        "Data Quality": render_data_quality_page,
+    }
+    handler = dispatch.get(page)
+    if handler:
+        handler(store, engine, place_id, flt)
+
+    st.divider()
+    st.caption(
+        "This app shows the analysis output — it does not assert fraud, "
+        "intent, or verified physical movement."
+    )
 
 
 if __name__ == "__main__":
