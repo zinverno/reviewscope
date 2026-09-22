@@ -157,3 +157,42 @@ class TestEngine:
         assert p2.coordinated.confidence.value != "HIGH"
         assert p2.raw_rating <= p2.weighted_rating_value + 0.01
         assert p1.coordinated.value >= p2.coordinated.value
+
+    def test_place_without_dates_analyzes_without_crash(self) -> None:
+        """Regression for the real-data edge case: reviews exist but every
+        published_at is missing. The full production pipeline must return empty
+        temporal results and still produce non-temporal analytics."""
+        store = DuckDBStore()
+        reviews = [
+            NormalizedReview(
+                review_id=f"nd{i:03d}",
+                place_id="nd",
+                place_name="Без дат",
+                place_category="coffee",
+                reviewer_id=f"u{i % 20}",
+                rating=4 + i % 2,
+                text="отзыв без даты, кофе с мягкой пенкой и стабильный интернет",
+                published_at=None,
+            )
+            for i in range(40)
+        ]
+        store.ingest(reviews)
+        try:
+            eng = AnalysisEngine(store, use_embeddings=False)
+            p = eng.analyze("nd")
+            assert p.burst_events == []
+            assert p.rating_anomalies == []
+            assert p.review_count == 40
+            assert len(p.templated_scores) == 40
+            assert len(p.review_weights) == 40
+            assert p.raw_rating > 0
+            assert p.weighted_rating_value > 0
+            assert p.coordinated is not None
+            assert p.coordinated.value >= 0
+            assert isinstance(p.duplicate_groups, list)
+            assert isinstance(p.keywords, list)
+            assert isinstance(p.emerging, list)
+            assert p.reviewer_overview is not None
+            assert all(0.25 <= w <= 2.0 for w in p.review_weights)
+        finally:
+            store.close()

@@ -63,6 +63,8 @@ def daily_counts(reviews: list[NormalizedReview]) -> pd.DataFrame:
 
 def _filled_daily_counts(frame: pd.DataFrame) -> pd.DataFrame:
     """Fill gaps: one row per day between min and max date, count 0 when empty."""
+    if frame.empty:
+        return frame
     filled: list[pd.DataFrame] = []
     for place_id, sub in frame.groupby("place_id"):
         if sub.empty:
