@@ -20,6 +20,26 @@ DEFAULT_DB_PATH = "data/reviewscope.duckdb"
 
 NO_DATA = "N/A / insufficient history"
 
+#: Main navigation order. ``Discover`` sits next to ``Overview`` because it is
+#: the dataset-level entry point; every other page stays place-level.
+PAGE_ORDER: tuple[str, ...] = (
+    "Overview",
+    "Discover",
+    "Topics",
+    "Anomalies",
+    "Duplicates",
+    "Reviewers",
+    "Reviewed Places",
+    "Data Quality",
+)
+
+#: Sidebar widget keys. Explicit keys keep the place selection stable across
+#: reruns and make programmatic navigation possible.
+PLACE_KEY = "selected_place_id"
+PAGE_KEY = "nav_page"
+PENDING_PLACE_KEY = "pending_place_id"
+PENDING_PAGE_KEY = "pending_page"
+
 _BADGE = {
     ConfidenceLevel.HIGH: ":red-background",
     ConfidenceLevel.MEDIUM: ":orange-background",
@@ -61,6 +81,42 @@ def get_store(db_path: str = DEFAULT_DB_PATH) -> DuckDBStore:
 
 def get_engine(db_path: str = DEFAULT_DB_PATH) -> AnalysisEngine:
     return _engine(db_path)
+
+
+# ---------------------------------------------------------------------------
+# Navigation (place selection + page switching)
+# ---------------------------------------------------------------------------
+
+
+def apply_pending_navigation(place_options: list[str]) -> None:
+    """Adopt a deferred place/page change requested by a page body.
+
+    Streamlit forbids writing a widget's session-state key *after* that widget
+    was instantiated in the same run, and the sidebar widgets are created
+    before any page body runs. Pages therefore queue a request with
+    :func:`open_place`; the sidebar applies it here, before instantiation.
+    """
+    import streamlit as st
+
+    pending_place = st.session_state.pop(PENDING_PLACE_KEY, None)
+    if pending_place is not None and str(pending_place) in place_options:
+        st.session_state[PLACE_KEY] = str(pending_place)
+    pending_page = st.session_state.pop(PENDING_PAGE_KEY, None)
+    if pending_page in PAGE_ORDER:
+        st.session_state[PAGE_KEY] = pending_page
+
+
+def open_place(place_id: str, page: str = "Overview") -> None:
+    """Select ``place_id`` and switch to ``page`` (default: its Overview).
+
+    Queues the change, then reruns so the sidebar widgets pick it up. Used by
+    the Discover drill-down to turn a ranking row into a place-level view.
+    """
+    import streamlit as st
+
+    st.session_state[PENDING_PLACE_KEY] = str(place_id)
+    st.session_state[PENDING_PAGE_KEY] = page if page in PAGE_ORDER else "Overview"
+    st.rerun()
 
 
 def confidence_badge(level: ConfidenceLevel | str) -> str:

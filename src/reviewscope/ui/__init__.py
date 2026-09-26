@@ -8,6 +8,7 @@ a hard requirement (§36), a bare number is never enough.
 from reviewscope.ui.anomalies import render_anomalies_page
 from reviewscope.ui.common import FilterState, get_engine, get_store
 from reviewscope.ui.data_quality import render_data_quality_page
+from reviewscope.ui.discover import render_discover_page
 from reviewscope.ui.duplicates import render_duplicates_page
 from reviewscope.ui.overview import render_overview_page
 from reviewscope.ui.reviewed_places import render_reviewed_places_page
@@ -20,6 +21,7 @@ __all__ = [
     "get_store",
     "render_anomalies_page",
     "render_data_quality_page",
+    "render_discover_page",
     "render_duplicates_page",
     "render_overview_page",
     "render_reviewed_places_page",

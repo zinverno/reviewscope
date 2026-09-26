@@ -22,10 +22,16 @@ results in a Streamlit dashboard.
 * **Weighted rating** — per-place raw vs. weighted average with an explanation
   of *why* they differ.
 * **Keywords** — general, sentiment-split and emerging keywords (§9).
-* **Streamlit UI** — place picker, Overview, Topics, Anomalies, Duplicates,
-  Reviewers, Reviewed Places (map) and Data Quality pages (§26–§31).
+* **Streamlit UI** — place picker, Overview, Discover, Topics, Anomalies,
+  Duplicates, Reviewers, Reviewed Places (map) and Data Quality pages
+  (§26–§31).
 * **Demo dataset** — deterministic 1 058-review generator with several
   documented manipulation injections (§7).
+* **Dataset-level discovery (Phase 16)** — a `Discover` page that shows where
+  the review evidence sits across every place: dataset totals, descriptive
+  rankings (duplicate rate, repeated-group size, raw-vs-weighted rating delta,
+  specificity, topic clusters, templated text, review cohorts, rating extremes)
+  and a robust category comparison, with one click into any place's Overview.
 
 ## Architecture
 
@@ -34,6 +40,7 @@ reviewscope/
 ├── app.py                          ← Streamlit entry point
 ├── src/reviewscope/
 │   ├── analysis/                   ← detectors, scorers, engine
+│   ├── discovery/                  ← dataset summary, rankings, category stats
 │   ├── embeddings/                 ← sentence-transformer embeddings
 │   ├── ingestion/                  ← CSV / JSON adapters
 │   ├── models/                     ← NormalizedReview, ScoreResult
@@ -154,6 +161,49 @@ weight = clamp(raw_weight, 0.25, 2.0)
 Per-place average where each review contributes `rating × weight / Σweights`.
 The delta from the raw average and its direction are always explained.
 
+## Dataset discovery (Phase 16)
+
+The `Discover` page aggregates the **production** per-place analysis into a
+dataset-level view. It introduces no new detector, threshold, weight or
+formula — every number is a projection of the same place-level outputs the
+Overview already shows.
+
+* **Descriptive, never accusatory** — cards are worded "highest duplicate
+  rate", "largest repeated review groups", "lowest specificity". A place can top
+  a "most 5★ reviews" list and a "lowest specificity" list at the same time.
+* **Missing evidence is `N/A`, not zero** — the page first states what the
+  dataset cannot support (no publication timestamps, no reviewer history, no
+  coordinates, no ratings). Coordinated activity is *not ranked* without
+  timestamps, because its strongest components are temporal; the per-place
+  score stays readable on that place's Overview.
+* **Failed analysis is visible** — a place whose analysis fails is listed with
+  `N/A` evidence and counted in a warning, never as zeros.
+* **Same metric, same meaning** — Discover reuses the production definitions
+  rather than re-deriving them, and where two production surfaces genuinely use
+  different floors it says so:
+  * *Duplicate rate* = reviews in repeated-text groups of **3+** — the exact
+    Overview definition. The Duplicates page's *Share of place reviews* counts
+    **all** repeated-text groups including pairs, so for a place with a group of
+    6 and a pair the two read 15.0% and 20.0%. They answer different questions.
+  * *Dup groups (2+)* = every detected repeated-text group (pairs included),
+    matching the Duplicates page's *Repeated-text groups*. The column name
+    states its floor so it is not read as the count behind the 3+ rate.
+  * *Raw − weighted* = the difference of the two ratings printed in the same
+    row (the same derivation as the Overview verdict line). The finer-grained
+    production delta, computed before raw/weighted are rounded, stays on the
+    place Overview under technical details.
+  * *Categories* are the dataset's own `place_category` values. On corpora built
+    from a generation-side taxonomy (e.g. the exploratory Yandex corpus, whose
+    manifest groups 10 target categories but stores the organisation's primary
+    rubric) the count reflects the stored values, not the generation buckets.
+* **Caching** — the summary is keyed by the resolved database path, size,
+  modification time and embedding model. It is cached in-process and in a JSON sidecar under
+  `RS_CACHE_DIR` (or `XDG_CACHE_HOME`) in `reviewscope/discovery-cache/`, so a
+  10k-review corpus costs one slow pass and then loads in well under a second.
+  Set `RS_DISCOVERY_DISK_CACHE=0` to keep the cache in memory only. Sidecars
+  contain aggregates only, never review text, and are rewritten when the
+  database changes.
+
 ## Real-data validation (Phase 15)
 
 The detector outputs can be measured against independent human labels on a real
@@ -187,3 +237,7 @@ for an offline, model-free sample report.
   data source and may not match the actual visit.
 * **Weighted rating is an analytical model produced by ReviewScope**, not an
   official platform rating or endorsement.
+* **A Discover ranking position is not a finding.** The cards rank observed
+  evidence — a top position means "this measurement is high here", nothing more.
+  A dataset-wide pass also inherits every per-place failure: places that fail
+  analysis are shown as `N/A` rows rather than being silently dropped.

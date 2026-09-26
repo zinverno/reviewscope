@@ -78,13 +78,23 @@ def render_duplicates_page(
 
     # --- filters -------------------------------------------------------------
     with st.expander("Filter groups", expanded=False):
-        min_size = st.slider(
-            "Minimum group size",
-            2,
-            max(len(g.review_ids) for g in groups),
-            2,
-            help="Groups with at least this many reviews.",
-        )
+        largest_group = max(len(g.review_ids) for g in groups)
+        if largest_group > 2:
+            min_size = st.slider(
+                "Minimum group size",
+                2,
+                largest_group,
+                2,
+                help="Groups with at least this many reviews.",
+            )
+        else:
+            # Streamlit rejects an empty slider range, and a place whose
+            # largest repeated-text group has 2 reviews has nothing to filter.
+            st.caption(
+                "Group-size filter is inactive: this place's largest repeated-text "
+                "group has 2 reviews."
+            )
+            min_size = 2
         kinds = st.multiselect(
             "Detection levels to include",
             _DETECTION_KINDS,

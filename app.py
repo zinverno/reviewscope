@@ -1,7 +1,7 @@
 """ReviewScope — Streamlit app (SPEC.md §26).
 
-Sidebar: dataset, place, review filters, page.  Pages: Overview, Topics,
-Anomalies, Duplicates, Reviewers, Reviewed Places, Data Quality.
+Sidebar: dataset, place, review filters, page.  Pages: Overview, Discover,
+Topics, Anomalies, Duplicates, Reviewers, Reviewed Places, Data Quality.
 
 Run: ``streamlit run app.py``
 """
@@ -13,17 +13,28 @@ import streamlit as st
 from reviewscope.ui import (
     render_anomalies_page,
     render_data_quality_page,
+    render_discover_page,
     render_duplicates_page,
     render_overview_page,
     render_reviewed_places_page,
     render_reviewers_page,
     render_topics_page,
 )
-from reviewscope.ui.common import DEFAULT_DB_PATH, FilterState, db_exists, get_engine, get_store
+from reviewscope.ui.common import (
+    DEFAULT_DB_PATH,
+    PAGE_KEY,
+    PAGE_ORDER,
+    PLACE_KEY,
+    FilterState,
+    apply_pending_navigation,
+    db_exists,
+    get_engine,
+    get_store,
+)
 
 st.set_page_config(page_title="ReviewScope", layout="wide")
 
-_PAGE_ORDER = ["Overview", "Topics", "Anomalies", "Duplicates", "Reviewers", "Reviewed Places", "Data Quality"]
+_PAGE_ORDER = list(PAGE_ORDER)
 
 
 def _sidebar() -> tuple[str, str, str, FilterState]:
@@ -46,13 +57,15 @@ def _sidebar() -> tuple[str, str, str, FilterState]:
             f"{row['place_name']} ({row['place_id']}) — {row['place_category']}, {row['review_count']} reviews"
             for _, row in places.iterrows()
         ]
-        place_key = "selected_place_id"
-        if place_key not in st.session_state or st.session_state[place_key] not in place_options:
-            st.session_state[place_key] = place_options[0]
+        # A page body may have queued a place/page switch (Discover drill-down):
+        # apply it before the widgets are instantiated.
+        apply_pending_navigation(place_options)
+        if PLACE_KEY not in st.session_state or st.session_state[PLACE_KEY] not in place_options:
+            st.session_state[PLACE_KEY] = place_options[0]
         choice = st.selectbox(
             "Place",
             place_options,
-            key=place_key,
+            key=PLACE_KEY,
             index=None,
             format_func=lambda pid: place_labels[place_options.index(pid)],
         )
@@ -93,6 +106,8 @@ def _sidebar() -> tuple[str, str, str, FilterState]:
         page = st.radio(
             "Page",
             _PAGE_ORDER,
+            key=PAGE_KEY,
+            index=0,
             help="Each page focuses on a different aspect of the review data.",
         )
     return db_path, place_id, page, flt
@@ -105,6 +120,7 @@ def main() -> None:
 
     dispatch = {
         "Overview": render_overview_page,
+        "Discover": render_discover_page,
         "Topics": render_topics_page,
         "Anomalies": render_anomalies_page,
         "Duplicates": render_duplicates_page,

@@ -130,6 +130,10 @@ class DuckDBStore:
                 self._con = duckdb.connect(str(db_path) if db_path else ":memory:")
             except duckdb.Error:
                 raise
+        #: Filesystem path of the backing database, or ``None`` for an
+        #: in-memory / externally supplied connection. Callers use it as a
+        #: stable dataset identity (cache keys, dataset labelling).
+        self.db_path: str | None = str(db_path) if db_path is not None else None
         self.read_only = read_only
         self._owns_connection = con is None
         if not read_only:

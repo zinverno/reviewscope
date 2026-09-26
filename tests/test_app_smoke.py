@@ -176,6 +176,43 @@ def no_cat_db(tmp_path_factory) -> str:
     return _build_db(path, _no_category_reviews())
 
 
+_PLACE_PAIR = "pair_place"
+
+
+def _pair_group_reviews() -> list[NormalizedReview]:
+    """A place whose only repeated-text group has exactly two reviews."""
+    reviews = [
+        _review(
+            0,
+            review_id=f"{_PLACE_PAIR}-a",
+            place_id=_PLACE_PAIR,
+            reviewer_id="pair-u0",
+            text="The same visit described twice, word for word.",
+        ),
+        _review(
+            1,
+            review_id=f"{_PLACE_PAIR}-b",
+            place_id=_PLACE_PAIR,
+            reviewer_id="pair-u1",
+            text="The same visit described twice, word for word.",
+        ),
+        _review(
+            2,
+            review_id=f"{_PLACE_PAIR}-c",
+            place_id=_PLACE_PAIR,
+            reviewer_id="pair-u2",
+            text="A completely different review about the terrace in autumn.",
+        ),
+    ]
+    return reviews
+
+
+@pytest.fixture(scope="module")
+def pair_group_db(tmp_path_factory) -> str:
+    path = tmp_path_factory.mktemp("pair") / "pair_group.duckdb"
+    return _build_db(path, _pair_group_reviews())
+
+
 _PLACES = [
     ("place_a", "Place Alpha", "cafe", [5, 4, 5, 4, 5]),
     ("place_b", "Place Beta", "restaurant", [4, 3, 5, 4, 3]),
@@ -216,6 +253,7 @@ def _place_value(at: AppTest) -> str:
 
 _PAGE_HEADERS = {
     "Overview": None,  # header is the place name
+    "Discover": "Discover",
     "Topics": "Topics",
     "Anomalies": "Anomalies & unusual activity",
     "Duplicates": "Duplicates & repeated text",
@@ -269,6 +307,19 @@ class TestDemoDBSmoke:
         assert "Coordinated activity" in md
         assert "Counter-signals" in md or "+ " in md
 
+    def test_discover_summarises_the_whole_dataset(self, demo_db, monkeypatch) -> None:
+        monkeypatch.setattr(common, "DEFAULT_DB_PATH", demo_db)
+        at = AppTest.from_file(APP_PATH, default_timeout=180)
+        at.run()
+        _navigate(at, "Discover")
+        assert not list(at.exception), [e.value for e in at.exception]
+        metrics = {m.label: m.value for m in at.metric}
+        assert {"Reviews", "Places", "Categories"} <= set(metrics)
+        assert int(metrics["Places"]) > 1  # dataset-wide, not the sidebar place
+        captions = " ".join(c.value for c in at.caption)
+        assert "Dataset summary:" in captions
+        assert "does not assert fraud" in captions
+
 
 # ---------------------------------------------------------------------------
 # Synthetic state tests
@@ -318,6 +369,17 @@ class TestSyntheticStates:
         md = "\n".join(m.value for m in at.markdown)
         assert "N/A / insufficient history" in md
 
+    def test_duplicates_page_with_a_group_of_two(self, pair_group_db, monkeypatch) -> None:
+        """Regression: a largest group of 2 has no slider range to render."""
+        monkeypatch.setattr(common, "DEFAULT_DB_PATH", pair_group_db)
+        at = AppTest.from_file(APP_PATH, default_timeout=180)
+        at.run()
+        _navigate(at, "Duplicates")
+        assert not list(at.exception), [e.value for e in at.exception]
+        metrics = {m.label: m.value for m in at.metric}
+        assert metrics["Repeated-text groups"] == "1"
+        assert "inactive" in " ".join(c.value for c in at.caption)
+
 
 class TestPlaceSelectionPersists:
     """Regression: the sidebar place selection must survive Streamlit reruns.
@@ -347,7 +409,7 @@ class TestPlaceSelectionPersists:
         assert _place_value(at) == "place_b"
 
         # page navigation must not reset the selection
-        for page in ("Topics", "Anomalies", "Duplicates", "Reviewers"):
+        for page in ("Discover", "Topics", "Anomalies", "Duplicates", "Reviewers"):
             _navigate(at, page)
             assert not list(at.exception), page
             assert _place_value(at) == "place_b", f"selection lost on {page}"

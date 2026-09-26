@@ -583,3 +583,138 @@ Requirements completed:
   are revision-archived
 - Docs, README link, public example and PROJECT_STATE are in place
 - No production detector, threshold, weight, demo generator or main UI change
+
+---
+
+## Phase 16 — Dataset-level Discover page
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ / real-corpus smoke verified ✅
+
+Files added:
+- `src/reviewscope/discovery/__init__.py` — public API (`build_dataset_summary`,
+  `get_dataset_summary`, `clear_dataset_cache`, `dataset_cache_info`,
+  `DatasetSummary`, `DatasetCapabilities`, `RankingSection`, `filter_places`,
+  `ranking_sections`, `category_summary`, `display_places_frame`,
+  `display_category_frame`, `DISPLAY_COLUMNS`, `NOT_AVAILABLE`, `source_badge`,
+  `dataset_identity`)
+- `src/reviewscope/discovery/summary.py` — capability detection, per-place
+  aggregation, filters, descriptive rankings, category medians/quartiles,
+  identity-keyed in-process + on-disk cache
+- `src/reviewscope/ui/discover.py` — the Discover page
+- `tests/test_discover.py` — 53 unit + AppTest tests
+
+Files changed:
+- `app.py` — `Discover` registered and dispatched as page 2
+- `src/reviewscope/ui/common.py` — `PAGE_ORDER`, explicit widget keys,
+  `apply_pending_navigation`, `open_place`
+- `src/reviewscope/ui/__init__.py` — exports `render_discover_page`
+- `src/reviewscope/storage/duckdb_store.py` — `db_path` attribute (cache identity)
+- `src/reviewscope/ui/duplicates.py` — **pre-existing crash fix**: the
+  "Minimum group size" slider got `min_value == max_value == 2` for places
+  whose largest repeated-text group has 2 reviews, which Streamlit rejects
+- `tests/test_app_smoke.py` — `Discover` in the all-pages smoke run and in the
+  place-selection regression; new Duplicates group-of-two regression test;
+  new dataset-summary smoke test
+
+Implementation notes:
+- Every Discover number is a read-only projection of the existing production
+  per-place `AnalysisEngine.analyze()` result. No detector, threshold, weight,
+  formula or embedding was touched; a failing place becomes an `N/A` row
+  instead of zeros, and the count of such places is shown as a warning.
+- Missing evidence is stated before results: capability notes come from the raw
+  review fields only (no detector run), so they are valid even when the
+  expensive pass fails. Coordinated activity is not ranked when the dataset has
+  no publication timestamps; the per-place score stays on Overview.
+- Ranking wording is strictly descriptive (highest/lowest/most/largest) and the
+  page repeats that a place can top both a "most 5★" and a "lowest specificity"
+  list. An unavailable ranking renders a note instead of a table — the module
+  also empties such frames so no caller can render one by accident.
+- Duplicate rate reuses the Overview definition (reviews in repeated-text
+  groups of 3+ / place reviews); templated high count reuses
+  `CONFIG.templated.high_threshold`; the rating delta is the difference of the
+  two ratings the row displays, the same derivation as the Overview verdict
+  line (corrected during the consistency audit — see below).
+- Category comparison uses medians and quartiles of place-level values (no
+  opaque category score) and always covers the whole dataset; only the
+  comparison table and the ranking cards follow the active filters.
+- Caching: identity = resolved DB path + size + `mtime_ns` + embedding model; an in-process dict
+  plus a JSON sidecar under `RS_CACHE_DIR` or `XDG_CACHE_HOME`
+  (`reviewscope/discovery-cache/`), cache-version-stamped and rewritten after a
+  live build. `RS_DISCOVERY_DISK_CACHE=0` disables the sidecar. Cached values
+  never contain review text — only aggregates.
+- Navigation: `open_place` writes a pending place + page before the sidebar
+  widgets exist, so the deferred selection is applied on the next run; the
+  existing place-selection regression test now walks through Discover.
+
+Consistency audit (pre-commit, real corpus — every check re-run on all 190
+places, plus 12 places compared page-to-page through the rendered app):
+- Totals tie out: 10,454 reviews in the DB = sum of per-place `review_count`;
+  190 ids = 190 analysed places, 0 failures; `total_categories` = 25 distinct
+  stored `place_category` values; the per-place `review_count` sum equals the
+  dataset total.
+- Per-place values verified against the production `AnalyzedPlace` objects for
+  all 190 places: review/reviewer counts, raw and weighted ratings, display
+  duplicate rate, largest group, topic-cluster count, templated
+  min/median/max/high-count, 1★/5★ shares and specificity min/median/mean —
+  no mismatch.
+- UI-to-UI (Discover vs Overview vs Duplicates) for 12 named places: reviews,
+  reviewers, raw/weighted ratings, duplicate rate, group count and largest group
+  agree everywhere. Базар: Discover/Overview 15.0%, Duplicates "Share of place
+  reviews" 20.0% — different group floors (3+ vs 2+), not a mismatch.
+- **Correction 1 — rating delta.** `rating_delta`/`abs_rating_delta` reused
+  the production `details["delta"]`, which production computes *before*
+  rounding raw/weighted to 2 decimals, so a row's "Raw − weighted" could differ
+  from the two ratings printed in the same row (165/190 rows differed at stored
+  precision, 48/190 at display precision). Discover now derives the delta from
+  the displayed pair, matching the Overview verdict line; the finer-grained
+  production delta stays on the place Overview under technical details.
+  After the fix: 0/190 rows differ.
+- **Correction 2 — duplicate-group scope.** `duplicate_group_count` counts all
+  detected groups (2+), which is exactly the Duplicates page's "Repeated-text
+  groups", but the adjacent "Dup groups" label invited reading it as the count
+  behind the 3+ rate. The column is now `Dup groups (2+)`, the ranking card and
+  the Methodology block state the two floors explicitly, and the underlying
+  value is unchanged. Regression test builds a place with a group of 3 and a
+  pair and pins both readings.
+- Two apparent findings were investigated and dismissed as non-bugs: the
+  live vs on-disk cache frames are byte-identical (`places`/`categories`
+  `.equals()` is `True`, same `RangeIndex`, same dtypes) — the earlier mismatch
+  was an artifact of the audit script's own `set_index`; and `place_id` vs
+  `place_name` counts (190 vs 182) are eight genuinely shared venue names, not
+  a join error.
+- The 25-vs-10 category difference is a definition difference, not a bug: the
+  exploration manifest groups 10 generation-side target categories, while the DB
+  stores the organisation's primary rubric string. The 10 manifest groups
+  partition 10,454 reviews and 190 orgs, so the manifest is not a per-row
+  `place_category` mapping.
+
+Command results:
+- `pytest` — **332 passed**, 0 failed (see audit run)
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+- `tests/test_discover.py` — 53 passed; `tests/test_app_smoke.py` — 10 passed
+
+Real-corpus verification (`validation_data/private/yandex_geo_2023/exploration/
+exploration_analysis.duckdb`, 10,454 reviews / 190 place ids / 182 distinct
+names / 25 categories):
+- Cold build 38.9–44.8 s (190 places, 0 failures); in-process warm 0.0001 s;
+  fresh-process warm from the on-disk sidecar 0.09 s
+- Full-app AppTest on the real DB: no exceptions, warnings or errors; 12
+  dataframes; place drill-down to Overview and all other pages keep the
+  selected place
+- Aggregate facts: 0 dated reviews, 0 coordinates, 10,454 distinct reviewers
+  (0 with history in more than one place), 60 places with repeated-text groups,
+  27 places with semantic topic clusters, 0 places with a templated score
+  ≥ 65 (dataset max 62.5, median 25.7)
+- Highest duplicate rate: Базар 15.0% (largest group 6), Авиапарк 10.5%
+  (largest group 9); highest templated text: Остров мечты 62.5; largest
+  specificity spread between shopping centres (median 60.0) and hotels
+  (median 78.0)
+
+Requirements completed:
+- Dataset-level view of where review evidence sits, with descriptive rankings
+  and category context, and no accusatory wording
+- Missing evidence rendered as `N/A` with an explanation; coordinated activity
+  gated on temporal capability
+- Cached dataset identity so the page is usable on a 10k-review corpus
+- No change to any detector, threshold, weight, formula or embedding
