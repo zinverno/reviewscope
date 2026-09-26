@@ -189,7 +189,7 @@ class DuckDBStore:
                    MAX(published_at)     AS last_seen
             FROM reviews
             GROUP BY place_id, place_name, place_category, city, region, country
-            ORDER BY place_name
+            ORDER BY place_name, place_id
             """
         ).df()
 
