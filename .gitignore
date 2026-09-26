@@ -48,3 +48,7 @@ score_table.json
 sample_selection.json
 validation_report.md
 validation_report.json
+
+# Local agent skills installed from project environment
+.agents/skills/
+.claude/skills/
