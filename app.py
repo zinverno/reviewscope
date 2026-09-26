@@ -46,7 +46,16 @@ def _sidebar() -> tuple[str, str, str, FilterState]:
             f"{row['place_name']} ({row['place_id']}) — {row['place_category']}, {row['review_count']} reviews"
             for _, row in places.iterrows()
         ]
-        choice = st.selectbox("Place", place_options, format_func=lambda pid: place_labels[place_options.index(pid)])
+        place_key = "selected_place_id"
+        if place_key not in st.session_state or st.session_state[place_key] not in place_options:
+            st.session_state[place_key] = place_options[0]
+        choice = st.selectbox(
+            "Place",
+            place_options,
+            key=place_key,
+            index=None,
+            format_func=lambda pid: place_labels[place_options.index(pid)],
+        )
         place_id = str(choice)
 
         flt = FilterState()
