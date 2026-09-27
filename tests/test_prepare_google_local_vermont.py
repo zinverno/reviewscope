@@ -699,3 +699,23 @@ def test_dense_graph_check_is_reported(tmp_path):
     assert check["thresholds"]["min_reviews_per_place"] == 10
     assert check["thresholds"]["min_reviews_per_reviewer"] == 3
     assert check["thresholds"]["min_places_per_reviewer"] == 2
+
+
+def test_exact_second_still_writes_microseconds():
+    """A whole-second source time must keep the microsecond field.
+
+    ``isoformat()`` drops it, and ReviewScope's ``pd.to_datetime`` infers one
+    format per column -- so a column mixing ``.123000`` with a bare ``:00``
+    coerces the bare rows to NaT and silently drops them from temporal
+    analysis. This corpus really contains such rows.
+    """
+    whole_second = gl.ms_to_published_at(1_556_972_800_000)
+    assert whole_second == "2019-05-04T12:26:40.000000+00:00"
+    with_fraction = gl.ms_to_published_at(1_556_972_800_123)
+    import pandas as pd
+
+    mixed = pd.Series([with_fraction, whole_second])
+    assert (
+        pd.to_datetime(mixed, errors="coerce").notna().all()
+    ), "mixed-precision column must not lose a row"
+    assert len({len(p.split(".")[1]) for p in (whole_second, with_fraction)}) == 1

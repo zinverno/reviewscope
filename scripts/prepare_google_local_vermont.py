@@ -324,8 +324,17 @@ def parse_address(address: Any) -> tuple[str | None, str | None]:
 
 
 def ms_to_published_at(time_ms: int) -> str:
-    """Convert Google Local unix *milliseconds* to ReviewScope-safe ISO-8601 UTC."""
-    return datetime.fromtimestamp(time_ms / 1000.0, tz=UTC).isoformat()
+    """Convert Google Local unix *milliseconds* to ReviewScope-safe ISO-8601 UTC.
+
+    The microsecond field is always written out. ``isoformat()`` omits it when
+    the value is exactly on a second, and ReviewScope's
+    ``pd.to_datetime(..., errors="coerce")`` infers a single format from the
+    first value in the column -- so a column that mixes ``.123000`` with a
+    bare ``:00`` silently coerces the bare rows to ``NaT`` and drops them from
+    temporal analysis. One fixed precision keeps every row parseable.
+    """
+    moment = datetime.fromtimestamp(time_ms / 1000.0, tz=UTC)
+    return moment.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
 
 
 def reviewer_pseudonym(user_id: str, salt: str = PSEUDONYM_SALT) -> str:
@@ -792,10 +801,13 @@ def run(
         },
         "timestamp": {
             "source_unit": "unix milliseconds",
-            "conversion": "datetime.fromtimestamp(ms/1000, tz=UTC).isoformat()",
+            "conversion": "datetime.fromtimestamp(ms/1000, tz=UTC).strftime('%Y-%m-%dT%H:%M:%S.%f+00:00')",
             "note": (
                 "ReviewScope's parse_date reads a bare integer as unix seconds, so "
-                "raw ms integers are never written to the CSV"
+                "raw ms integers are never written to the CSV. Microseconds are "
+                "always written, never omitted on the second, because "
+                "pd.to_datetime infers one format per column and would coerce "
+                "the bare rows to NaT"
             ),
         },
         "id_rules": {

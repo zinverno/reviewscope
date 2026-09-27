@@ -14,8 +14,10 @@ lives in the same database file so a repeat run needs no re-computation.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import numpy as np
@@ -93,24 +95,44 @@ def _review_to_row(review: NormalizedReview) -> tuple:
     )
 
 
+def _is_missing(value: Any) -> bool:
+    """True for every way a value can signal "absent" coming out of pandas.
+
+    A SQL NULL in a *partially* populated VARCHAR column reaches pandas as
+    ``NaN`` under its ``str`` dtype, while a fully-NULL column arrives as
+    ``None``. Both mean the same thing here.
+    """
+    if value is None or value is pd.NA:
+        return True
+    return isinstance(value, float) and math.isnan(value)
+
+
+def _opt_str(value: Any) -> str | None:
+    return None if _is_missing(value) else str(value)
+
+
+def _opt_float(value: Any) -> float | None:
+    return None if _is_missing(value) else float(value)
+
+
 def _row_to_review(row: dict) -> NormalizedReview:
     return NormalizedReview(
         review_id=str(row["review_id"]),
         place_id=str(row["place_id"]),
-        place_name=row.get("place_name"),
-        place_category=row.get("place_category"),
+        place_name=_opt_str(row.get("place_name")),
+        place_category=_opt_str(row.get("place_category")),
         reviewer_id=str(row["reviewer_id"]),
-        reviewer_name=row.get("reviewer_name"),
-        rating=None if row.get("rating") is None else int(row["rating"]),
-        text=row.get("text"),
-        published_at=row.get("published_at"),
-        city=row.get("city"),
-        region=row.get("region"),
-        country=row.get("country"),
-        latitude=row.get("latitude"),
-        longitude=row.get("longitude"),
-        source=row.get("source"),
-        source_url=row.get("source_url"),
+        reviewer_name=_opt_str(row.get("reviewer_name")),
+        rating=None if _is_missing(row.get("rating")) else int(row["rating"]),
+        text=_opt_str(row.get("text")),
+        published_at=_opt_str(row.get("published_at")),
+        city=_opt_str(row.get("city")),
+        region=_opt_str(row.get("region")),
+        country=_opt_str(row.get("country")),
+        latitude=_opt_float(row.get("latitude")),
+        longitude=_opt_float(row.get("longitude")),
+        source=_opt_str(row.get("source")),
+        source_url=_opt_str(row.get("source_url")),
     )
 
 
@@ -234,7 +256,13 @@ class DuckDBStore:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         df = self._con.execute(sql, params).df()
-        df["published_at_dt"] = pd.to_datetime(df["published_at"], errors="coerce")
+        # format="ISO8601" parses per element instead of inferring one format
+        # from the first row. Without it a column whose values disagree on
+        # fractional precision -- e.g. a database written before
+        # normalize.format_published_at fixed the precision -- coerces the
+        # odd rows out to NaT, silently dropping those reviews from temporal
+        # analysis. Unparsable values still become NaT via errors="coerce".
+        df["published_at_dt"] = pd.to_datetime(df["published_at"], errors="coerce", format="ISO8601")
         return df
 
     def reviewers_for_place(self, place_id: str) -> list[str]:

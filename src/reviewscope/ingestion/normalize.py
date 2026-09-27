@@ -190,6 +190,32 @@ def parse_date(value: Any) -> _dt.datetime | None:
         return None
 
 
+#: The one serialisation every valid ``published_at`` uses: naive UTC with a
+#: fixed 6-digit microsecond field.
+PUBLISHED_AT_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
+
+
+def format_published_at(value: _dt.datetime) -> str:
+    """Serialise a parsed date-time at one fixed precision.
+
+    ``datetime.isoformat()`` is not usable here: it *omits* the microsecond
+    field when the value is exactly on a second, so a corpus of real timestamps
+    yields a column mixing ``2021-01-01T12:00:00`` with
+    ``2021-01-01T12:00:00.123000``. Readers that infer a single format from the
+    first value they see (``pd.to_datetime``) then coerce every other shape to
+    ``NaT``, which silently removes those reviews from temporal analysis —
+    Phase 17B lost 22 of 21,831 rows this way.
+
+    ``%f`` always emits exactly six digits, so one format describes every row.
+    Microseconds are the resolution ``parse_date`` already resolves to, so the
+    represented instant is unchanged; the value stays naive UTC because
+    ``parse_date`` normalises offsets away.
+    """
+    if value.tzinfo is not None:
+        value = value.astimezone(_dt.UTC).replace(tzinfo=None)
+    return value.strftime(PUBLISHED_AT_FORMAT)
+
+
 # ---------------------------------------------------------------------------
 # Validation report
 # ---------------------------------------------------------------------------
@@ -264,7 +290,7 @@ def normalize_review(row: dict[str, Any]) -> tuple[NormalizedReview | None, list
     published = parse_date(mapped.get("published_at"))
     published_str: str | None = None
     if published is not None:
-        published_str = published.isoformat()
+        published_str = format_published_at(published)
     elif _coerce_str(mapped.get("published_at")) is not None:
         warnings.append(
             f"unparsable date {mapped.get('published_at')!r}, kept raw"
