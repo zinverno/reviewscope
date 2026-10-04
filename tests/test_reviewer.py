@@ -183,3 +183,40 @@ def test_reviewers_frame() -> None:
     frame = reviewers_frame(compute_reviewer_metrics(reviews, set(), set()))
     assert {"reviewer_id", "reviews", "rating_mean", "duplicate_ratio"} <= set(frame.columns)
     assert len(frame) == 1
+
+
+class TestReviewerMetricsSchema:
+    def test_reviewer_metrics_has_no_global_context_fields(self) -> None:
+        metrics = compute_reviewer_metrics([], set(), set())
+        assert len(metrics) == 0
+
+        reviews = _history("u1", 3, "coffee", "Moscow", "MO", date(2026, 1, 1))
+        metrics_list = compute_reviewer_metrics(reviews, set(), set())
+        assert len(metrics_list) == 1
+        m = metrics_list[0]
+        # Ensure no misleading "global" context fields exist
+        assert not hasattr(m, "category_experience")
+        assert not hasattr(m, "local_familiarity")
+
+        # Also ensure the dataclass contains only expected fields (no accidental reintroduction)
+        d = m.__dict__
+        assert "category_experience" not in d
+        assert "local_familiarity" not in d
+
+    def test_contextual_scorer_interfaces_exist_and_work(self) -> None:
+        base_date = date(2026, 1, 1)
+        history = (
+            _history("u1", 4, "coffee", "Moscow", "MO", base_date, place_prefix="c1")
+            + _history("u1", 2, "coffee", "Moscow", "MO", date(2026, 3, 1), place_prefix="c2")
+            + _history("u1", 1, "coffee", "Moscow", "MO", date(2026, 4, 1), place_prefix="c3")
+        )
+
+        cat_res = category_experience_score(history, "coffee")
+        assert cat_res.value > 0.0
+
+        loc_res = local_familiarity_score(history, "Moscow", "MO")
+        assert loc_res.value > 0.0
+
+        # Deterministic, non-zero values for the target context
+        assert cat_res.name == "Category Experience"
+        assert loc_res.name == "Local Familiarity"

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
@@ -85,8 +85,6 @@ class ReviewerMetrics:
     duplicate_ratio: float = 0.0
     template_ratio: float = 0.0
     review_consistency: float = 0.0
-    category_experience: dict[str, float] = field(default_factory=dict)
-    local_familiarity: dict[str, float] = field(default_factory=dict)
 
 
 def _metric_profile(
