@@ -99,10 +99,10 @@ DISPLAY_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("weighted_rating", "Weighted rating", "float"),
     ("abs_rating_delta", "Raw − weighted", "float"),
     ("duplicate_rate", "Duplicate rate", "pct"),
-    # 2+ = every detected repeated-text group (pairs included), the same scope
-    # as the Duplicates page; the duplicate rate above counts 3+ groups only.
-    ("duplicate_group_count", "Dup groups (2+)", "int"),
-    ("largest_duplicate_group", "Largest group", "int"),
+    # 2+ = every detected repeated-text family (pairs included), the same scope
+    # as the Duplicates page; the duplicate rate above counts 3+ families only.
+    ("duplicate_group_count", "Families (2+)", "int"),
+    ("largest_duplicate_group", "Largest family", "int"),
     ("median_specificity", "Median specificity", "float"),
     ("mean_specificity", "Mean specificity", "float"),
     ("topic_cluster_count", "Topic clusters", "int"),
@@ -117,7 +117,7 @@ DISPLAY_COLUMNS: tuple[tuple[str, str, str], ...] = (
 SORT_OPTIONS: dict[str, str] = {
     "Reviews": "review_count",
     "Duplicate rate": "duplicate_rate",
-    "Largest repeated group": "largest_duplicate_group",
+    "Largest repeated-text family": "largest_duplicate_group",
     "Raw − weighted delta": "abs_rating_delta",
     "Median specificity": "median_specificity",
     "Topic clusters": "topic_cluster_count",
@@ -777,33 +777,34 @@ def ranking_sections(
         RankingSection(
             key="duplicate_rate",
             title="Highest duplicate rate",
-            description="Share of the place's reviews that sit in a repeated-text group of "
+            description="Share of the place's reviews that sit in a repeated-text family of "
             f"{DUP_RATE_MIN_GROUP}+ reviews.",
             frame=top(
                 places,
                 "duplicate_rate",
                 [*name_cat, ("review_count", "Reviews", "int"), ("duplicate_rate", "Duplicate rate", "pct"),
-                 ("largest_duplicate_group", "Largest group", "int")],
+                 ("largest_duplicate_group", "Largest family", "int")],
             ),
             available=bool(places["duplicate_rate"].notna().any()),
             note="No duplicate rate could be measured in this dataset, so there is nothing to rank.",
         ),
         RankingSection(
             key="largest_group",
-            title="Largest repeated review groups",
+            title="Largest repeated-text families",
             description=(
-                "Biggest single repeated-text group per place (identical or near-identical text). "
-                f"`Dup groups (2+)` counts every detected group, pairs included - the same scope as "
-                f"the Duplicates page; the duplicate rate above counts groups of {DUP_RATE_MIN_GROUP}+."
+                "Biggest single connected family per place. A family is a connected component of "
+                "detected text-similarity links, so its members are not required to be pairwise "
+                f"similar. `Families (2+)` counts every detected family, pairs included - the same "
+                f"scope as the Duplicates page; the duplicate rate above counts families of {DUP_RATE_MIN_GROUP}+."
             ),
             frame=top(
                 places,
                 "largest_duplicate_group",
-                [*name_cat, ("largest_duplicate_group", "Largest group", "int"),
-                 ("duplicate_group_count", "Dup groups (2+)", "int"), ("review_count", "Reviews", "int")],
+                [*name_cat, ("largest_duplicate_group", "Largest family", "int"),
+                 ("duplicate_group_count", "Families (2+)", "int"), ("review_count", "Reviews", "int")],
             ),
             available=bool((places["largest_duplicate_group"].fillna(0) > 0).any()),
-            note="No repeated-text groups were detected anywhere in this dataset.",
+            note="No repeated-text families were detected anywhere in this dataset.",
         ),
         RankingSection(
             key="rating_delta",
@@ -957,7 +958,7 @@ def dataset_identity(db_path: str, store: DuckDBStore | None = None) -> tuple:
 
     Uses the resolved path plus size and modification time of the DuckDB file,
     which changes whenever the dataset is rebuilt or re-ingested, plus the
-    embedding model (topic clustering and semantic duplicate groups depend on
+    embedding model (topic clustering and semantic duplicate detection depends on
     it). Non-file stores (in-memory DuckDB) fall back to connection identity.
     """
     model = CONFIG.embedding.model_name
