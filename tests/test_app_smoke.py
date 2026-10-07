@@ -180,7 +180,7 @@ _PLACE_PAIR = "pair_place"
 
 
 def _pair_group_reviews() -> list[NormalizedReview]:
-    """A place whose only repeated-text group has exactly two reviews."""
+    """A place whose only repeated-text family has exactly two reviews."""
     reviews = [
         _review(
             0,
@@ -256,7 +256,7 @@ _PAGE_HEADERS = {
     "Discover": "Discover",
     "Topics": "Topics",
     "Anomalies": "Anomalies & unusual activity",
-    "Duplicates": "Duplicates & repeated text",
+    "Duplicates": "Repeated-text families",
     "Reviewers": "Reviewers",
     "Reviewed Places": "Reviewed Places",
     "Data Quality": "Data Quality",
@@ -338,7 +338,7 @@ class TestSyntheticStates:
 
         _navigate(at, "Duplicates")
         info_text = " ".join(i.value for i in at.info)
-        assert "No repeated-text groups" in info_text
+        assert "No repeated-text families" in info_text
 
         _navigate(at, "Overview")
         metric_values = {m.label: m.value for m in at.metric}
@@ -377,7 +377,7 @@ class TestSyntheticStates:
         _navigate(at, "Duplicates")
         assert not list(at.exception), [e.value for e in at.exception]
         metrics = {m.label: m.value for m in at.metric}
-        assert metrics["Repeated-text groups"] == "1"
+        assert metrics["Repeated-text families"] == "1"
         assert "inactive" in " ".join(c.value for c in at.caption)
 
 

@@ -42,13 +42,18 @@ weight, embedding behavior, clustering step, and the validation framework
   actual representative phrases (never invented names), review count, share of
   selection, average rating, date range, and representative-review expander.
   Clear message when clusters are empty or the selection is too small.
-- **Duplicates** — two-group minimum; top summary (groups / reviews involved /
-  share); filters for group size, average similarity, date concentration, and
-  detection levels; sortable; group cards with a neutral interpretation line
-  (“repeated review pattern”, “high textual similarity”), review-text expander,
-  and an explicit detection breakdown that labels fuzzy/near/semantic counts as
-  *pairs* and identical-text as *reviews* (never presenting pair counts as
-  review counts).
+- **Duplicates** (page header “Repeated-text families”; sidebar label stays
+  “Duplicates”) — two-family minimum; top summary (families / reviews involved /
+  share); filters for family size, average similarity, date concentration, and
+  detection levels; sortable; family cards with a neutral interpretation line
+  (“repeated review pattern”, “high textual similarity along the family's
+  direct links”), a “Relationship evidence” expander listing each member's
+  direct links, a review-text expander, and an explicit detection breakdown
+  that labels fuzzy/near/semantic counts as *links* and identical-text as
+  *reviews* (never presenting pair counts as review counts). Families that are
+  not fully connected carry **Contains transitive connections** plus the
+  connected-component caveat, and rating agreement is shown as separate,
+  non-deciding context.
 - **Anomalies** — volume bursts and rating shifts as separate card sections;
   every card shows event type, date, severity, observed volume, expected
   baseline, and honest ratio (near-zero baselines show
@@ -84,6 +89,41 @@ weight, embedding behavior, clustering step, and the validation framework
   “baseline <1 review/day” phrase instead of “30×”.
 - The listing below changed no analysis module (`src/reviewscope/analysis/*`
   untouched); detector outputs are the source of truth for every number shown.
+  Phase 17G is the one deliberate exception: `analysis/duplicates.py` gained a
+  read-only `edges` field on `DuplicateGroup` so the UI can show link evidence.
+  Detection thresholds, grouping, scoring and the JSON score payload are
+  unchanged, and the canonical snapshot is byte-for-byte identical before and
+  after.
+
+## Phase 17G — connected-family wording (§29)
+
+The detector has always built `DuplicateGroup` as a **connected component** of
+detected pairs, but the UI never said so: cards implied the whole family was
+mutually similar, and nothing showed *why* a member was in the group.
+
+- **Terminology** — page header and metrics say “repeated-text family”; the
+  sidebar entry stays “Duplicates”. Discover says *Families (2+)*, *Largest
+  family*, *Largest repeated-text families* and *Places with repeated-text
+  families*.
+- **Definition on screen** — the caption under the header carries the verbatim
+  caveat: reviews are grouped when connected through one or more strong
+  relationships; not every pair must pass a threshold.
+- **Structure line** — every card reports `N direct links of M possible pairs`
+  plus `average link similarity` (the mean over links, stated as such) and
+  `weakest direct link`. When fewer than half of all pairs link, the card adds
+  **Contains transitive connections** and a neutral explanation.
+- **Relationship evidence** — a new expander lists each member with its direct
+  links (`→ B · semantic similarity 0.91`) and the honest note that a missing
+  line means no direct link was detected; the link may have been made through
+  an intermediate member.
+- **Rating alignment is context** — `Rating context (separate from text
+  matching)` shows range, spread and shared-rating share, followed by
+  “Rating alignment never decides who is in a family.” It never gates, ranks or
+  re-weights membership.
+- **Conservative by construction** — wording is withheld rather than invented:
+  “near-copies of each other” / “across the family” only appear when every
+  possible pair is linked, and a family rebuilt without stored edge detail
+  renders `pair-level structure not stored for this group` instead of zeros.
 
 ## Files changed
 
@@ -94,7 +134,11 @@ weight, embedding behavior, clustering step, and the validation framework
   `nan`-aware `has_coordinates()`.
 - `src/reviewscope/ui/overview.py`, `topics.py`, `duplicates.py`,
   `anomalies.py`, `reviewers.py`, `reviewed_places.py`, `data_quality.py` —
-  page redescriptions described above.
+  page redescriptions described above. `duplicates.py` was rewritten again in
+  Phase 17G (see above).
+- `src/reviewscope/discovery/summary.py`, `src/reviewscope/ui/discover.py` —
+  Phase 17G family terminology and the connected-component methodology bullet.
+- `src/reviewscope/analysis/duplicates.py` — Phase 17G `edges` field only.
 - `tests/test_app_smoke.py` — lock-free DB-copy harness, real page-navigation
   assertions, and synthetic state tests.
 

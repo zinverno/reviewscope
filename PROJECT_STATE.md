@@ -718,3 +718,69 @@ Requirements completed:
   gated on temporal capability
 - Cached dataset identity so the page is usable on a 10k-review corpus
 - No change to any detector, threshold, weight, formula or embedding
+
+## Phase 17G — Repeated-text family semantics (§29)
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ /
+real-corpus verified ✅ / no commit made (report-only phase)
+
+`DuplicateGroup` has always been a **connected component** of detected
+pairwise links (exact / fuzzy / near / semantic), but the product never said
+so — cards read as if every member were similar to every other member. Phase
+17G changes *presentation only*: it makes the UI accurately describe what a
+group is.
+
+Not changed: duplicate pair thresholds, the four detectors, connected-component
+grouping, scoring, embeddings, the corpus, rating logic, the score JSON
+payload, and group membership.
+
+Files changed:
+- `src/reviewscope/analysis/duplicates.py` — `DuplicateGroup` gained one
+  read-only `edges: list[tuple[str, str, str, float]]` field (a, b, kind,
+  score), populated in the existing pair loop and sorted. Everything else
+  (links, kind breakdown, possible pairs, density, transitivity, weakest link)
+  is derived from it in the UI. Detector output verified byte-for-byte
+  identical against the pre-change canonical snapshot.
+- `src/reviewscope/ui/duplicates.py` — rewritten around pure helpers
+  (`FamilyStructure`, `interpretation`, `member_evidence`, `member_labels`,
+  `rating_context`, `rating_line`): page header “Repeated-text families”,
+  verbatim connected-component caption, `N direct links of M possible pairs`,
+  **Contains transitive connections** when fewer than half of all pairs link,
+  a “Relationship evidence” expander, rating alignment shown as separate
+  non-deciding context, and “near-copies”/“across the family” withheld unless
+  every possible pair is linked.
+- `src/reviewscope/discovery/summary.py`, `src/reviewscope/ui/discover.py` —
+  *Families (2+)*, *Largest family*, *Largest repeated-text families*,
+  *Places with repeated-text families*, plus a methodology bullet defining a
+  family as a connected component.
+- `src/reviewscope/ui/common.py` — attribute tag now “in a repeated-text
+  family of N”.
+
+Tests:
+- `tests/test_transitive_family.py` (new, 29 tests): A–B–C synthetic chain
+  forms one family with 2 of 3 possible links; transitive indication on/off;
+  direct size-2 family never marked transitive; exact family; mixed
+  lexical+semantic family; member evidence lists only direct links; copy
+  never claims all-pair similarity; rating context is descriptive and ratings
+  do not change membership; edge-less groups render “not stored” rather than
+  zeros; AppTest rendering of the transitive label and terminology.
+- Presentation fixtures updated (labels only): `tests/test_discover.py`,
+  `tests/test_app_smoke.py`.
+
+Command results:
+- `pytest` — **419 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+
+Real-corpus verification (Vermont rich corpus, 21,831 reviews / 250 places):
+- Canonical detector snapshot before vs after: **byte-for-byte identical**
+  (611 families, 1,793 reviews, 250 places)
+- 611 families: 367 direct size-2 (60.1%), 186 transitive (30.4%), 58 fully
+  connected (9.5%), 27 structural chain-heavy (density < 0.50)
+- Largest family: 19 reviews, 56 of 171 pairs linked (density 0.327)
+- 1,663 links: 62 exact / 33 fuzzy / 34 near / 1,534 semantic; 95 families
+  (15.5%) carry at least one lexical link
+- Phase 17F aggregates reproduce exactly: 199 families with a below-threshold
+  pair, 47 majority-below, 186 transitively added
+- Reports (gitignored): `validation_data/private/google_local_vermont/
+  phase17g_snapshot.py`, `phase17g_verify.py`, `phase17g_verification.md`

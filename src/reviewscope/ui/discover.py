@@ -75,7 +75,7 @@ def _dataset_metrics(summary: DatasetSummary) -> None:
     c1.metric("Reviews", caps.total_reviews)
     c2.metric("Places", caps.total_places)
     c3.metric("Categories", caps.total_categories)
-    c4.metric("Places with duplicate groups", summary.places_with_duplicate_groups)
+    c4.metric("Places with repeated-text families", summary.places_with_duplicate_groups)
     c5.metric("Places with topic clusters", summary.places_with_topic_clusters)
 
 
@@ -235,9 +235,16 @@ def _methodology(summary: DatasetSummary) -> None:
     )
     st.markdown(
         "- **Duplicate rate** = share of a place's reviews that sit in a "
-        "repeated-text group of 3+ reviews — the same definition Overview uses. "
-        "**Dup groups (2+)** counts every detected group, pairs included, like "
+        "repeated-text family of 3+ reviews — the same definition Overview uses. "
+        "**Families (2+)** counts every detected family, pairs included, like "
         "the Duplicates page, so the two columns can legitimately differ."
+    )
+    st.markdown(
+        "- A **repeated-text family** is a connected component of detected "
+        "text-similarity links: reviews are joined when they are connected "
+        "through one or more strong relationships, so a larger family's "
+        "members are not all required to be directly similar to one another. "
+        "Family size describes connectivity, not mutual similarity."
     )
     st.markdown(
         "- **Raw − weighted** = the raw average rating minus the weighted "

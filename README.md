@@ -29,7 +29,7 @@ results in a Streamlit dashboard.
   documented manipulation injections (§7).
 * **Dataset-level discovery (Phase 16)** — a `Discover` page that shows where
   the review evidence sits across every place: dataset totals, descriptive
-  rankings (duplicate rate, repeated-group size, raw-vs-weighted rating delta,
+  rankings (duplicate rate, repeated-family size, raw-vs-weighted rating delta,
   specificity, topic clusters, templated text, review cohorts, rating extremes)
   and a robust category comparison, with one click into any place's Overview.
 
@@ -161,6 +161,35 @@ weight = clamp(raw_weight, 0.25, 2.0)
 Per-place average where each review contributes `rating × weight / Σweights`.
 The delta from the raw average and its direction are always explained.
 
+### Repeated-text families (§29)
+
+Duplicate detection first compares reviews **pairwise**: exact text, fuzzy
+(RapidFuzz), near-duplicate (character n-gram TF-IDF) and semantic similarity
+(cosine ≥ 0.88 on the embedding model). Each passing pair becomes an edge.
+A `DuplicateGroup` — shown in the UI as a **repeated-text family** — is the
+*connected component* of that edge graph, not a set of reviews that are all
+similar to each other.
+
+> Reviews are grouped when they are connected through one or more strong
+> text-similarity relationships. Not every pair inside a larger family must
+> directly pass the similarity threshold.
+
+Consequences the UI states explicitly:
+
+* **Family size describes connectivity, not mutual similarity.** A family of
+  5 needs only a chain of 4 links; the pair at the two ends may be unrelated.
+  The Duplicates page reports `N direct links of M possible pairs` and, when
+  fewer than half of all pairs link, adds *Contains transitive connections*.
+* **Evidence is per link.** Each member lists its direct links and their
+  detection kind (`exact` / `fuzzy` / `near` / `semantic`), so a missing line
+  between two members is visible rather than implied away.
+* **Rating alignment is separate context.** Star-rating agreement is shown as
+  `Rating context (separate from text matching)` and never gates, ranks or
+  re-weights membership — rating alignment never decides who is in a family.
+* **Counting rules are labelled.** `Identical-text counts are review counts;
+  fuzzy/near/semantic counts are link counts`, and `Identical-text links` is
+  reported separately from `Identical-text reviews`.
+
 ## Dataset discovery (Phase 16)
 
 The `Discover` page aggregates the **production** per-place analysis into a
@@ -169,7 +198,7 @@ formula — every number is a projection of the same place-level outputs the
 Overview already shows.
 
 * **Descriptive, never accusatory** — cards are worded "highest duplicate
-  rate", "largest repeated review groups", "lowest specificity". A place can top
+  rate", "largest repeated-text families", "lowest specificity". A place can top
   a "most 5★ reviews" list and a "lowest specificity" list at the same time.
 * **Missing evidence is `N/A`, not zero** — the page first states what the
   dataset cannot support (no publication timestamps, no reviewer history, no
@@ -181,13 +210,16 @@ Overview already shows.
 * **Same metric, same meaning** — Discover reuses the production definitions
   rather than re-deriving them, and where two production surfaces genuinely use
   different floors it says so:
-  * *Duplicate rate* = reviews in repeated-text groups of **3+** — the exact
+  * *Duplicate rate* = reviews in repeated-text families of **3+** — the exact
     Overview definition. The Duplicates page's *Share of place reviews* counts
-    **all** repeated-text groups including pairs, so for a place with a group of
-    6 and a pair the two read 15.0% and 20.0%. They answer different questions.
-  * *Dup groups (2+)* = every detected repeated-text group (pairs included),
-    matching the Duplicates page's *Repeated-text groups*. The column name
-    states its floor so it is not read as the count behind the 3+ rate.
+    **all** repeated-text families including pairs, so for a place with a family
+    of 6 and a pair the two read 15.0% and 20.0%. They answer different
+    questions.
+  * *Families (2+)* = every detected repeated-text family (pairs included),
+    matching the Duplicates page's *Repeated-text families*. The column name
+    states its floor so it is not read as the count behind the 3+ rate. A
+    repeated-text family is a **connected component**, so the column counts
+    families, not pairwise-similar sets.
   * *Raw − weighted* = the difference of the two ratings printed in the same
     row (the same derivation as the Overview verdict line). The finer-grained
     production delta, computed before raw/weighted are rounded, stays on the

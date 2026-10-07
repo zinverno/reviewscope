@@ -378,7 +378,7 @@ def review_annotation(
     if weight is not None:
         tags.append(f"weight {weight:.2f}")
     if in_duplicate_group:
-        tags.append(f"in repeated-text group of {group_size or '?'}")
+        tags.append(f"in a repeated-text family of {group_size or '?'}")
     if templated_score is not None and templated_score >= 65:
         tags.append("templated text")
     if specificity_score_value is not None:

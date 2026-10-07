@@ -296,11 +296,13 @@ class TestDatasetSummary:
         assert summary.places_with_duplicate_groups == 1
 
     def test_dup_group_count_is_labelled_with_its_own_scope(self, tmp_path) -> None:
-        """``Dup groups (2+)`` counts pairs too; the rate counts groups of 3+.
+        """``Families (2+)`` counts pairs too; the rate counts families of 3+.
 
-        Overview's duplicate rate and the Duplicates page's group count use
-        different group-size floors, so the Discover column states its own scope
-        instead of letting the two numbers be read as one metric.
+        Overview's duplicate rate and the Duplicates page's family count use
+        different size floors, so the Discover column states its own scope
+        instead of letting the two numbers be read as one metric. The label says
+        "families" because a repeated-text family is a connected component, not
+        a set of pairwise-similar reviews.
         """
         summary = _summary(_build_db(tmp_path / "mixed.duckdb", _mixed_group_reviews()))
         row = _row(summary, "mixed")
@@ -308,11 +310,15 @@ class TestDatasetSummary:
         assert row["largest_duplicate_group"] == 3
         assert row["duplicate_rate"] == pytest.approx(3 / 6 * 100, abs=1e-3)
         columns = [label for _, label, _ in DISPLAY_COLUMNS]
-        assert "Dup groups (2+)" in columns
+        assert "Families (2+)" in columns
         assert "Dup groups" not in columns
+        assert "Largest group" not in columns
         card = next(s for s in ranking_sections(summary.places) if s.key == "largest_group")
-        assert "Dup groups (2+)" in card.frame.columns
+        assert "Families (2+)" in card.frame.columns
         assert "pairs included" in card.description
+        # Connected-family semantics are stated, not implied.
+        assert "connected component" in card.description
+        assert card.title == "Largest repeated-text families"
 
     def test_place_order_is_deterministic(self, multi_place_db) -> None:
         first = _summary(multi_place_db)
@@ -673,8 +679,8 @@ def _discover(db_path: str, monkeypatch) -> AppTest:
 # Rendered column signature of every ranking card. An unavailable ranking
 # renders no table at all, so a missing signature is a meaningful assertion.
 RANKING_COLUMNS: dict[str, tuple[str, ...]] = {
-    "duplicate_rate": ("Place", "Category", "Reviews", "Duplicate rate", "Largest group"),
-    "largest_group": ("Place", "Category", "Largest group", "Dup groups (2+)", "Reviews"),
+    "duplicate_rate": ("Place", "Category", "Reviews", "Duplicate rate", "Largest family"),
+    "largest_group": ("Place", "Category", "Largest family", "Families (2+)", "Reviews"),
     "rating_delta": ("Place", "Category", "Reviews", "Raw rating", "Weighted rating", "Raw − weighted"),
     "high_specificity": ("Place", "Category", "Reviews", "Median specificity", "Mean specificity"),
     "low_specificity": ("Place", "Category", "Reviews", "Median specificity"),
@@ -725,7 +731,7 @@ class TestDiscoverApp:
         assert metrics["Reviews"] == "13"
         assert metrics["Places"] == "3"
         assert metrics["Categories"] == "3"
-        assert metrics["Places with duplicate groups"] == "1"
+        assert metrics["Places with repeated-text families"] == "1"
         assert metrics["Places with topic clusters"] == "0"
         captions = " ".join(c.value for c in at.caption)
         assert "Dataset summary:" in captions
@@ -837,7 +843,7 @@ class TestDiscoverApp:
 
     def test_drill_down_shortcuts(self, multi_place_db, monkeypatch) -> None:
         for button_key, page, header in (
-            ("discover_open_duplicates", "Duplicates", "Duplicates & repeated text"),
+            ("discover_open_duplicates", "Duplicates", "Repeated-text families"),
             ("discover_open_topics", "Topics", "Topics"),
         ):
             at = _discover(multi_place_db, monkeypatch)
