@@ -145,6 +145,10 @@ def render_overview_page(
             f"**Coordinated activity** — score {coord.rendered_value()} · "
             f"{confidence_badge(coord.confidence)}"
         )
+        st.caption(
+            "Diagnostic only — the place-level coordinated score is not directly "
+            "applied as an additional per-review penalty."
+        )
         if coord.signals:
             st.markdown("**Why:**")
             for s in coord.signals:

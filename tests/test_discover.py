@@ -261,7 +261,12 @@ class TestDatasetSummary:
         assert alpha["duplicate_rate"] == pytest.approx(4 / 7 * 100, abs=1e-3)
         # production rounds raw/weighted to 2 decimals
         assert alpha["raw_rating"] == pytest.approx(3.29)
-        assert alpha["weighted_rating"] == pytest.approx(2.90)
+        # Phase 17I (architecture E): the four identical reviews are no longer
+        # charged twice for the same text reuse, so the duplicate-heavy place
+        # keeps more weight on those reviews and lands closer to the raw
+        # rating (was 2.90 when the coordinated term repeated the duplicate
+        # penalty).
+        assert alpha["weighted_rating"] == pytest.approx(2.97)
         assert alpha["weighted_rating"] < alpha["raw_rating"]
         assert alpha["abs_rating_delta"] == pytest.approx(
             alpha["rating_delta"], abs=1e-6

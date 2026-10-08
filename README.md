@@ -141,20 +141,33 @@ excess = max(0, quality - neutral_quality)
 
 rise_factor = 2.0
 
+text_reuse  = 0.30 * max(duplicate_probability, templated_probability)
+coord_resid = max(0, coordinated_probability - text_reuse)
+
 penalty =
     0.30 * duplicate_probability
   + 0.25 * templated_probability
-  + 0.20 * coordinated_probability
+  + 0.20 * coord_resid
 
 raw_weight = 1.0 + rise_factor * excess - penalty
 weight = clamp(raw_weight, 0.25, 2.0)
 ```
 
+- Duplicate and templated evidence is charged directly, once each.
+- The three penalties are **not** independent: `coordinated_probability`
+  already embeds the same text-reuse evidence (its
+  `CoordinatedConfig.review_probability_components["duplicate_templated"]`
+  share, 0.30 by default). That share is subtracted back out as
+  `text_reuse`, so `coord_resid` — and therefore `penalty_coordinated` —
+  carries only coordinated evidence of its own: event participation, peer
+  semantics and temporal density. Text reuse is never charged twice.
 - Neutral reviews (quality ≈ 0.50, no penalties) stay around weight 1.0.
 - High-quality reviews (specific, category-experienced, relevant, fresh)
   elevate `quality` above the neutral threshold and can exceed 1.0.
-- Duplicate / templated / coordinated signals reduce the weight.
-- The final value is always bounded to `[0.25, 2.0]`.
+- The final value is always bounded to `[0.25, 2.0]`; with bounded inputs the
+  reachable penalty range is `[0, 0.69]`, i.e. weights in `[0.31, 2.0]`.
+  `0.25` remains configured as a safety clamp for malformed inputs, not as a
+  reachable all-penalties result.
 
 ### Weighted rating (§23)
 
