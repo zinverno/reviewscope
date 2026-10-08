@@ -37,6 +37,7 @@ from reviewscope.discovery import (
 from reviewscope.storage import DuckDBStore
 
 from .common import PLACE_KEY, FilterState, info_state, open_place
+from .investigate import begin_family_investigation
 
 FOCUS_KEY = "discover_focus_place"
 CATEGORY_FILTER_KEY = "discover_category_filter"
@@ -131,7 +132,16 @@ def _filter_controls(
     return selected_categories, min_reviews, query, (float(dup_low), float(dup_high)), sort_by, descending
 
 
-def _focus_controls(filtered: pd.DataFrame) -> None:
+def _largest_family_size(row) -> int:
+    """This place's largest repeated-text family, or 0 when none was detected."""
+    value = row.get("largest_duplicate_group")
+    try:
+        return int(value) if pd.notna(value) else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _focus_controls(filtered: pd.DataFrame, engine: AnalysisEngine, db_path: str) -> None:
     """Drill-down: turn a discovered place into the selected place."""
     options = filtered["place_id"].tolist()
     if not options:
@@ -161,16 +171,35 @@ def _focus_controls(filtered: pd.DataFrame) -> None:
         f"{int(row['review_count'])} reviews · raw rating "
         f"{_fmt(row['raw_rating'])} · weighted rating {_fmt(row['weighted_rating'])}"
     )
-    b1, b2, b3 = st.columns(3)
+    has_families = _largest_family_size(row) > 0
+    b1, b2, b3, b4 = st.columns(4)
     if b1.button("Open Overview", key="discover_open_overview", width="stretch"):
         open_place(focus, "Overview")
     if b2.button("Open Duplicates", key="discover_open_duplicates", width="stretch"):
         open_place(focus, "Duplicates")
     if b3.button("Open Topics", key="discover_open_topics", width="stretch"):
         open_place(focus, "Topics")
+    if b4.button(
+        "Investigate family",
+        key="discover_investigate_family",
+        width="stretch",
+        disabled=not has_families,
+        help=(
+            "Open this place's largest repeated-text family in an investigation "
+            "workspace on the Duplicates page."
+            if has_families
+            else "No repeated-text family was detected at this place."
+        ),
+    ):
+        if begin_family_investigation(engine, focus, db_path):
+            open_place(focus, "Duplicates")
+        else:
+            st.warning("No repeated-text family could be opened for this place.")
     st.caption(
         "Opening a place sets the sidebar Place selector and switches page. "
-        "The selection persists while you move between pages."
+        "The selection persists while you move between pages. "
+        "«Investigate family» opens the largest repeated-text family in a "
+        "workspace where members and direct links can be inspected."
     )
 
 
@@ -336,7 +365,7 @@ def render_discover_page(
         key="discover_places_table",
     )
 
-    _focus_controls(filtered)
+    _focus_controls(filtered, engine, store.db_path or "")
     _render_rankings(summary, filtered)
     _render_categories(summary)
     _methodology(summary)

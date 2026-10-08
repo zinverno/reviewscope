@@ -51,7 +51,8 @@ EVIDENCE_NOTE = (
     "in the same family through an intermediate member."
 )
 
-_KIND_LABELS = {
+#: Product wording for each detector link kind; shared with the workspace.
+KIND_LABELS = {
     "exact": "identical text",
     "fuzzy": "fuzzy match",
     "near": "near duplicate",
@@ -204,11 +205,11 @@ def rating_line(context: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Page
+# Shared presentation: family cards and the case investigation workspace
 # ---------------------------------------------------------------------------
 
 
-def _group_stats(members: list) -> tuple[float | None, list[str], int]:
+def group_stats(members: list) -> tuple[float | None, list[str], float]:
     ratings = [m.rating for m in members if m.rating is not None]
     avg_rating = round(sum(ratings) / len(ratings), 2) if ratings else None
     when = sorted({(m.published_at or "")[:10] for m in members if m.published_at})
@@ -220,12 +221,58 @@ def _group_stats(members: list) -> tuple[float | None, list[str], int]:
     return avg_rating, when, round(max(0.0, min(1.0, concentration)), 3)
 
 
+def family_summary_block(
+    group,
+    structure: FamilyStructure,
+    members: list,
+    avg_rating: float | None,
+    when: list[str],
+    concentration: float,
+) -> None:
+    """Title, stats line, rating context, interpretation and transitive note.
+
+    Shared verbatim by the family cards and the investigation workspace so
+    both views state the same facts in the same words.
+    """
+    st.markdown(f"**{FAMILY_TERM}** · {len(members)} reviews")
+    stats = [structure.summary()]
+    if structure.has_structure:
+        stats.append(f"similarity {group.avg_similarity:.2f} (avg over direct links)")
+    if avg_rating is not None:
+        stats.append(f"avg rating {avg_rating:.2f}")
+    stats.append(
+        f"date spread {' → '.join([when[0], when[-1]]) if len(when) > 1 else (when[0] if when else 'no dates')}"
+    )
+    stats.append(f"date concentration {concentration:.0%}")
+    st.caption(" · ".join(stats))
+    st.caption(rating_line(rating_context(members)))
+    st.markdown(interpretation(group, structure, concentration))
+
+    if structure.transitive:
+        st.markdown(f"**{TRANSITIVE_LABEL}**")
+        if structure.sparse:
+            st.caption(TRANSITIVE_DETAIL)
+        st.caption(FAMILY_DEFINITION)
+
+
+# ---------------------------------------------------------------------------
+# Page
+# ---------------------------------------------------------------------------
+
+
 def render_duplicates_page(
     store: DuckDBStore,
     engine: AnalysisEngine,
     place_id: str,
     flt: FilterState,
 ) -> None:
+    from .investigate import (
+        family_identity,
+        maybe_render_workspace,
+        render_resume_bar,
+        set_investigation,
+    )
+
     p = engine.analyze(place_id)
     st.header("Repeated-text families")
     st.caption(
@@ -245,6 +292,10 @@ def render_duplicates_page(
         )
         return
 
+    db_path = store.db_path or ""
+    if maybe_render_workspace(place_id, db_path, groups, by_id):
+        return
+
     members_all = {rid for g in groups for rid in g.review_ids}
     involved = len(members_all & set(by_id))
     st.markdown("---")
@@ -252,6 +303,8 @@ def render_duplicates_page(
     col1.metric("Repeated-text families", len(groups))
     col2.metric("Reviews involved", involved)
     col3.metric("Share of place reviews", f"{involved / max(len(p.reviews), 1) * 100:.1f}%")
+
+    render_resume_bar(groups, place_id, db_path)
 
     # --- filters -------------------------------------------------------------
     with st.expander("Filter families", expanded=False):
@@ -316,7 +369,7 @@ def render_duplicates_page(
         members = [by_id[rid] for rid in g.review_ids if rid in by_id]
         if not members:
             continue
-        avg_rating, when, concentration = _group_stats(members)
+        avg_rating, when, concentration = group_stats(members)
         if g.avg_similarity < min_similarity:
             continue
         if concentration < min_concentration:
@@ -337,29 +390,11 @@ def render_duplicates_page(
     st.caption(f"{len(shown)} famil{'ies' if len(shown) != 1 else 'y'} shown.")
 
     # --- family cards ---------------------------------------------------------
-    for g, members, avg_rating, when, concentration in shown:
+    for index, (g, members, avg_rating, when, concentration) in enumerate(shown):
         structure = FamilyStructure(g)
         labels = member_labels(g)
         with st.container(border=True):
-            st.markdown(f"**{FAMILY_TERM}** · {len(members)} reviews")
-            stats = [structure.summary()]
-            if structure.has_structure:
-                stats.append(f"similarity {g.avg_similarity:.2f} (avg over direct links)")
-            if avg_rating is not None:
-                stats.append(f"avg rating {avg_rating:.2f}")
-            stats.append(
-                f"date spread {' → '.join([when[0], when[-1]]) if len(when) > 1 else (when[0] if when else 'no dates')}"
-            )
-            stats.append(f"date concentration {concentration:.0%}")
-            st.caption(" · ".join(stats))
-            st.caption(rating_line(rating_context(members)))
-            st.markdown(interpretation(g, structure, concentration))
-
-            if structure.transitive:
-                st.markdown(f"**{TRANSITIVE_LABEL}**")
-                if structure.sparse:
-                    st.caption(TRANSITIVE_DETAIL)
-                st.caption(FAMILY_DEFINITION)
+            family_summary_block(g, structure, members, avg_rating, when, concentration)
 
             if structure.has_structure:
                 with st.expander("Why these reviews are in this family", expanded=False):
@@ -377,7 +412,7 @@ def render_duplicates_page(
                             if kind == "semantic":
                                 st.markdown(f"- → **{other}** · semantic similarity {score:.2f}")
                             else:
-                                st.markdown(f"- → **{other}** · {_KIND_LABELS[kind]}")
+                                st.markdown(f"- → **{other}** · {KIND_LABELS[kind]}")
 
             with st.expander("Review texts in this family", expanded=False):
                 for m in members:
@@ -428,3 +463,11 @@ def render_duplicates_page(
                 )
                 if structure.has_structure:
                     st.caption(FAMILY_DEFINITION)
+
+            if st.button(
+                "Open investigation workspace",
+                key=f"open_family_ws_{index}",
+                width="stretch",
+            ):
+                set_investigation(family_identity(place_id, g.review_ids), db_path)
+                st.rerun()

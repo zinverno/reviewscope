@@ -784,3 +784,86 @@ Real-corpus verification (Vermont rich corpus, 21,831 reviews / 250 places):
   pair, 47 majority-below, 186 transitively added
 - Reports (gitignored): `validation_data/private/google_local_vermont/
   phase17g_snapshot.py`, `phase17g_verify.py`, `phase17g_verification.md`
+
+## Phase 18 — Case Investigation Workspace (§30)
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ /
+real-corpus verified ✅ / no commit made (report-only phase)
+
+The repeated-text family cards (§29) show one detection result; you could not
+move from a specific family to its members. Phase 18 adds a **Case
+Investigation Workspace** — a sub-view of the Duplicates page reachable from a
+family card, from the Discover "Investigate family" action, or from a pending
+resume prompt. It lets you:
+
+- inspect each member (reviewer, rating, published date, full text),
+- see the family as a row-and-column relationship matrix whose coloured cells
+  are the *actual detected pairs* (`kind` + score, e.g. "identical text",
+  "semantic similarity 0.98"),
+- select a member and read exactly which **direct links** the detector stored
+  for it (`N of M`), with the member summary kept in sync as you switch across
+  the two member selectors,
+- see the connected-component caption and transitive note per member context.
+
+Not changed: detector thresholds / the four detectors, connected-component
+grouping, scoring, embeddings, the corpus, rating logic, the score JSON
+payload, group membership, page routing (`app.py` unchanged), and
+`src/reviewscope/analysis/duplicates.py` untouched.
+
+Files changed:
+- `src/reviewscope/ui/investigate.py` (new) — the workspace module: pure
+  helpers (`family_identity`, `family_options`, `option_label`, `kind_phrase`,
+  `member_frame`, `relationship_frame`, `_largest_family_size` gating),
+  session-state operations (open / clear / dataset-invalidity fallback /
+  `begin_family_investigation`), and rendering (`render_resume_bar`,
+  `maybe_render_workspace`, `_render_members`, `_render_inspector`,
+  `_render_relationships`). A family identity is member-based and
+  group-id-independent: `"<place_id>::" + ",".join(sorted(review_ids))`.
+  Selection is kept in session state across page navigation and dropped on
+  dataset or place change.
+- `src/reviewscope/ui/duplicates.py` — `_KIND_LABELS` renamed to
+  `KIND_LABELS`, `_group_stats` to `group_stats` (annotation corrected), plus
+  a shared `family_summary_block` used by both card and workspace; every
+  family card now has an "Open investigation workspace" button; a resume bar
+  ("Investigation in progress") offers Resume / Clear after backing out; the
+  workspace is dispatched through `maybe_render_workspace` after the group
+  list. A lazy import keeps the investigate↔duplicates module cycle out of the
+  import graph.
+- `src/reviewscope/ui/discover.py` — `_focus_controls` gained a fourth,
+  gated action "Investigate family" (disabled when the focused place has no
+  families) that selects the largest family (size desc, then avg similarity
+  desc, then identity) and jumps to its workspace on the Duplicates page.
+
+Tests:
+- `tests/test_investigate.py` (new, 45 tests): unit coverage for the identity
+  and label helpers, members/relationship table builders and the largest-family
+  gate; AppTest coverage for opening the workspace from a card and from
+  Discover, inspector text sync across both member selectors, switching
+  families in-place, back/clear/resume flows, a synthetic transitive chain
+  (A–B, B–C with A–C unlinked, rendered "—"), edge-less families rendering as
+  "not stored", dataset-switch invalidation, and copy staying neutral (no
+  fraud/manipulation claims). Module-scoped fixtures reuse cached embeddings
+  so no model compute is needed per test.
+
+Command results:
+- `pytest` — **478 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+
+Real-corpus verification (Vermont rich corpus, 21,831 reviews / 250 places):
+- 611 families across 250 places → **611 unique identities** (no key
+  collisions across re-analysis and re-computation)
+- A fresh `DuplicateDetector` run on the largest family's place reproduces the
+  exact same family identity (member-based, order-independent)
+- Member and relationship tables consistent with `DuplicateGroup.edges`: every
+  edge's endpoints belong to the family, member direct-link counts sum to
+  2×edges (each pair counted at both endpoints), and the matrix exists with
+  shape `(n, n)` for every family carrying edges
+- Largest family: 19 reviews at place
+  `0x89e0248b97f8bf0b:0xeb95aa7083f3afc1`, 56 of 171 pairs linked; option
+  label "19 reviews (A–S) · 56 direct links · similarity 0.92"
+- AppTest boot with the workspace pre-opened on that place: 19-row member
+  table, 19×19 relationship matrix, zero exceptions and zero Streamlit
+  warnings (verified)
+- Semantic scores for identical text pairs may exceed 1.0 by a floating-point
+  epsilon (≤ ~2.4e-7); pre-existing detector behaviour, renders as "1.00"
