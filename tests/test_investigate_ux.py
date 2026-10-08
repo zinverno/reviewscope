@@ -30,7 +30,7 @@ from reviewscope.config import CONFIG
 from reviewscope.models.review import NormalizedReview
 from reviewscope.storage import DuckDBStore
 from reviewscope.ui import common
-from reviewscope.ui.duplicates import member_labels
+from reviewscope.ui.duplicates import FamilyStructure, family_label, member_labels
 from reviewscope.ui.investigate import (
     COMPARE_KEY,
     GRAPH_KEY,
@@ -282,6 +282,45 @@ class TestGraphGeometry:
         again = node_positions(group)
         assert again["r00"] == positions["r00"]
 
+    def test_two_members_lie_side_by_side_horizontally(self) -> None:
+        group = DuplicateGroup(
+            group_id=1,
+            review_ids=["r0", "r1"],
+            edges=[("r0", "r1", "exact", 1.0)],
+            avg_similarity=1.0,
+            exact_count=2,
+        )
+        positions = node_positions(group)
+        assert positions["r0"][1] == positions["r1"][1]  # same height, one line
+        assert positions["r0"][0] != positions["r1"][0]
+        assert {positions["r0"][0], positions["r1"][0]} <= {0.25, 0.75}
+
+    def test_three_members_form_an_open_v(self) -> None:
+        group = DuplicateGroup(
+            group_id=1,
+            review_ids=["r0", "r1", "r2"],
+            edges=[("r0", "r1", "semantic", 0.9), ("r1", "r2", "semantic", 0.9)],
+            avg_similarity=0.9,
+        )
+        positions = node_positions(group)
+        left, middle, right = positions["r0"], positions["r1"], positions["r2"]
+        assert middle[1] < left[1]  # middle member at the V point
+        assert middle[1] < right[1]
+        assert left[1] == right[1]  # partners level, so edges never look collinear
+
+    def test_v_layout_keeps_the_middle_member_at_the_point_on_screen(
+        self, chain_db, monkeypatch
+    ) -> None:
+        at = _app(chain_db, monkeypatch)
+        _navigate(at, "Duplicates")
+        at.button(key="open_family_ws_0").click()
+        _run(at)
+        spec = _graph_spec(at)
+        nodes = _node_trace(spec)
+        y = nodes["y"]
+        assert y[1] == min(y)  # chain-1 is the V point
+        assert y[0] == y[2]
+
 
 class TestGraphFigure:
     def test_one_edge_trace_per_detection_level(self) -> None:
@@ -314,6 +353,25 @@ class TestGraphFigure:
         assert len(line_traces) == 1
         non_null = [x for x in line_traces[0].x if x is not None]
         assert len(non_null) == 4  # two edges × two endpoints
+
+    def test_small_families_use_a_compact_figure_height(self) -> None:
+        small = DuplicateGroup(
+            group_id=1,
+            review_ids=["r0", "r1", "r2"],
+            edges=[("r0", "r1", "semantic", 0.9), ("r1", "r2", "semantic", 0.9)],
+            avg_similarity=0.9,
+        )
+        labels = member_labels(small)
+        short = build_graph_figure(small, labels, node_positions(small), "r0", {"r1"})
+        assert short.layout.height == 300
+        large = DuplicateGroup(
+            group_id=1,
+            review_ids=["r0", "r1", "r2", "r3"],
+            edges=[("r0", "r1", "semantic", 0.9), ("r2", "r3", "semantic", 0.9)],
+            avg_similarity=0.9,
+        )
+        tall = build_graph_figure(large, labels, node_positions(large), "r0", {"r1"})
+        assert tall.layout.height == 460
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +524,60 @@ class TestPreciseLanguage:
             in rendered
         )
         assert "near-copies of each other" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# Evidence-aware family labels
+# ---------------------------------------------------------------------------
+
+
+class TestFamilyLabels:
+    def _structure(self, kinds: list[str]) -> FamilyStructure:
+        edges = [
+            (f"r{i}", f"r{i + 1}", kind, 0.9)
+            for i, kind in enumerate(kinds)
+        ]
+        group = DuplicateGroup(
+            group_id=1,
+            review_ids=[f"r{i}" for i in range(len(kinds) + 1)],
+            edges=edges,
+            avg_similarity=0.9,
+        )
+        return FamilyStructure(group)
+
+    def test_semantic_only_family_is_titled_by_semantics(self) -> None:
+        assert family_label(self._structure(["semantic", "semantic"])) == "Semantic similarity family"
+
+    def test_lexical_only_family_keeps_the_repeated_text_title(self) -> None:
+        assert family_label(self._structure(["exact"])) == "Repeated-text family"
+        assert family_label(self._structure(["near"])) == "Repeated-text family"
+
+    def test_mixed_family_is_titled_mixed(self) -> None:
+        assert family_label(self._structure(["exact", "semantic"])) == "Mixed similarity family"
+
+    def test_no_structure_falls_back_to_the_neutral_term(self) -> None:
+        group = DuplicateGroup(group_id=1, review_ids=["r0", "r1"])
+        assert family_label(FamilyStructure(group)) == "Repeated-text family"
+
+    def test_semantic_only_card_title_on_screen(self, chain_db, monkeypatch) -> None:
+        at = _app(chain_db, monkeypatch)
+        _navigate(at, "Duplicates")
+        markdown = "\n".join(m.value for m in at.markdown)
+        assert "**Semantic similarity family** · 3 reviews" in markdown
+
+    def test_exact_family_card_keeps_the_lexical_title(self, family_db, monkeypatch) -> None:
+        at = _app(family_db, monkeypatch)
+        _navigate(at, "Duplicates", place="dupcafe")
+        markdown = "\n".join(m.value for m in at.markdown)
+        assert "**Repeated-text family** · 4 reviews" in markdown
+
+    def test_semantic_only_workspace_titles_the_family(self, chain_db, monkeypatch) -> None:
+        at = _app(chain_db, monkeypatch)
+        _navigate(at, "Duplicates")
+        at.button(key="open_family_ws_0").click()
+        _run(at)
+        rendered = _rendered(at)
+        assert "### Semantic similarity family · 3 reviews" in rendered
 
 
 # ---------------------------------------------------------------------------

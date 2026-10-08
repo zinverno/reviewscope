@@ -151,11 +151,24 @@ graph-and-cards tool. Family members become a relationship graph:
   semantic similarity was detected between directly linked reviews."; a
   semantic chain never claims "near-copies of each other"; unlinked pairs are
   described as "not stored", not "duplicates".
+- **Evidence-aware family titles.** A family is titled by the evidence it
+  actually stores: "Semantic similarity family" (semantic links only),
+  "Repeated-text family" (lexical links only), "Mixed similarity family"
+  (both) — an all-semantic group is never presented as text repetition.
+- **Compact layouts.** Two members draw side by side, three form an open V
+  with the middle member at the point (so an A–C–B chain never reads as one
+  continuous line); ≥4 keep the force-directed layout, and 2–3-member graphs
+  use a shorter figure height.
+- **One explanation by the graph.** A single caption explains lines beside the
+  chart; the edge list and per-member `N of M` evidence live in a collapsed
+  expander, and duplicated evidence/definition captions were removed from
+  technical details.
 
 Verification (Phase 18.1):
-- **Tests**: `pytest` → **503 passed, 0 failed** (25 new in
-  `tests/test_investigate_ux.py`, incl. a dense-19-node layout stability
-  regression test that would have caught the diverging-layout bug).
+- **Tests**: `pytest` → **515 passed, 0 failed** (`tests/test_investigate_ux.py`
+  gained `TestFamilyLabels` plus two/three-node layout and compact-height
+  tests, incl. the dense-19-node layout-stability regression that caught the
+  earlier diverging-layout bug).
 - **Real corpus**: Vermont rich corpus, largest family (19 reviews, 56 edges)
   — layout finite, 56 segments + 19 markers draw, metrics "56 of 171" at
   33% density, selected/compare defaults correct, zero exceptions.

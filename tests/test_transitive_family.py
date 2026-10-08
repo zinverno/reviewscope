@@ -497,4 +497,4 @@ class TestRendersTransitiveFamily:
         metrics = {m.label for m in at.metric}
         assert "Repeated-text families" in metrics
         markdown = "\n".join(m.value for m in at.markdown)
-        assert "**Repeated-text family** · 3 reviews" in markdown
+        assert "**Semantic similarity family** · 3 reviews" in markdown

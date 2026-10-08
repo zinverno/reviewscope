@@ -957,3 +957,28 @@ Real-corpus verification (Vermont rich corpus, largest family, 19 reviews /
   neighbour; marker sizes [26, 16×neighbours, 11×rest] correct
 - Zero exceptions, zero crashes across boot → navigate → workspace (~13 s
   warm)
+
+Phase 18.1 polish (post-review):
+- **Evidence-aware family labels** — the card and workspace title now names
+  the detection levels actually stored: "Semantic similarity family"
+  (semantic-only), "Repeated-text family" (lexical-only), "Mixed similarity
+  family" (both); a family rebuilt without its edge list falls back to the
+  neutral term. Detector results, membership and identities unchanged.
+- **Compact deterministic layouts** — two members render side by side
+  (horizontal), three form an open V with the middle member at the point (so
+  a 3-node A–C–B chain draws exactly two edges and never looks like one
+  continuous line); ≥4 members keep the bounded force-directed layout.
+  2–3-member graphs use a shorter figure height (300 vs 460).
+- **Fewer methodological repetitions** — one concise caption sits by the
+  graph; the edge list / per-member evidence moved into a collapsed expander;
+  duplicated evidence and definition captions removed from the technical
+  details expander.
+- Tests: `tests/test_investigate_ux.py` added `TestFamilyLabels` and layout
+  tests (side-by-side two-member, open-V three-member, V point on screen,
+  compact height); `tests/test_transitive_family.py` pinned the new semantic
+  card title.
+
+Command results:
+- `pytest` — **515 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean

@@ -111,6 +111,29 @@ class FamilyStructure:
         )
 
 
+def family_label(structure: FamilyStructure) -> str:
+    """Evidence-aware display label for one family.
+
+    The label names the detection levels actually present in the stored links,
+    so a family whose evidence is only semantic is never titled as if the text
+    repeated lexically, and a lexically-only family is never titled as if any
+    semantic similarity existed. Falls back to the neutral page term when the
+    edge list was not stored (nothing to classify on).
+    """
+    if not structure.has_structure:
+        return FAMILY_TERM
+    lexical = (
+        structure.by_kind["exact"]
+        + structure.by_kind["fuzzy"]
+        + structure.by_kind["near"]
+    )
+    if structure.by_kind["semantic"] == 0:
+        return "Repeated-text family"
+    if lexical == 0:
+        return "Semantic similarity family"
+    return "Mixed similarity family"
+
+
 def interpretation(group, structure: FamilyStructure, concentration: float) -> str:
     """One neutral line describing a family.
 
@@ -244,9 +267,11 @@ def family_summary_block(
     """Title, stats line, rating context, interpretation and transitive note.
 
     Shared verbatim by the family cards and the investigation workspace so
-    both views state the same facts in the same words.
+    both views state the same facts in the same words. The title names the
+    detection evidence actually present (see :func:`family_label`), never an
+    unverified category.
     """
-    st.markdown(f"**{FAMILY_TERM}** · {len(members)} reviews")
+    st.markdown(f"**{family_label(structure)}** · {len(members)} reviews")
     stats = [structure.summary()]
     if structure.has_structure:
         stats.append(f"similarity {group.avg_similarity:.2f} (avg over direct links)")

@@ -37,11 +37,11 @@ from .common import info_state
 from .duplicates import (
     EVIDENCE_NOTE,
     FAMILY_DEFINITION,
-    FAMILY_TERM,
     KIND_LABELS,
     TRANSITIVE_DETAIL,
     TRANSITIVE_LABEL,
     FamilyStructure,
+    family_label,
     group_stats,
     interpretation,
     member_evidence,
@@ -253,13 +253,16 @@ def direct_neighbors(group, rid: str) -> list[str]:
 
 
 def node_positions(group) -> dict[str, tuple[float, float]]:
-    """Deterministic force-directed layout from the *stored* edges only.
+    """Deterministic layout from the *stored* edges only.
 
-    Forces are summed into per-node accumulators before a single simultaneous
-    move per iteration (Fruchterman-Ringold), so the same family renders in the
-    same place on every rerun, whatever the exact detector run order or payload
-    member order was. Node coordinates live in [0, 1]² and are purely for
-    display.
+    Tiny families use compact fixed layouts so they read clearly instead of
+    degenerating into one continuous line: two members sit side by side, three
+    form an open V with the middle member at the point. Larger families use a
+    bounded force-directed layout (Fruchterman-Ringold) where forces are
+    summed into per-node accumulators before a single simultaneous move per
+    iteration, so the same family renders in the same place on every rerun,
+    whatever the exact detector run order or payload member order was. Node
+    coordinates live in [0, 1]² and are purely for display.
     """
     members = group.review_ids
     n = len(members)
@@ -268,6 +271,17 @@ def node_positions(group) -> dict[str, tuple[float, float]]:
     if n == 1:
         return {members[0]: (0.5, 0.5)}
     ordered = sorted(members)
+    if n == 2:
+        return {
+            ordered[0]: (0.25, 0.5),
+            ordered[1]: (0.75, 0.5),
+        }
+    if n == 3:
+        return {
+            ordered[0]: (0.18, 0.8),
+            ordered[1]: (0.5, 0.2),
+            ordered[2]: (0.82, 0.8),
+        }
     positions = {}
     for i, rid in enumerate(ordered):
         angle = 2.0 * math.pi * i / n
@@ -434,7 +448,7 @@ def build_graph_figure(
         )
     )
     figure.update_layout(
-        height=460,
+        height=300 if len(group.review_ids) <= 3 else 460,
         margin=dict(l=12, r=12, t=12, b=12),
         xaxis=dict(visible=False, range=[0, 1]),
         yaxis=dict(visible=False, range=[0, 1]),
@@ -515,9 +529,10 @@ def render_resume_bar(groups, place_id: str, db_path: str) -> None:
     if key is None:
         return
     group = dict(family_options(groups, place_id))[key]
+    structure = FamilyStructure(group)
     info_state(
         "Investigation in progress",
-        f"{FAMILY_TERM} with {len(group.review_ids)} reviews is selected on this place.",
+        f"{family_label(structure)} with {len(group.review_ids)} reviews is selected on this place.",
         hint="Resume the workspace to keep inspecting it, or clear the selection.",
     )
     left, right = st.columns(2)
@@ -583,6 +598,7 @@ def _render_workspace(
     group = lookup[chosen]
 
     structure = FamilyStructure(group)
+    st.markdown(f"### {family_label(structure)} · {len(group.review_ids)} reviews")
     labels = member_labels(group)
     members = [by_id[rid] for rid in group.review_ids if rid in by_id]
     _render_summary(group, structure, members)
@@ -676,8 +692,8 @@ def _render_graph_section(group, structure, labels, by_id: dict) -> tuple[str, s
         )
     )
     st.caption(
-        "Line = direct detection between the two members (colour/dash = detection level). "
-        + "Only pairs the detector linked directly are drawn; " + EVIDENCE_NOTE
+        "Line = direct, stored detection between two members (colour/dash = detection level). "
+        + EVIDENCE_NOTE
     )
 
     if not structure.has_structure:
@@ -693,14 +709,13 @@ def _render_graph_section(group, structure, labels, by_id: dict) -> tuple[str, s
     figure = build_graph_figure(group, labels, positions, selected, neighbors)
     st.plotly_chart(figure, key=GRAPH_KEY, width="stretch")
 
-    with st.expander("Graph data as a table", expanded=True):
+    with st.expander("Edge list and per-member evidence", expanded=False):
         st.dataframe(
             edges_frame(group, labels),
             key="family_ws_edges",
             width="stretch",
             hide_index=True,
         )
-        st.caption(EVIDENCE_NOTE)
         for label, _rid, n_links, rows in member_evidence(group):
             if not rows:
                 st.markdown(f"**{label}** — no direct link recorded")
@@ -798,7 +813,6 @@ def _render_technical_details(group, structure) -> None:
             )
         else:
             st.dataframe(matrix, key=MATRIX_KEY, width="stretch")
-            st.caption(EVIDENCE_NOTE)
         st.markdown("**Diagnostics**")
         diagnostics = f"Group id: `{group.group_id}` · average link similarity: {group.avg_similarity:.4f}"
         if structure.has_structure:
@@ -808,4 +822,3 @@ def _render_technical_details(group, structure) -> None:
             st.caption("Signals: " + "; ".join(group.signals))
         if group.counter_signals:
             st.caption("Counter-signals: " + "; ".join(group.counter_signals))
-        st.caption(FAMILY_DEFINITION)
