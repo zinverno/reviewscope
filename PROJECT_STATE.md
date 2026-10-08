@@ -866,4 +866,94 @@ Real-corpus verification (Vermont rich corpus, 21,831 reviews / 250 places):
   table, 19×19 relationship matrix, zero exceptions and zero Streamlit
   warnings (verified)
 - Semantic scores for identical text pairs may exceed 1.0 by a floating-point
-  epsilon (≤ ~2.4e-7); pre-existing detector behaviour, renders as "1.00"
+  epsilon (≤ ~2.4e-7); pre-existing detector behaviour, renders as "1.00".
+
+## Phase 18.1 — UX-grade investigation workspace (§30)
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ /
+real-corpus verified ✅ / no commit made (report-only phase)
+
+Phase 18 was functional but table-heavy: members, a matrix and a plain-text
+inspector, no way to see *which pairs are linked*. Phase 18.1 turns the
+workspace into a visual tool:
+
+- **Relationship graph** — the family as a force-directed node/edge diagram.
+  Nodes are the family reviews; edges are **only the stored detector pairs**
+  (one trace per detection level present: "identical text" solid blue, "fuzzy
+  match" dashed green, "near duplicate" dotted amber, "semantic similarity"
+  long-dashed violet). No A–C edge appears just because A–B and B–C are
+  linked; geometry is purely for display and never invents pairs.
+- **Selection sync** — a "Selected review" + "Compare with" selectbox pair
+  (state keys `investigation_member`, `investigation_comparison`) drives the
+  graph highlight (selected = gold star, size 26; direct neighbours = blue
+  circles, size 16; everyone else size 11) and the side-by-side card below.
+- **Side-by-side comparison** — two bordered member cards; the caption states
+  the stored relationship between the two (`direct links of N-1 possible`),
+  including an explicit "no direct detector relationship was recorded" cue.
+  Default comparison target is the first direct neighbour (else first member).
+- **Compact safe text** — `render_review_text` escapes Markdown specials and
+  collapses newlines, so full review text renders as a card rather than a raw
+  text area; reviews longer than 280 chars preview with a "Show full text"
+  expander. `st.text_area` is gone.
+- **Info hierarchy** — `### Family summary` (Reviews / Distinct reviewers /
+  Direct links "X of Y" / Link density + interpretation line + transitive
+  note), `### Relationship graph` (+ "Graph data as a table" expander with
+  per-member `N of M` evidence bullets), `### Side-by-side comparison`,
+  `### Family members`, and a "Technical details" expander (links by detection
+  level, relationship matrix, diagnostics, family definition).
+- **Neutral copy** — `interpretation()` gained a semantic-only branch:
+  complete families say "Strong semantic similarity was detected between
+  directly linked reviews.", otherwise "…along the family's direct links.";
+  the pairing caption never claims an unlinked pair is duplicate text.
+
+State (§6) is preserved across navigation and reset consistently: family
+switch and Clear pop both `investigation_member` and
+`investigation_comparison`; compare resets to default when it equals the
+selected member or leaves the family.
+
+Not changed: detector thresholds / detectors, connected-component grouping,
+scoring, embeddings, corpus, rating logic, score JSON payload, group
+membership, page routing (`app.py`), and
+`src/reviewscope/analysis/duplicates.py` untouched.
+
+Files changed:
+- `src/reviewscope/ui/investigate.py` — pure helpers added (`escape_review_text`,
+  `render_review_text`, `edges_frame`, `direct_neighbors`, `node_positions`,
+  `default_comparison`, `_graph_kind_styles`, `build_graph_figure`);
+  session-state ops pop the comparison key; renderers split into
+  `_render_summary`, `_render_graph_section`, `_render_pair_comparison`,
+  `_render_member_card`, `_render_members`, `_render_technical_details`;
+  `TEXT_KEY` removed, `COMPARE_KEY = "investigation_comparison"` and
+  `GRAPH_KEY = "family_ws_graph"` added.
+- `src/reviewscope/ui/duplicates.py` — `interpretation` gained the semantic-only
+  wording branch (UI copy only).
+- `tests/test_investigate_ux.py` (new, 25 tests) — compact-text escaping,
+  graph geometry determinism/order-invariance, one line trace per detection
+  level present, on-screen edge counts (6-exact and 2-semantic fixtures),
+  selected/neighbour marker sizes and star/gold styling, selection-sync
+  defaults + compare reset + family-switch reset, precise language (a
+  semantic chain never renders "near-copies of each other"), summary metrics
+  and technical details. `tests/test_investigate.py` and
+  `tests/test_transitive_family.py` updated for the new copy/controls.
+
+A notable bug found by real-corpus verification: the first force-directed
+layout diverged to `nan` on the 19-node family (large attractive pulls with no
+damping). Replaced with a bounded Fruchterman-Ringold embedder (simultaneous
+moves, cooled displacement cap, coordinates clamped and normalised to
+[0.08, 0.92]²) plus a regression test for a dense 19-node synthetic family.
+
+Command results:
+- `pytest` — **503 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+
+Real-corpus verification (Vermont rich corpus, largest family, 19 reviews /
+56 edges at `0x89e0248b97f8bf0b:0xeb95aa7083f3afc1`):
+- Layout finite and inside the unit square; 56 line segments and 19 node
+  markers draw in the AppTest spec; legend carries only the kinds present
+  ("identical text", "semantic similarity")
+- Summary metrics: Reviews 19 · Distinct reviewers 19 · Direct links "56 of
+  171" · Link density 33%; selected defaults to a member, compare to a direct
+  neighbour; marker sizes [26, 16×neighbours, 11×rest] correct
+- Zero exceptions, zero crashes across boot → navigate → workspace (~13 s
+  warm)

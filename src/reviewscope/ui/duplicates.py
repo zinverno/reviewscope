@@ -115,13 +115,25 @@ def interpretation(group, structure: FamilyStructure, concentration: float) -> s
     """One neutral line describing a family.
 
     The two wordings that would read as an all-pair claim are only used when
-    every possible pair really is a detected link.
+    every possible pair really is a detected link. A family whose direct links
+    are all *semantic* (never lexical) says so explicitly, so a similarity line
+    can never be mistaken for a claim that the texts read as copies.
     """
     complete = structure.has_structure and structure.links == structure.possible
+    semantic_only = (
+        structure.has_structure
+        and structure.by_kind["exact"] == 0
+        and structure.by_kind["fuzzy"] == 0
+        and structure.by_kind["near"] == 0
+    )
     if group.exact_count >= 2 and group.exact_count >= structure.n * 0.5:
         return "Repeated review pattern — several reviews share identical text."
     if group.exact_count >= 2:
         return "Repeated review pattern — identical text plus close variants."
+    if semantic_only:
+        if complete:
+            return "Strong semantic similarity was detected between directly linked reviews."
+        return "Strong semantic similarity was detected along the family's direct links."
     if group.avg_similarity >= 0.9:
         if complete:
             return "High textual similarity — reviews read as near-copies of each other."

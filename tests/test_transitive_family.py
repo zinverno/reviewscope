@@ -204,11 +204,31 @@ class TestCopyNeverClaimsAllPairSimilarity:
         assert not any(claim in line for claim in _ALL_PAIR_CLAIMS)
 
     def test_complete_family_may_use_the_strong_wording(self) -> None:
+        # A *lexical* complete pair is what the strong wording describes: the
+        # texts genuinely read as near-copies.
+        reviews = [_review(0, _MIXED_TEXTS[0], place="mix"), _review(1, _MIXED_TEXTS[1], place="mix")]
+        group = _detect(reviews, _chain_embeddings(2, _MIXED_GAP_DEG))
+        structure = FamilyStructure(group)
+        assert structure.by_kind["near"] == 1
+        line = interpretation(group, structure, concentration=0.0)
+        assert line == "High textual similarity — reviews read as near-copies of each other."
+        assert not structure.transitive
+
+    def test_semantic_only_pair_uses_semantic_wording(self) -> None:
+        # A semantic-only pair must not inherit the "near-copies" wording, even
+        # when it is complete: similar meaning is not a claim about the text.
         reviews = [_review(0, _CHAIN_TEXTS[0]), _review(1, _CHAIN_TEXTS[1])]
         group = _detect(reviews, _chain_embeddings(2, _GAP_DEG))
-        line = interpretation(group, FamilyStructure(group), concentration=0.0)
-        assert line == "High textual similarity — reviews read as near-copies of each other."
-        assert not FamilyStructure(group).transitive
+        structure = FamilyStructure(group)
+        assert structure.by_kind == {"exact": 0, "fuzzy": 0, "near": 0, "semantic": 1}
+        line = interpretation(group, structure, concentration=0.0)
+        assert (
+            line
+            == "Strong semantic similarity was detected between directly linked reviews."
+        )
+        assert "directly linked reviews" in line
+        assert not any(claim in line for claim in _ALL_PAIR_CLAIMS)
+        assert not structure.transitive
 
     def test_transitive_label_and_detail_are_neutral(self) -> None:
         assert TRANSITIVE_LABEL == "Contains transitive connections"

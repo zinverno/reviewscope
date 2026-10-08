@@ -125,6 +125,42 @@ mutually similar, and nothing showed *why* a member was in the group.
   possible pair is linked, and a family rebuilt without stored edge detail
   renders `pair-level structure not stored for this group` instead of zeros.
 
+## Phase 18.1 — investigation workspace as a visual tool
+
+Turns the Duplicates workspace (Phase 18) from table + text area into a
+graph-and-cards tool. Family members become a relationship graph:
+
+- **Edges are stored detector pairs only.** One line trace per detection level
+  actually present (identical text / fuzzy match / near duplicate / semantic
+  similarity, each with its own colour + dash). A pair that was never detected
+  never gets an edge, even when A–B and B–C are both linked.
+- **Deterministic layout.** Fruchterman-Ringold forces over the stored edges,
+  computed with simultaneous per-node moves so a family renders identically on
+  every rerun and under any payload order; coordinates stay in [0, 1]².
+- **Selection sync.** "Selected review" + "Compare with" selectors drive both
+  the graph highlight (gold star · blue circles = direct neighbours · small
+  grey = rest) and the side-by-side comparison cards below. Default compare =
+  first direct neighbour. Both keys reset on family switch / clear.
+- **Compact safe text.** Review text renders as a card with Markdown escaped;
+  > 280 chars become a preview + "Show full text" expander — no raw text area.
+- **Info hierarchy.** Family summary (e.g. "Direct links 6 of 6", link
+  density) → relationship graph (+ collapsible "Graph data as a table" with
+  per-member `N of M` bullets) → side-by-side comparison (explicitly says when
+  no direct relationship was stored) → family members → technical details.
+- **Precise neutral wording.** A semantic-only connected family says "Strong
+  semantic similarity was detected between directly linked reviews."; a
+  semantic chain never claims "near-copies of each other"; unlinked pairs are
+  described as "not stored", not "duplicates".
+
+Verification (Phase 18.1):
+- **Tests**: `pytest` → **503 passed, 0 failed** (25 new in
+  `tests/test_investigate_ux.py`, incl. a dense-19-node layout stability
+  regression test that would have caught the diverging-layout bug).
+- **Real corpus**: Vermont rich corpus, largest family (19 reviews, 56 edges)
+  — layout finite, 56 segments + 19 markers draw, metrics "56 of 171" at
+  33% density, selected/compare defaults correct, zero exceptions.
+- **Lint / whitespace**: `ruff check .` and `git diff --check` clean.
+
 ## Files changed
 
 - `app.py` — sidebar grouping (filters in an expander), reviewer-restrict

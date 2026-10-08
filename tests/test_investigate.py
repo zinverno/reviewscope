@@ -37,12 +37,13 @@ from reviewscope.ui.duplicates import EVIDENCE_NOTE, FAMILY_DEFINITION, TRANSITI
 from reviewscope.ui.investigate import (
     BACK_KEY,
     CLEAR_KEY,
+    COMPARE_KEY,
     FAMILY_KEY,
     MEMBER_KEY,
     RESUME_KEY,
     SWITCHER_KEY,
-    TEXT_KEY,
     WORKSPACE_INTRO,
+    escape_review_text,
     family_identity,
     family_options,
     kind_phrase,
@@ -428,7 +429,8 @@ class TestWorkspaceFromDuplicatesList:
         assert _workspace_open(at)
         assert at.selectbox(key=SWITCHER_KEY)
         assert at.selectbox(key=MEMBER_KEY)
-        assert at.text_area(key=TEXT_KEY)
+        assert at.selectbox(key=COMPARE_KEY)
+        assert at.get("plotly_chart")
         assert WORKSPACE_INTRO.split(".")[0] in _rendered(at)
         assert FAMILY_DEFINITION in _rendered(at)
 
@@ -508,7 +510,8 @@ class TestWorkspaceInspectorAndSwitcher:
         _click(at, "open_family_ws_0")
         at.selectbox(key=MEMBER_KEY).set_value("dup-0")
         _run(at)
-        assert at.text_area(key=TEXT_KEY).value == EXACT_TEXT
+        assert not at.text_area  # review text renders as compact cards
+        assert escape_review_text(EXACT_TEXT) in _rendered(at)
         rendered = _rendered(at)
         assert "**3 direct links** of 3 possible:" in rendered
         assert EVIDENCE_NOTE in rendered
@@ -536,7 +539,7 @@ class TestWorkspaceInspectorAndSwitcher:
         _click(at, "open_family_ws_1")
         at.selectbox(key=MEMBER_KEY).set_value("dup-5")
         _run(at)
-        assert at.text_area(key=TEXT_KEY).value == NEAR_B
+        assert escape_review_text(NEAR_B) in _rendered(at)
         rendered = _rendered(at)
         assert "**1 direct link** of 1 possible:" in rendered
         assert "- → **A** · " in rendered
