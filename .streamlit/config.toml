@@ -1,0 +1,13 @@
+# Streamlit configuration committed for the public demo (Phase 19).
+# Applies to local runs too; secrets stay out of git (.streamlit/secrets.toml
+# is ignored, see .gitignore). Override anything locally on the CLI, e.g.
+#   streamlit run app.py --server.headless=false
+
+[server]
+headless = true
+# The public demo accepts no uploads (there is no uploader in the UI).
+maxUploadSize = 1
+
+[browser]
+# No telemetry from demo visitors or local users.
+gatherUsageStats = false

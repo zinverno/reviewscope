@@ -19,6 +19,7 @@ from .common import (
     FilterState,
     baseline_phrase,
     confidence_badge,
+    escape_review_text,
     friendly_counter_signal,
     info_state,
     rating_mix,
@@ -68,7 +69,10 @@ def _render_affected(
             templated_score=tpl.get(r.review_id),
         )
         tag_text = f" · {' ,'.join(tags)}" if tags else ""
-        st.markdown(f"- {rating} · {when} · reviewer `{r.reviewer_id}`{tag_text} — {r.text_or_empty()[:120]}")
+        st.markdown(
+            f"- {rating} · {when} · reviewer {escape_review_text(r.reviewer_id)}"
+            f"{tag_text} — {escape_review_text(r.text_or_empty(), limit=120)}"
+        )
         shown += 1
         if shown >= limit:
             break

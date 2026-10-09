@@ -1,0 +1,18 @@
+{
+  "artifact": "reviewscope_demo.duckdb",
+  "source": "synthetic (generated, no real personal data)",
+  "generator": {
+    "script": "scripts/generate_demo_data.py",
+    "seed": 20260901
+  },
+  "built_at": "2026-10-08T12:29:46+00:00",
+  "sha256": "85ca0756ca60f56c735360ab46632d8893287635e7fec1a28548f97dae5fcfe2",
+  "size_bytes": 8400896,
+  "reviews": 1058,
+  "places": 12,
+  "reviewers": 143,
+  "embedding_rows": 1058,
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "missing_embeddings": 0,
+  "content_sha256": "f288a1353251c97983384e1fc9ff79cbb7ab4bdb1e6444c56466f9380c85e58f"
+}

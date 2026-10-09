@@ -25,7 +25,6 @@ page navigation. A dataset switch invalidates it.
 from __future__ import annotations
 
 import math
-import re
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -33,7 +32,7 @@ import streamlit as st
 
 from reviewscope.analysis.engine import AnalysisEngine
 
-from .common import info_state
+from .common import escape_review_text, info_state
 from .duplicates import (
     EVIDENCE_NOTE,
     FAMILY_DEFINITION,
@@ -135,26 +134,12 @@ def kind_phrase(kind: str, score: float) -> str:
 # ---------------------------------------------------------------------------
 
 
-_MD_SPECIALS = re.compile(r"([\\`*_{}\[\]<>()#+\-|])")
-
 _REVIEW_PREVIEW_LIMIT = 280
-
-
-def escape_review_text(text: str, *, limit: int | None = None) -> str:
-    """Escape review text so it renders as plain text in ``st.markdown``.
-
-    Review text is untrusted input, so every Markdown/HTML metacharacter is
-    escaped before it reaches the page, and each newline becomes a hard line
-    break so the review keeps its own shape.
-    """
-    if limit is not None and len(text) > limit:
-        text = text[:limit]
-    return _MD_SPECIALS.sub(r"\\\1", text).replace("\n", "  \n")
 
 
 def render_review_text(text: str, *, entry_id: str = "") -> None:
     """Render one review's text compactly (preview + full text on demand)."""
-    escaped = _MD_SPECIALS.sub(r"\\\1", text).replace("\n", "  \n")
+    escaped = escape_review_text(text)
     if len(escaped) <= _REVIEW_PREVIEW_LIMIT:
         st.markdown(escaped)
         return

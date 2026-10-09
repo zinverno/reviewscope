@@ -6,6 +6,7 @@ functions stay testable without a running server.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -175,6 +176,24 @@ def reviews_frame(reviews: list) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Human-friendly formatting (plain Python, no streamlit import)
 # ---------------------------------------------------------------------------
+
+
+#: Markdown/HTML metacharacters that let untrusted review text re-shape a page
+#: (headings, emphasis, links, tables, inline code) or break out of a span.
+_MD_SPECIALS = re.compile(r"([\\`*_{}\[\]<>()#+\-|])")
+
+
+def escape_review_text(text: str, *, limit: int | None = None) -> str:
+    """Escape review text so it renders as plain text in ``st.markdown``.
+
+    Review text is untrusted input: every Markdown/HTML metacharacter is
+    escaped before it reaches the page (so a review can never impersonate a
+    heading, a link or the surrounding UI), and each newline becomes a hard
+    line break so the review keeps its own shape.
+    """
+    if limit is not None and len(text) > limit:
+        text = text[:limit]
+    return _MD_SPECIALS.sub(r"\\\1", text).replace("\n", "  \n")
 
 
 def human_duration(days: int | None) -> str:

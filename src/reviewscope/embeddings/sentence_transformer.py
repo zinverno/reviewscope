@@ -8,7 +8,6 @@ loaded once and cached on the instance.
 from __future__ import annotations
 
 import numpy as np
-import torch
 
 from reviewscope.config import CONFIG
 from reviewscope.embeddings.base import EmbeddingProvider
@@ -31,8 +30,16 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
     def _load(self):  # noqa: ANN202
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
-
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError as exc:  # pragma: no cover - depends on env
+                raise RuntimeError(
+                    "The embedding model is not installed in this environment. "
+                    "Precomputed embeddings are read from the dataset cache; a "
+                    "cache miss requires the 'embeddings' extra "
+                    '(pip install -e ".[embeddings]" plus the CPU torch wheel). '
+                    "See docs/DEPLOYMENT.md."
+                ) from exc
             self._model = SentenceTransformer(self._model_name)
         return self._model
 
@@ -45,6 +52,11 @@ class SentenceTransformerProvider(EmbeddingProvider):
         """
         if not texts:
             return np.zeros((0, self.dim), dtype=np.float32)
+        # torch is imported only here: reading precomputed embeddings from the
+        # cache must work in environments without the heavy ``embeddings``
+        # extra installed (see docs/DEPLOYMENT.md).
+        import torch
+
         model = self._load()
         with torch.inference_mode():
             embeddings = model.encode(

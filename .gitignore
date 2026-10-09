@@ -11,8 +11,13 @@ dist/
 venv/
 env/
 
-# Streamlit / runtime state
-.streamlit/
+# Streamlit / runtime state (config.toml is committed; secrets never are)
+.streamlit/*
+!.streamlit/config.toml
+
+# Packaged public-demo artifact is tracked on purpose; local builds may
+# leave a WAL sidecar behind.
+demo/*.duckdb.wal
 
 # Data (generated at runtime)
 data/*.csv

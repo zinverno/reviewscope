@@ -14,7 +14,7 @@ import streamlit as st
 from reviewscope.analysis.engine import AnalysisEngine
 from reviewscope.storage import DuckDBStore
 
-from .common import FilterState, filter_reviews, info_state
+from .common import FilterState, escape_review_text, filter_reviews, info_state
 
 
 def _keywords(c) -> str:
@@ -94,7 +94,7 @@ def render_topics_page(
                         continue
                     rating = f"{review.rating}★" if review.rating is not None else "no rating"
                     when = (review.published_at or "no date")[:10]
-                    st.markdown(f"- {rating} · {when} — {review.text_or_empty()[:160]}")
+                    st.markdown(f"- {rating} · {when} — {escape_review_text(review.text_or_empty(), limit=160)}")
                     rows += 1
                     if rows >= max_rows:
                         break

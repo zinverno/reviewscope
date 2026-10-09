@@ -286,3 +286,11 @@ for an offline, model-free sample report.
   evidence — a top position means "this measurement is high here", nothing more.
   A dataset-wide pass also inherits every per-place failure: places that fail
   analysis are shown as `N/A` rows rather than being silently dropped.
+
+
+## Public demo (Community Cloud)
+
+- Opt-in via environment/secret: `RS_PUBLIC_DEMO=1` or Streamlit secret `public_demo = "1"`.
+- Runs against the committed packaged dataset `demo/reviewscope_demo.duckdb` with precomputed embeddings (no `sentence-transformers`/PyTorch required at runtime).
+- Read-only: fixed dataset, no path input, annotation tooling disabled, discovery disk cache forced off. All review text and reviewer identifiers are escaped before rendering.
+- See `docs/DEPLOYMENT.md` for exact Streamlit Community Cloud configuration (Python 3.12, `requirements.txt`, secrets).

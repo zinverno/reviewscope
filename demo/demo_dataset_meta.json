@@ -1,0 +1,41 @@
+{
+  "anomalies": [
+    {
+      "type": "positive_burst",
+      "place_id": "p1",
+      "dates": [
+        "2026-09-02",
+        "2026-09-03"
+      ],
+      "review_count": 37,
+      "ratings": {
+        "5": 34,
+        "4": 3
+      }
+    },
+    {
+      "type": "negative_bombing",
+      "place_id": "p5",
+      "dates": [
+        "2026-08-25",
+        "2026-08-26"
+      ],
+      "review_count": 30,
+      "ratings": {
+        "1": 28,
+        "2": 2
+      }
+    },
+    {
+      "type": "duplicate_group",
+      "place_id": "p3",
+      "dates": [
+        "2026-05-15",
+        "2026-05-16"
+      ],
+      "review_count": 8,
+      "exact": 4,
+      "near": 4
+    }
+  ]
+}

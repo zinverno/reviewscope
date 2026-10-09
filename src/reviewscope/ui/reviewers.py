@@ -22,6 +22,7 @@ from .common import (
     NO_DATA,
     FilterState,
     confidence_badge,
+    escape_review_text,
     human_duration,
     info_state,
     metric_band,
@@ -132,7 +133,7 @@ def render_reviewers_page(
     history = history_by_reviewer.get(selected, [])
 
     with st.container(border=True):
-        st.markdown(f"**{selected}**")
+        st.markdown(f"**{escape_review_text(selected)}**")
         st.caption(
             f"{m.review_count} reviews of this place"
             + (f" · {human_duration(m.active_period_days)} between first and last review" if m.active_period_days else "")
@@ -198,4 +199,4 @@ def render_reviewers_page(
         for r in place_rows:
             rating = f"{r.rating}★" if r.rating is not None else "no rating"
             when = (r.published_at or "no date")[:10]
-            st.markdown(f"- {rating} · {when} — {r.text_or_empty()[:140]}")
+            st.markdown(f"- {rating} · {when} — {escape_review_text(r.text_or_empty(), limit=140)}")

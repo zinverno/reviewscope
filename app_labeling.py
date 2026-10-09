@@ -35,6 +35,15 @@ import streamlit as st
 
 st.set_page_config(page_title="ReviewScope — Blind Labeling", layout="wide")
 
+from reviewscope.public_demo import public_demo_enabled  # noqa: E402
+
+if public_demo_enabled():  # annotation tooling writes to disk — never public
+    st.error(
+        "Annotation tooling is disabled in public-demo mode. "
+        "Label data from a local full-featured installation instead."
+    )
+    st.stop()
+
 from reviewscope.storage import DuckDBStore  # noqa: E402
 from reviewscope.validation.annotation import AnnotationStore  # noqa: E402
 from reviewscope.validation.loader import (  # noqa: E402

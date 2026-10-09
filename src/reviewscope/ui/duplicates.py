@@ -21,7 +21,7 @@ import streamlit as st
 from reviewscope.analysis.engine import AnalysisEngine
 from reviewscope.storage import DuckDBStore
 
-from .common import FilterState, info_state
+from .common import FilterState, escape_review_text, info_state
 
 _DETECTION_KINDS = ("exact", "fuzzy", "near", "semantic")
 
@@ -457,8 +457,9 @@ def render_duplicates_page(
                     when_m = (m.published_at or "no date")[:10]
                     tag = labels.get(m.review_id, "?")
                     st.markdown(
-                        f"- **{tag}** · {rating} · {when_m} · reviewer `{m.reviewer_id}` — "
-                        f"{m.text_or_empty()[:160]}"
+                        f"- **{tag}** · {rating} · {when_m} · "
+                        f"reviewer {escape_review_text(m.reviewer_id)} — "
+                        f"{escape_review_text(m.text_or_empty(), limit=160)}"
                     )
                 if g.signals:
                     st.markdown("**Signals:** " + "; ".join(g.signals))

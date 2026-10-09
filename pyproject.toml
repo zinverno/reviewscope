@@ -13,17 +13,21 @@ dependencies = [
     "pandas>=2.2",
     "duckdb>=1.1",
     "scikit-learn>=1.5",
-    "sentence-transformers>=3.0",
     "hdbscan>=0.8.38",
     "rapidfuzz>=3.9",
     "datasketch>=1.6",
     "plotly>=5.22",
     "streamlit>=1.37",
-    "pytest>=8.0",
     "pydantic>=2.8",
 ]
 
 [project.optional-dependencies]
+# Embedding model backend (PyTorch + sentence-transformers). Not required when
+# embeddings are read from a precomputed dataset cache — that is how the
+# public demo ships (docs/DEPLOYMENT.md). Install it to (re)compute embeddings.
+embeddings = [
+    "sentence-transformers>=3.0",
+]
 dev = [
     "ruff>=0.6",
     "pytest>=8.0",

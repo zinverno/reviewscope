@@ -14,7 +14,7 @@ import streamlit as st
 from reviewscope.analysis.engine import AnalysisEngine
 from reviewscope.storage import DuckDBStore
 
-from .common import FilterState, has_coordinates, info_state
+from .common import FilterState, escape_review_text, has_coordinates, info_state
 
 
 def _adaptive_zoom(frame: pd.DataFrame) -> int:
@@ -86,7 +86,8 @@ def render_reviewed_places_page(
     n_locations = frame[["latitude", "longitude"]].drop_duplicates().shape[0]
 
     st.markdown(
-        f"**{selected}** — {len(frame)} mapped review{'s' if len(frame) != 1 else ''} "
+        f"**{escape_review_text(selected)}** — {len(frame)} mapped review"
+        f"{'s' if len(frame) != 1 else ''} "
         f"across {n_locations} location{'s' if n_locations != 1 else ''}"
     )
 

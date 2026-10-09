@@ -147,6 +147,14 @@ class DuckDBStore:
     ) -> None:
         if con is not None:
             self._con = con
+        elif read_only and db_path is not None:
+            # Read-only must be a real DuckDB-level guarantee: it keeps the
+            # app from creating a stray file, writing a WAL sidecar or
+            # upserting embedding rows into a shared dataset.
+            path = Path(db_path)
+            if not path.exists():
+                raise FileNotFoundError(f"database not found (read-only): {path}")
+            self._con = duckdb.connect(str(path), read_only=True)
         else:
             try:
                 self._con = duckdb.connect(str(db_path) if db_path else ":memory:")
@@ -305,8 +313,15 @@ class DuckDBStore:
         return result
 
     def store_cached_embeddings(self, rows: list[tuple[str, str, str, Iterable[float]]]) -> int:
-        """Upsert embedding cache rows: ``(review_id, text_hash, model_name, embedding)``."""
+        """Upsert embedding cache rows: ``(review_id, text_hash, model_name, embedding)``.
+
+        On a read-only store nothing is persisted: the caller keeps the vectors
+        in its in-process session cache, and the shared dataset file stays
+        untouched (public-demo servers must never be written to by visitors).
+        """
         if not rows:
+            return 0
+        if self.read_only:
             return 0
         prepared = [(r[0], r[1], r[2], list(r[3])) for r in rows]
         self._con.executemany(
@@ -318,6 +333,17 @@ class DuckDBStore:
 
     def cached_embedding_count(self) -> int:
         return int(self._con.execute("SELECT COUNT(*) FROM embeddings_cache").fetchone()[0])
+
+    def cached_embedding_keys(self) -> set[tuple[str, str, str]]:
+        """Every persisted cache key as ``(review_id, text_hash, model_name)``.
+
+        One scan instead of one probe per review: used by the public-demo
+        startup preflight to prove the packaged artifact is self-sufficient.
+        """
+        rows = self._con.execute(
+            "SELECT review_id, text_hash, model_name FROM embeddings_cache"
+        ).fetchall()
+        return {(str(a), str(b), str(c)) for a, b, c in rows}
 
     # -- misc -----------------------------------------------------------------
 
