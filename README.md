@@ -1,5 +1,9 @@
 # ReviewScope
 
+**[Try the Live Demo](https://reviewscope-demo.streamlit.app)** · [Deployment guide](docs/DEPLOYMENT.md)
+
+> **Synthetic demo data only.** Explore unusual review activity, repeated-text families, and weighted ratings. Results are illustrative signals, not proof of fraud or AI authorship.
+
 Local analytics toolkit for review informativeness and coordinated-activity
 signals. ReviewScope ingests a CSV/JSON dataset of Google-Maps-style reviews,
 persists them in DuckDB, runs a multi-phase analysis pipeline and presents the
