@@ -305,9 +305,8 @@ class DuplicateDetector:
         # Exact pairs always take precedence (they are the strongest signal).
         for key, score in exact_pairs.items():
             uf.union(*key)
-            if key not in pair_scores or score >= pair_scores[key]:
-                pair_scores[key] = score
-                pair_types[key] = "exact"
+            pair_scores[key] = score
+            pair_types[key] = "exact"
 
         # 5. Build groups
         components: dict[int, list[int]] = {}
