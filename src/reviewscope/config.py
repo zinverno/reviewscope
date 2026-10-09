@@ -321,7 +321,7 @@ class ReviewerRelevanceConfig:
 
 @dataclass(frozen=True)
 class WeightConfig:
-    """Review weight (SPEC.md §22).
+    """Review weight (SPEC.md §22; Phase 17I architecture E).
 
     Formula (documented, with its derived mathematical range):
 
@@ -335,20 +335,38 @@ class WeightConfig:
         quality      ∈ [0, 1]  (positive weights sum to 1.0)
 
         excess       = max(0, quality - neutral_quality)        (0..0.5)
+
+        text_reuse   = round(w_coord_text * max(duplicate_prob,
+                                                templated_prob), 3)
+        coord_resid  = max(0, round(coordinated_prob - text_reuse, 3))
+
         penalty      = penalty_duplicate   * duplicate_prob
                      + penalty_templated   * templated_prob
-                     + penalty_coordinated * coordinated_prob  (0..1)
+                     + penalty_coordinated * coord_resid        (0..1)
 
         raw          = 1.0 + rise_factor * excess - penalty
 
         weight       = clamp(raw, weight_min, weight_max)
 
+    The three penalties are **not** independent.  The coordinated probability
+    already contains a text-reuse share (``w_coord_text`` =
+    ``CoordinatedConfig.review_probability_components["duplicate_templated"]``,
+    read through ``coordinated_text_reuse_weight()`` — the same source that
+    builds the probability itself).  That share is subtracted back out as
+    ``text_reuse`` before ``penalty_coordinated`` is applied, so duplicate and
+    templated evidence is charged exactly once, and only coordinated evidence
+    of its own — event participation, peer semantics, temporal density —
+    reaches the weight through ``coord_resid``.
+
     Derived range:
     * neutral evidence (quality == neutral_quality, no penalties) → 1.0
     * best quality (quality == 1.0) and no penalties
       → 1.0 + rise_factor * 0.5 = 2.0 (upper clamp)
-    * all penalties at 1.0 → 1.0 - (p_dup + p_tpl + p_cas) = 0.25 (lower clamp)
-    * weight ∈ [weight_min, weight_max] by construction.
+    * worst reachable penalties (duplicate = templated = coordinated = 1.0)
+      → 1.0 - (penalty_duplicate + penalty_templated
+               + penalty_coordinated * (1 - w_coord_text)) = 0.31
+    * ``weight_min`` (0.25) stays configured as a safety clamp for malformed
+      or out-of-range inputs; bounded probabilities cannot reach it.
 
     Every component is explainable: quality above ``neutral_quality``
     up-weights (SPEC §22 "positive quality evidence -> weight > 1.0"),
@@ -361,6 +379,9 @@ class WeightConfig:
     weight_recency: float = 0.20
     penalty_duplicate: float = 0.30
     penalty_templated: float = 0.25
+    #: Charged on the coordinated *residual* only: the duplicate/templated
+    #: share embedded in ``coordinated_probability`` is removed first so text
+    #: reuse is never paid twice (Phase 17I architecture E).
     penalty_coordinated: float = 0.20
     #: The quality score mapped to a neutral weight of 1.0.
     neutral_quality: float = 0.50
@@ -368,6 +389,9 @@ class WeightConfig:
     #: default (quality max 1.0) the ceiling is ``1.0 + rise_factor * 0.5``,
     #: which equals ``weight_max`` for ``rise_factor == 2.0``.
     rise_factor: float = 2.0
+    #: Lower safety clamp. Bounded penalty inputs bottom out at 0.31, so this
+    #: guards against malformed or out-of-range probabilities rather than
+    #: describing a reachable all-penalties result.
     weight_min: float = 0.25
     weight_max: float = 2.0
     #: A review older than recency_half_life_days gets a recency factor of 0.5.
@@ -413,6 +437,11 @@ class CoordinatedConfig:
     #: Weights for the graded per-review ``coordinated_review_probabilities``
     #: (SPEC.md §22 → §8 "coordinated probability, not a binary flag").
     #: Sum to 1.0; each component is in 0..1.
+    #: ``duplicate_templated`` is the shared text-reuse coefficient: Review
+    #: Weight reads it back through ``coordinated_text_reuse_weight()`` to
+    #: remove that share from ``coordinated_probability`` before charging
+    #: ``penalty_coordinated`` (Phase 17I architecture E), so this entry must
+    #: stay the single source for it.
     review_probability_components: dict[str, float] = field(
         default_factory=lambda: {
             "event_participation": 0.35,

@@ -10,6 +10,7 @@ import pytest
 from reviewscope.validation.loader import (
     label_template_rows,
     load_reviews,
+    load_selection_header,
     load_selection_json,
     read_events,
     read_labels,
@@ -148,6 +149,24 @@ def test_load_selection_json(tmp_path):
     selection = load_selection_json(path)
     assert selection["r1"]["sample_type"] == "evaluation"
     assert list(selection.keys()) == ["r1", "r2"]
+
+
+def test_load_selection_header(tmp_path):
+    payload = {
+        "fingerprint": "v1|2|1|abc|def|model",
+        "seed": 20260901,
+        "evaluation_count": 1,
+        "challenge_counts": {"high": 1},
+        "entries": [
+            {"review_id": "r1", "sample_type": "evaluation", "sampling_stratum": "random"},
+        ],
+    }
+    path = tmp_path / "sample_selection.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    header = load_selection_header(path)
+    assert header["fingerprint"] == "v1|2|1|abc|def|model"
+    assert header["seed"] == 20260901
+    assert "entries" not in header
 
 
 def test_load_reviews_csv(tmp_path):

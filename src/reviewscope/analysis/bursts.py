@@ -63,6 +63,8 @@ def daily_counts(reviews: list[NormalizedReview]) -> pd.DataFrame:
 
 def _filled_daily_counts(frame: pd.DataFrame) -> pd.DataFrame:
     """Fill gaps: one row per day between min and max date, count 0 when empty."""
+    if frame.empty:
+        return frame
     filled: list[pd.DataFrame] = []
     for place_id, sub in frame.groupby("place_id"):
         if sub.empty:
@@ -215,9 +217,19 @@ class BurstDetector:
                         day_ratings[r.rating] = day_ratings.get(r.rating, 0) + 1
 
                 score = self._volume_score(z_score)
+                if median < 1.0:
+                    volume_signal = (
+                        f"Observed {observed} reviews on the event day "
+                        f"(rolling median {median:.1f}/day; near-zero baseline, "
+                        "multiplier undefined)"
+                    )
+                else:
+                    volume_signal = (
+                        f"Volume {multiplier:.1f}x above the rolling median "
+                        f"({median:.1f} reviews/day expected vs {observed} observed)"
+                    )
                 signals = [
-                    f"Volume {multiplier:.1f}x above the rolling median "
-                    f"({median:.1f} reviews/day expected vs {observed} observed)",
+                    volume_signal,
                     f"Modified z-score {z_score:.1f} vs threshold "
                     f"{self.config.z_score_threshold:.1f}",
                 ]

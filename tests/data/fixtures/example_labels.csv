@@ -1,0 +1,23 @@
+review_id,templated_label,template_group_id,specificity_label,duplicate_group_id,duplicate_label,reviewer_notes,annotation_schema_version,annotator_id,labeled_at,sample_type,sampling_stratum
+c01,templated,coffee-template,low,coffeeA,duplicate,Repeated generic praise.,1.0,example-annotator,2026-03-25T09:00:00+00:00,evaluation,random
+c02,templated,coffee-template,low,coffeeA,duplicate,Repeated generic praise.,1.0,example-annotator,2026-03-25T09:01:00+00:00,challenge,high
+c03,templated,coffee-template,low,coffeeA,duplicate,Repeated generic praise.,1.0,example-annotator,2026-03-25T09:02:00+00:00,evaluation,random
+c04,templated,coffee-template,low,coffeeA,duplicate,Repeated generic praise.,1.0,example-annotator,2026-03-25T09:03:00+00:00,challenge,high
+c05,templated,coffee-template,low,coffeeA,duplicate,Repeated generic praise.,1.0,example-annotator,2026-03-25T09:04:00+00:00,evaluation,random
+c06,templated,coffee-template,low,coffeeA,duplicate,Repeated generic praise.,1.0,example-annotator,2026-03-25T09:05:00+00:00,challenge,high
+c07,organic,,low,,unique,Reads personal to me despite similarity.,1.0,example-annotator,2026-03-25T09:06:00+00:00,challenge,duplicate
+c08,templated,manual-specific,low,,unique,Very detailed but I still think it is part of a paid campaign.,1.0,example-annotator,2026-03-25T09:07:00+00:00,evaluation,random
+c09,organic,,high,,unique,,1.0,example-annotator,2026-03-25T09:08:00+00:00,evaluation,random
+h01,organic,,low,hotelA,duplicate,Copied generic wording.,1.0,example-annotator,2026-03-25T09:09:00+00:00,evaluation,random
+h02,organic,,high,,unique,,1.0,example-annotator,2026-03-25T09:10:00+00:00,evaluation,random
+h03,uncertain,,medium,,unique,,1.0,example-annotator,2026-03-25T09:11:00+00:00,challenge,low
+h04,organic,,low,hotelA,duplicate,Copied generic wording.,1.0,example-annotator,2026-03-25T09:12:00+00:00,challenge,duplicate
+h05,organic,,medium,,uncertain,,1.0,example-annotator,2026-03-25T09:13:00+00:00,challenge,low
+h06,organic,,medium,,unique,,1.0,example-annotator,2026-03-25T09:14:00+00:00,evaluation,random
+r01,organic,,medium,lunch,duplicate,Repeated short lunch review.,1.0,example-annotator,2026-03-25T09:15:00+00:00,evaluation,random
+r02,templated,lunch-template,medium,lunch,duplicate,Repeated short lunch review.,1.0,example-annotator,2026-03-25T09:16:00+00:00,challenge,low
+r03,uncertain,,uncertain,,unique,,1.0,example-annotator,2026-03-25T09:17:00+00:00,challenge,duplicate
+r04,organic,,high,lunch,duplicate,My partner's review is nearly the same.,1.0,example-annotator,2026-03-25T09:18:00+00:00,evaluation,random
+r05,organic,,high,,unique,,1.0,example-annotator,2026-03-25T09:19:00+00:00,challenge,low
+n01,organic,,medium,shawarma,duplicate,Same wording with small changes.,1.0,example-annotator,2026-03-25T09:20:00+00:00,challenge,duplicate
+n02,uncertain,,medium,shawarma,duplicate,Same wording with small changes.,1.0,example-annotator,2026-03-25T09:21:00+00:00,challenge,low

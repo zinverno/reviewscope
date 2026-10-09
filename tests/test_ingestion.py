@@ -95,7 +95,8 @@ def test_normalize_review_happy_path() -> None:
     )
     assert review is not None
     assert review.rating == 5
-    assert review.published_at == "2026-09-03T00:00:00"
+    # fixed 6-digit microseconds, never the bare whole-second form
+    assert review.published_at == "2026-09-03T00:00:00.000000"
     assert review.latitude == 55.75
     assert warnings == []
 
@@ -253,3 +254,80 @@ def test_json_adapter_duplicate_ids_deduped(tmp_path: Path) -> None:
     path.write_text(json.dumps(_records() + [_records()[0]]), encoding="utf-8")
     result = JSONAdapter().load(path)
     assert result.report.valid == 2
+
+
+# ---------------------------------------------------------------------------
+# published_at serialisation must have one stable precision (Phase 17B)
+# ---------------------------------------------------------------------------
+
+#: One whole-second instant and one carrying sub-second precision. Phase 17B
+#: lost 22 rows because ``datetime.isoformat()`` omits microseconds when they
+#: are exactly zero, so the column mixed two formats and ``pd.to_datetime``
+#: inferred only the first.
+MIXED_PRECISION_INSTANTS = [
+    ("2021-01-01T12:00:00", "2021-01-01T12:00:00.000000"),
+    ("2021-01-01T12:00:00.123", "2021-01-01T12:00:00.123000"),
+    ("2021-01-01T12:00:00.123456", "2021-01-01T12:00:00.123456"),
+    ("2021-01-01T12:00:00+00:00", "2021-01-01T12:00:00.000000"),
+    ("2021-01-01T12:00:00.5Z", "2021-01-01T12:00:00.500000"),
+]
+
+
+@pytest.mark.parametrize(("raw", "expected"), MIXED_PRECISION_INSTANTS)
+def test_published_at_is_serialised_at_fixed_microsecond_precision(
+    raw: str, expected: str
+) -> None:
+    review, _ = normalize_review(
+        {
+            "review_id": "r1",
+            "place_id": "p1",
+            "reviewer_id": "u1",
+            "rating": 5,
+            "text": "Fine",
+            "published_at": raw,
+        }
+    )
+    assert review is not None
+    assert review.published_at == expected
+
+
+def test_mixed_precision_column_yields_a_single_readable_format() -> None:
+    """The regression itself: one column, one format, nothing coerced away.
+
+    A column whose values disagree on fractional precision is unreadable by
+    ``pd.to_datetime``, which infers a single format from the first value and
+    coerces every other shape to ``NaT`` — silently dropping those reviews from
+    temporal analysis.
+    """
+    import pandas as pd
+
+    values = []
+    for i, (raw, _) in enumerate(MIXED_PRECISION_INSTANTS):
+        review, _ = normalize_review(
+            {"review_id": f"r{i}", "place_id": "p1", "reviewer_id": "u1", "rating": 5,
+             "text": "t", "published_at": raw}
+        )
+        assert review is not None
+        values.append(review.published_at)
+
+    assert all(v is not None for v in values), "every input must normalise"
+    widths = {len(v.split(".")[1]) for v in values}
+    assert widths == {6}, f"all values must carry 6 fractional digits, got {widths}"
+    assert pd.to_datetime(pd.Series(values), errors="coerce").notna().all()
+
+
+def test_published_at_round_trips_without_moving_the_instant() -> None:
+    """Fixed precision must be lossless: same instant, re-parsable."""
+    for raw, expected in MIXED_PRECISION_INSTANTS:
+        review, _ = normalize_review(
+            {"review_id": "r1", "place_id": "p1", "reviewer_id": "u1", "rating": 5,
+             "text": "t", "published_at": raw}
+        )
+        assert review is not None
+        once = review.published_at
+        twice = parse_date(once)
+        assert twice is not None
+        assert once == twice.strftime("%Y-%m-%dT%H:%M:%S.%f")
+        # the instant is unchanged, microseconds included
+        assert twice == parse_date(expected)
+        assert twice.microsecond == parse_date(raw).microsecond

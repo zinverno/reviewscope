@@ -2,10 +2,14 @@
 
 These tests encode the forensic-remediation invariants:
 
-* the weight formula's ``[weight_min, weight_max]`` range is *reachable*
-  (audit §22: the old formula could not reach 2.0);
+* the weight formula's upper bound ``weight_max`` is *reachable*
+  (audit §22: the old formula could not reach 2.0) while ``weight_min``
+  stays configured as a safety clamp for malformed inputs;
 * neutral evidence maps to weight 1.0;
 * penalties are *graded probabilities*, not binary flags (audit §22);
+* duplicate/templated text reuse is charged exactly once: the coordinated
+  term carries only coordinated evidence of its own — event, peer and
+  temporal (Phase 17I, architecture E);
 * coordinated review probability is graded: an engineered review is high,
   an organic review that merely falls on a busy day stays bounded;
 * the coordinated place semantic component is event-relative (audit
@@ -26,10 +30,12 @@ from reviewscope.analysis.scoring import (
     compute_review_weights,
     coordinated_activity_score,
     coordinated_review_probabilities,
+    coordinated_text_reuse_weight,
     weighted_rating,
 )
 from reviewscope.analysis.templated import TemplatedTextScorer
 from reviewscope.analysis.topics import TopicCluster
+from reviewscope.config import CONFIG
 from reviewscope.models.review import NormalizedReview
 from reviewscope.models.scores import ConfidenceLevel
 
@@ -158,7 +164,10 @@ class TestReviewWeight:
         )
         assert w == 2.0
 
-    def test_all_penalties_reach_lower_clamp(self) -> None:
+    def test_worst_penalties_reach_reachable_minimum(self) -> None:
+        # Phase 17I (architecture E): the coordinated term only carries the
+        # residual beyond the text-reuse share, so bounded inputs bottom out
+        # at 0.30 + 0.25 + 0.20 * (1 - 0.30) = 0.69 -> weight 0.31.
         reviews = [_review("worst", "p1", date(2000, 1, 1))]
         [w] = compute_review_weights(
             reviews,
@@ -166,7 +175,11 @@ class TestReviewWeight:
             templated_probability={"worst": 1.0},
             coordinated_probability={"worst": 1.0},
         )
-        assert w == 0.25
+        assert w == 0.31
+        # weight_min stays configured as a safety clamp for malformed inputs;
+        # it is no longer a reachable all-penalties result.
+        assert CONFIG.weight.weight_min == 0.25
+        assert w > CONFIG.weight.weight_min
 
     def test_neutral_evidence_maps_to_one(self) -> None:
         # quality == neutral_quality => weight == 1.0 exactly (SPEC §22).
@@ -212,16 +225,132 @@ class TestReviewWeight:
         assert w_full < w_half < w_none
         assert pytest.approx(w_none - w_full) == 0.30  # penalty_duplicate
 
-    def test_templated_and_coordinated_penalties_stack(self) -> None:
+    def test_templated_and_coordinated_text_reuse_not_double_charged(self) -> None:
+        # Phase 17H/17I: a coordinated probability that is purely the
+        # text-reuse component adds nothing on top of the templated penalty.
         reviews = [_review("r0", "p1", date(2026, 9, 1), text="стейк с кровью за 1400")]
         specs = {"r0": 100.0}
         w_tpl = compute_review_weights(reviews, specificity_map=specs,
                                        templated_probability={"r0": 1.0})[0]
-        w_stack = compute_review_weights(reviews, specificity_map=specs,
-                                         templated_probability={"r0": 1.0},
-                                         coordinated_probability={"r0": 1.0})[0]
+        w_stack = compute_review_weights(
+            reviews, specificity_map=specs,
+            templated_probability={"r0": 1.0},
+            coordinated_probability={"r0": round(coordinated_text_reuse_weight(), 3)},
+        )[0]
+        assert w_stack == w_tpl
+
+    def test_coordinated_residual_stacks_with_templated(self) -> None:
+        # Only the coordinated evidence beyond text reuse is charged, at
+        # penalty_coordinated.
+        reviews = [_review("r0", "p1", date(2026, 9, 1), text="стейк с кровью за 1400")]
+        specs = {"r0": 100.0}
+        residual = 0.15
+        coord = round(coordinated_text_reuse_weight() * 1.0 + residual, 3)
+        w_tpl = compute_review_weights(reviews, specificity_map=specs,
+                                       templated_probability={"r0": 1.0})[0]
+        w_stack = compute_review_weights(
+            reviews, specificity_map=specs,
+            templated_probability={"r0": 1.0},
+            coordinated_probability={"r0": coord},
+        )[0]
         assert w_stack < w_tpl
-        assert pytest.approx(w_tpl - w_stack) == 0.20  # penalty_coordinated
+        assert w_tpl - w_stack == pytest.approx(
+            CONFIG.weight.penalty_coordinated * residual, abs=2e-4
+        )
+
+
+class TestArchitectureETextReuse:
+    """Phase 17I regressions: text reuse is charged exactly once."""
+
+    def _weight(
+        self,
+        dup: float,
+        tpl: float,
+        coord: float,
+    ) -> float:
+        reviews = [_review("r0", "p1", date(2000, 1, 1))]
+        return compute_review_weights(
+            reviews,
+            duplicate_probability={"r0": dup},
+            templated_probability={"r0": tpl},
+            coordinated_probability={"r0": coord},
+        )[0]
+
+    @pytest.mark.parametrize(
+        ("dup", "tpl"),
+        [(d, t) for d in (0.0, 0.5, 1.0) for t in (0.0, 0.5, 1.0)],
+    )
+    def test_text_reuse_only_coordination_is_not_charged(self, dup: float, tpl: float) -> None:
+        # A. coordinated_probability set to exactly the production text-reuse
+        # component must cost nothing: weight(coord) == weight(0).
+        # Fails on architecture A, which charged the same evidence twice.
+        text_reuse = round(coordinated_text_reuse_weight() * max(dup, tpl), 3)
+        assert self._weight(dup, tpl, text_reuse) == self._weight(dup, tpl, 0.0)
+
+    def test_independent_coordinated_residual_charges_exactly(self) -> None:
+        # B. text-reuse component + residual: only the residual is charged.
+        dup, tpl = 0.5, 0.0
+        residual = 0.15
+        coord = round(round(coordinated_text_reuse_weight() * max(dup, tpl), 3) + residual, 3)
+        w0 = self._weight(dup, tpl, 0.0)
+        w1 = self._weight(dup, tpl, coord)
+        assert w1 < w0
+        assert w0 - w1 == pytest.approx(
+            CONFIG.weight.penalty_coordinated * residual, abs=2e-4
+        )
+
+    @pytest.mark.parametrize("coord", [0.05, 0.29])
+    def test_residual_never_becomes_a_bonus(self, coord: float) -> None:
+        # C. malformed input: coordinated_probability smaller than the
+        # text-reuse share it should contain -> residual clamps to 0.
+        text_reuse = round(coordinated_text_reuse_weight() * 1.0, 3)
+        assert coord < text_reuse
+        assert self._weight(1.0, 1.0, coord) == self._weight(1.0, 1.0, 0.0)
+
+    def test_real_non_text_coordinated_evidence_still_charges(self) -> None:
+        # D. genuine event / peer / temporal coordination (Vermont has none of
+        # these, so the corpus alone cannot prove this path survives).
+        day = date(2026, 9, 2)
+        text = "Всё было идеально, обслуживание на высоте, рекомендую всем!"
+        reviews = [_review(f"r{i}", "p1", day, rating=5, text=text) for i in range(12)]
+        anomaly = RatingAnomalyEvent(
+            place_id="p1", date=day,
+            baseline_dist={r: 0.2 for r in range(1, 6)},
+            event_dist={5: 0.9, 4: 0.1},
+            jsd=0.4, dominant_shift="5-stars", score=100.0,
+        )
+        coord = coordinated_review_probabilities(
+            reviews,
+            burst_events=[_burst(day)],
+            rating_anomalies=[anomaly],
+            clusters=[_cluster([f"r{i}" for i in range(12)])],
+        )
+        assert all(v > 0.0 for v in coord.values())
+
+        w0 = compute_review_weights(reviews)
+        w1 = compute_review_weights(reviews, coordinated_probability=coord)
+        assert all(a > b for a, b in zip(w0, w1, strict=True))
+        assert w0[0] - w1[0] == pytest.approx(
+            CONFIG.weight.penalty_coordinated * coord["r0"], abs=2e-4
+        )
+
+        # ... and it still charges on top of full duplicate/templated reuse.
+        dup = {r.review_id: 1.0 for r in reviews}
+        tpl = {r.review_id: 1.0 for r in reviews}
+        residual = round(coord["r0"] - round(coordinated_text_reuse_weight() * 1.0, 3), 3)
+        assert residual > 0.0
+        wb = compute_review_weights(
+            reviews, duplicate_probability=dup, templated_probability=tpl
+        )
+        wf = compute_review_weights(
+            reviews,
+            duplicate_probability=dup,
+            templated_probability=tpl,
+            coordinated_probability=coord,
+        )
+        assert wb[0] - wf[0] == pytest.approx(
+            CONFIG.weight.penalty_coordinated * residual, abs=2e-4
+        )
 
 
 class TestCoordinatedProbabilities:

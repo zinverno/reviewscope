@@ -9,7 +9,10 @@
   happens to be published during a busy day gets a bounded probability.
 * **Review weight** (§22) — per-review weight in ``[weight_min, weight_max]``
   with a documented *derived* range: neutral evidence -> 1.0, best quality
-  and no penalties -> 2.0, worst penalties -> 0.25.
+  and no penalties -> 2.0, worst reachable penalties -> 0.31.  The configured
+  ``weight_min`` (0.25) stays as a safety clamp for malformed inputs; the
+  duplicate / templated / coordinated penalties are **not** independent — see
+  :func:`compute_review_weights` (Phase 17I, architecture E).
 * **Weighted rating** (§23) — per-place raw vs. weighted rating average with
   an explanation of the difference.
 
@@ -287,6 +290,20 @@ def coordinated_activity_score(
     )
 
 
+def coordinated_text_reuse_weight(config: CoordinatedConfig = CONFIG.coordinated) -> float:
+    """Coefficient the graded coordinated probability gives to text reuse.
+
+    Reads ``review_probability_components["duplicate_templated"]`` — the
+    single source of truth for how much of ``coordinated_probability`` is
+    built from duplicate/templated evidence.  Both
+    :func:`coordinated_review_probabilities` (which *charges* that share) and
+    :func:`compute_review_weights` (which *subtracts* it back out so the same
+    text reuse is never paid twice) must reach it through this helper, so a
+    configuration change can never silently de-synchronize the two paths.
+    """
+    return float(config.review_probability_components.get("duplicate_templated", 0.0))
+
+
 def coordinated_review_probabilities(
     reviews: list[NormalizedReview],
     burst_events: list | None = None,
@@ -298,15 +315,22 @@ def coordinated_review_probabilities(
 ) -> dict[str, float]:
     """Graded probability that each review participated in coordination.
 
-    Returns ``{review_id: 0..1}``.  Weights sum to 1.0
-    (``config.review_probability_components``):
+    Returns ``{review_id: 0..1}``.  Weights come from
+    ``config.review_probability_components`` and sum to 1.0:
 
     .. code-block:: text
 
-        p = 0.35 * event_participation
-          + 0.30 * duplicate_or_templated
-          + 0.20 * peer_semantic(event-window cluster overlap)
-          + 0.15 * temporal_density
+        p = w_event * event_participation                 (default 0.35)
+          + w_text  * duplicate_or_templated              (default 0.30)
+          + w_peer  * peer_semantic(event-window overlap) (default 0.20)
+          + w_temp  * temporal_density                    (default 0.15)
+
+    ``w_text`` is :func:`coordinated_text_reuse_weight` — the share of this
+    probability that is *duplicate/templated evidence*.
+    :func:`compute_review_weights` subtracts exactly that share before
+    charging the coordinated penalty, so text reuse is never counted twice
+    (Phase 17I, architecture E) while event / peer / temporal coordination
+    stays charged.
 
     Semantics (audit §22: "the review-level coordinated flag is a binary
     for engineered events; the weight penalty needs a graded probability"):
@@ -321,6 +345,7 @@ def coordinated_review_probabilities(
     """
     event_dates = _event_window_dates(burst_events, rating_anomalies)
     w = config.review_probability_components
+    text_reuse_weight = coordinated_text_reuse_weight(config)
 
     # ---- event participation: burst strength x rating agreement ----
     event_participation: dict[str, float] = {}
@@ -390,7 +415,7 @@ def coordinated_review_probabilities(
     for r in reviews:
         p = (
             w.get("event_participation", 0.0) * event_participation.get(r.review_id, 0.0)
-            + w.get("duplicate_templated", 0.0) * dup_tpl.get(r.review_id, 0.0)
+            + text_reuse_weight * dup_tpl.get(r.review_id, 0.0)
             + w.get("peer_semantic", 0.0) * peer_sem.get(r.review_id, 0.0)
             + w.get("temporal_density", 0.0) * temporal.get(r.review_id, 0.0)
         )
@@ -427,7 +452,7 @@ def compute_review_weights(
 ) -> list[float]:
     """Compute per-review weight in ``[weight_min, weight_max]``.
 
-    Formula (SPEC.md §22, remediation math):
+    Formula (SPEC.md §22, remediation math; Phase 17I architecture E):
 
     .. code-block:: text
 
@@ -437,18 +462,40 @@ def compute_review_weights(
                  + recency_factor      * w_recency (0..1)
 
         excess   = max(0, quality - neutral_quality)          (0..0.5)
+
+        text_reuse  = round(w_coord_text * max(duplicate_prob,
+                                               templated_prob), 3)
+        coord_resid = max(0, round(coordinated_prob - text_reuse, 3))
+
         penalty  = penalty_duplicate   * duplicate_prob
                  + penalty_templated   * templated_prob
-                 + penalty_coordinated * coordinated_prob     (0..1)
+                 + penalty_coordinated * coord_resid          (0..1)
 
         weight   = clamp(1.0 + rise_factor * excess - penalty,
                          weight_min, weight_max)
 
-    Derived range (verified by ``TestWeightFormula``):
-    * neutral quality 1.0 == ``neutral_quality`` and no penalties -> 1.0;
+    The three penalties are **not** independent: ``coordinated_prob`` already
+    embeds a ``w_coord_text`` share (= :func:`coordinated_text_reuse_weight`)
+    of the very same duplicate/templated evidence, so that share is subtracted
+    back out before the coordinated term is charged.  Text reuse is therefore
+    paid exactly once — duplicate and templated evidence directly, never again
+    through ``coord_resid`` — while coordinated evidence that is *not* text
+    reuse (event participation, peer semantics, temporal density) is charged
+    only through ``coord_resid``.  ``w_coord_text`` comes from the same
+    ``CoordinatedConfig`` entry that builds ``coordinated_prob``, so the two
+    paths cannot drift apart.
+
+    Rounding follows production semantics (Phase 17H): probabilities and the
+    residual are carried at 3 decimals, the final weight at 4.
+
+    Derived range (verified by ``TestReviewWeight``):
+    * neutral quality == ``neutral_quality`` and no penalties -> 1.0;
     * maximum quality (1.0) with no penalties -> ``weight_max``;
-    * all penalties at 1.0 -> ``weight_min``;
-    * the exact [``weight_min``, ``weight_max``] range is reachable.
+    * worst reachable penalties (duplicate = templated = coordinated = 1.0)
+      -> 1.0 - (penalty_duplicate + penalty_templated
+                + penalty_coordinated * (1 - w_coord_text)) = 0.31;
+    * ``weight_min`` (0.25) remains configured as a safety clamp for
+      malformed or out-of-range inputs — bounded probabilities cannot reach it.
 
     Component maps are keyed by ``review_id`` with values in 0..1
     (graded probabilities, not flags — audit §22).  Missing keys default to
@@ -457,6 +504,7 @@ def compute_review_weights(
     :func:`coordinated_review_probabilities`.
     """
     weights: list[float] = []
+    text_reuse_weight = coordinated_text_reuse_weight()
     for r in reviews:
         rid = r.review_id
         spec = (specificity_map or {}).get(rid, 0.0) / 100.0
@@ -471,10 +519,20 @@ def compute_review_weights(
             + config.weight_recency * rec
         )
         excess = max(0.0, quality - config.neutral_quality)
+        dup = (duplicate_probability or {}).get(rid, 0.0)
+        tpl = (templated_probability or {}).get(rid, 0.0)
+        coord = (coordinated_probability or {}).get(rid, 0.0)
+        # Architecture E: strip the duplicate/templated share the coordinated
+        # probability already carries, so it is charged only by the two
+        # text-reuse terms above; what is left is coordinated evidence of its
+        # own (event / peer / temporal).  Clamped at 0 so a malformed input
+        # can never turn the penalty into a bonus.
+        text_reuse = round(text_reuse_weight * max(dup, tpl), 3)
+        coord_residual = max(0.0, round(coord - text_reuse, 3))
         penalty = (
-            config.penalty_duplicate * (duplicate_probability or {}).get(rid, 0.0)
-            + config.penalty_templated * (templated_probability or {}).get(rid, 0.0)
-            + config.penalty_coordinated * (coordinated_probability or {}).get(rid, 0.0)
+            config.penalty_duplicate * dup
+            + config.penalty_templated * tpl
+            + config.penalty_coordinated * coord_residual
         )
         raw = 1.0 + config.rise_factor * excess - penalty
         w = max(config.weight_min, min(config.weight_max, raw))

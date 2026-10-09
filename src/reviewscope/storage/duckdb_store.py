@@ -14,8 +14,10 @@ lives in the same database file so a repeat run needs no re-computation.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import numpy as np
@@ -93,24 +95,44 @@ def _review_to_row(review: NormalizedReview) -> tuple:
     )
 
 
+def _is_missing(value: Any) -> bool:
+    """True for every way a value can signal "absent" coming out of pandas.
+
+    A SQL NULL in a *partially* populated VARCHAR column reaches pandas as
+    ``NaN`` under its ``str`` dtype, while a fully-NULL column arrives as
+    ``None``. Both mean the same thing here.
+    """
+    if value is None or value is pd.NA:
+        return True
+    return isinstance(value, float) and math.isnan(value)
+
+
+def _opt_str(value: Any) -> str | None:
+    return None if _is_missing(value) else str(value)
+
+
+def _opt_float(value: Any) -> float | None:
+    return None if _is_missing(value) else float(value)
+
+
 def _row_to_review(row: dict) -> NormalizedReview:
     return NormalizedReview(
         review_id=str(row["review_id"]),
         place_id=str(row["place_id"]),
-        place_name=row.get("place_name"),
-        place_category=row.get("place_category"),
+        place_name=_opt_str(row.get("place_name")),
+        place_category=_opt_str(row.get("place_category")),
         reviewer_id=str(row["reviewer_id"]),
-        reviewer_name=row.get("reviewer_name"),
-        rating=None if row.get("rating") is None else int(row["rating"]),
-        text=row.get("text"),
-        published_at=row.get("published_at"),
-        city=row.get("city"),
-        region=row.get("region"),
-        country=row.get("country"),
-        latitude=row.get("latitude"),
-        longitude=row.get("longitude"),
-        source=row.get("source"),
-        source_url=row.get("source_url"),
+        reviewer_name=_opt_str(row.get("reviewer_name")),
+        rating=None if _is_missing(row.get("rating")) else int(row["rating"]),
+        text=_opt_str(row.get("text")),
+        published_at=_opt_str(row.get("published_at")),
+        city=_opt_str(row.get("city")),
+        region=_opt_str(row.get("region")),
+        country=_opt_str(row.get("country")),
+        latitude=_opt_float(row.get("latitude")),
+        longitude=_opt_float(row.get("longitude")),
+        source=_opt_str(row.get("source")),
+        source_url=_opt_str(row.get("source_url")),
     )
 
 
@@ -125,11 +147,23 @@ class DuckDBStore:
     ) -> None:
         if con is not None:
             self._con = con
+        elif read_only and db_path is not None:
+            # Read-only must be a real DuckDB-level guarantee: it keeps the
+            # app from creating a stray file, writing a WAL sidecar or
+            # upserting embedding rows into a shared dataset.
+            path = Path(db_path)
+            if not path.exists():
+                raise FileNotFoundError(f"database not found (read-only): {path}")
+            self._con = duckdb.connect(str(path), read_only=True)
         else:
             try:
                 self._con = duckdb.connect(str(db_path) if db_path else ":memory:")
             except duckdb.Error:
                 raise
+        #: Filesystem path of the backing database, or ``None`` for an
+        #: in-memory / externally supplied connection. Callers use it as a
+        #: stable dataset identity (cache keys, dataset labelling).
+        self.db_path: str | None = str(db_path) if db_path is not None else None
         self.read_only = read_only
         self._owns_connection = con is None
         if not read_only:
@@ -189,7 +223,7 @@ class DuckDBStore:
                    MAX(published_at)     AS last_seen
             FROM reviews
             GROUP BY place_id, place_name, place_category, city, region, country
-            ORDER BY place_name
+            ORDER BY place_name, place_id
             """
         ).df()
 
@@ -230,7 +264,13 @@ class DuckDBStore:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         df = self._con.execute(sql, params).df()
-        df["published_at_dt"] = pd.to_datetime(df["published_at"], errors="coerce")
+        # format="ISO8601" parses per element instead of inferring one format
+        # from the first row. Without it a column whose values disagree on
+        # fractional precision -- e.g. a database written before
+        # normalize.format_published_at fixed the precision -- coerces the
+        # odd rows out to NaT, silently dropping those reviews from temporal
+        # analysis. Unparsable values still become NaT via errors="coerce".
+        df["published_at_dt"] = pd.to_datetime(df["published_at"], errors="coerce", format="ISO8601")
         return df
 
     def reviewers_for_place(self, place_id: str) -> list[str]:
@@ -273,8 +313,15 @@ class DuckDBStore:
         return result
 
     def store_cached_embeddings(self, rows: list[tuple[str, str, str, Iterable[float]]]) -> int:
-        """Upsert embedding cache rows: ``(review_id, text_hash, model_name, embedding)``."""
+        """Upsert embedding cache rows: ``(review_id, text_hash, model_name, embedding)``.
+
+        On a read-only store nothing is persisted: the caller keeps the vectors
+        in its in-process session cache, and the shared dataset file stays
+        untouched (public-demo servers must never be written to by visitors).
+        """
         if not rows:
+            return 0
+        if self.read_only:
             return 0
         prepared = [(r[0], r[1], r[2], list(r[3])) for r in rows]
         self._con.executemany(
@@ -286,6 +333,17 @@ class DuckDBStore:
 
     def cached_embedding_count(self) -> int:
         return int(self._con.execute("SELECT COUNT(*) FROM embeddings_cache").fetchone()[0])
+
+    def cached_embedding_keys(self) -> set[tuple[str, str, str]]:
+        """Every persisted cache key as ``(review_id, text_hash, model_name)``.
+
+        One scan instead of one probe per review: used by the public-demo
+        startup preflight to prove the packaged artifact is self-sufficient.
+        """
+        rows = self._con.execute(
+            "SELECT review_id, text_hash, model_name FROM embeddings_cache"
+        ).fetchall()
+        return {(str(a), str(b), str(c)) for a, b, c in rows}
 
     # -- misc -----------------------------------------------------------------
 

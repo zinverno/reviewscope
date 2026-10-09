@@ -1,0 +1,23 @@
+# ReviewScope — Streamlit Community Cloud runtime dependencies
+# See docs/DEPLOYMENT.md (install cost, Python version, troubleshooting).
+#
+# This file is the deployment lock: it installs the local package in editable
+# mode (src layout) and pins every dependency that the public demo touches.
+# Development tools (pytest, ruff) and the model backend
+# (sentence-transformers / torch) are intentionally absent: the demo reads
+# precomputed embeddings from the packaged dataset (demo/manifest.json).
+
+-e .
+
+# --- critical pins (verified on Python 3.12; see docs/DEPLOYMENT.md) ---
+streamlit==1.64.0
+pandas==3.0.6
+numpy==2.5.3
+duckdb==1.5.5
+scikit-learn==1.9.1
+scipy==1.18.1
+hdbscan==0.8.44
+rapidfuzz==3.14.6
+datasketch==2.0.0
+plotly==7.1.0
+pydantic==2.13.5

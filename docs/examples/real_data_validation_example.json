@@ -1,0 +1,1553 @@
+{
+  "generated_at": "2026-03-26T00:00:00+00:00",
+  "annotation_schema_version": "1.0",
+  "reporting_threshold": 65.0,
+  "no_calibration_disclaimer": "This report is a MEASUREMENT of the existing production ReviewScope detectors against human labels. No thresholds, weights or detector algorithms were modified to produce it. The templated decision threshold shown below is a reporting choice; the 0..100 sweep is descriptive sensitivity analysis and is NOT an optimised threshold.",
+  "dataset": {
+    "reviews_loaded": 22,
+    "distinct_places": 4,
+    "places": [
+      "p-coffee",
+      "p-hotel",
+      "p-rest",
+      "p-shawarma"
+    ],
+    "fingerprint": "v1|22|4|a92e2e8945f168ce|9d5e8d8a7c4251d0|sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "embedding_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "metric_definitions": {
+      "templated": "Confusion matrix, precision = TP/(TP+FP), recall = TP/(TP+FN), F1, FPR = FP/(FP+TN), FNR = FN/(FN+TP) at the reporting threshold (default 65, matching the production templated signal cut). 'uncertain' human labels are excluded from binary metrics and counted separately.",
+      "specificity": "Score distributions by human label; Spearman rank correlation between the human ordinal label (low=0/medium=1/high=2) and the ReviewScope specificity score; descriptive cross-tab with the production confidence bands (LOW<40, 40<=MEDIUM<65, HIGH>=65). No band mapping is invented.",
+      "duplicate": "PRIMARY: pair-level precision/recall/F1 (GT pairs = pairs of reviews sharing a human duplicate_group_id; predicted pairs = pairs inside ReviewScope duplicate groups, restricted to labeled reviews). SECONDARY (descriptive): Jaccard>=0.5 group matching whose split/merge ambiguity is documented. The two are never blended."
+    }
+  },
+  "label_coverage": {
+    "total_label_records": 22,
+    "matched_to_dataset": 22,
+    "unmatched_review_ids": [],
+    "by_label": {
+      "templated_label": {
+        "templated": 8,
+        "organic": 11,
+        "uncertain": 3
+      },
+      "template_group_id": {
+        "set": 8
+      },
+      "specificity_label": {
+        "low": 10,
+        "high": 4,
+        "medium": 7,
+        "uncertain": 1
+      },
+      "duplicate_label": {
+        "duplicate": 13,
+        "unique": 8,
+        "uncertain": 1
+      },
+      "sample_type": {
+        "evaluation": 10,
+        "challenge": 12
+      },
+      "sampling_stratum": {
+        "random": 10,
+        "high": 3,
+        "duplicate": 4,
+        "low": 5
+      }
+    },
+    "n_template_groups_annotated": 8,
+    "sample_type_counts": {
+      "evaluation": 10,
+      "challenge": 12
+    }
+  },
+  "evaluation": {
+    "label_count": 10,
+    "representative": true,
+    "templated": {
+      "confusion": {
+        "threshold": 65.0,
+        "tp": 3,
+        "fp": 0,
+        "tn": 6,
+        "fn": 1,
+        "n_reference_positive": 4,
+        "n_reference_negative": 6,
+        "excluded_uncertain_and_missing": 0,
+        "precision": 1.0,
+        "recall": 0.75,
+        "f1": 0.8571,
+        "fpr": 0.0,
+        "fnr": 0.25
+      },
+      "sweep": [
+        {
+          "threshold": 0.0,
+          "precision": 0.4,
+          "recall": 1.0,
+          "f1": 0.5714,
+          "support": 10
+        },
+        {
+          "threshold": 5.0,
+          "precision": 0.4,
+          "recall": 1.0,
+          "f1": 0.5714,
+          "support": 10
+        },
+        {
+          "threshold": 10.0,
+          "precision": 0.4444,
+          "recall": 1.0,
+          "f1": 0.6154,
+          "support": 10
+        },
+        {
+          "threshold": 15.0,
+          "precision": 0.5,
+          "recall": 0.75,
+          "f1": 0.6,
+          "support": 10
+        },
+        {
+          "threshold": 20.0,
+          "precision": 0.6,
+          "recall": 0.75,
+          "f1": 0.6667,
+          "support": 10
+        },
+        {
+          "threshold": 25.0,
+          "precision": 0.6,
+          "recall": 0.75,
+          "f1": 0.6667,
+          "support": 10
+        },
+        {
+          "threshold": 30.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 35.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 40.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 45.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 50.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 55.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 60.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 65.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 70.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 75.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 80.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 85.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 90.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 95.0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "support": 10
+        },
+        {
+          "threshold": 100.0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 10
+        }
+      ],
+      "score_distribution_organic": {
+        "n": 6,
+        "min": 7.0,
+        "p25": 14.2,
+        "median": 15.6,
+        "mean": 17.38,
+        "p75": 25.1,
+        "p95": 28.1,
+        "max": 28.1
+      },
+      "score_distribution_templated": {
+        "n": 4,
+        "min": 14.2,
+        "p25": 96.7,
+        "median": 96.7,
+        "mean": 76.08,
+        "p75": 96.7,
+        "p95": 96.7,
+        "max": 96.7
+      },
+      "n_reference_organic": 6,
+      "n_reference_templated": 4,
+      "n_excluded_uncertain": 0
+    },
+    "specificity": {
+      "distributions_by_human_label": {
+        "high": {
+          "n": 3,
+          "min": 27.5,
+          "p25": 27.5,
+          "median": 82.0,
+          "mean": 67.17,
+          "p75": 92.0,
+          "p95": 92.0,
+          "max": 92.0
+        },
+        "low": {
+          "n": 5,
+          "min": 12.5,
+          "p25": 12.5,
+          "median": 12.5,
+          "mean": 27.2,
+          "p75": 12.5,
+          "p95": 86.0,
+          "max": 86.0
+        },
+        "medium": {
+          "n": 2,
+          "min": 60.0,
+          "p25": 60.0,
+          "median": 82.0,
+          "mean": 71.0,
+          "p75": 82.0,
+          "p95": 82.0,
+          "max": 82.0
+        }
+      },
+      "spearman_human_ordinal_vs_score": 0.6095,
+      "crosstab_human_vs_production_band": {
+        "LOW": {
+          "low": 4,
+          "medium": 0,
+          "high": 1
+        },
+        "MEDIUM": {
+          "low": 0,
+          "medium": 1,
+          "high": 0
+        },
+        "HIGH": {
+          "low": 1,
+          "medium": 1,
+          "high": 2
+        }
+      },
+      "n_ordinal_pair": 10,
+      "near_band_disagreements": 1,
+      "far_band_disagreements": 2,
+      "far_band_examples": [
+        {
+          "human_label": "high",
+          "production_band": "LOW",
+          "count": 1
+        },
+        {
+          "human_label": "low",
+          "production_band": "HIGH",
+          "count": 1
+        }
+      ]
+    },
+    "duplicate": {
+      "definitions": {
+        "primary": "pair-level: precision = TP/(TP+FP), recall = TP/(TP+FN), where TP/FP/FN are unordered review pairs inside human duplicate groups (ground truth) vs pairs inside ReviewScope duplicate groups (predicted), restricted to labeled reviews.",
+        "secondary": "group-level Jaccard>=0.5 match between a human group and a ReviewScope group. Descriptive only: split/merge ambiguity makes group matching inexact; it is never blended with pair-level numbers."
+      },
+      "pair_metrics": {
+        "tp_pairs": 3,
+        "fp_pairs": 0,
+        "fn_pairs": 1,
+        "known_duplicate_pairs_recovered": 3,
+        "known_duplicate_pairs_total": 4,
+        "missed_duplicate_pairs": 1,
+        "false_positive_pairs": 0,
+        "precision": 1.0,
+        "recall": 0.75,
+        "f1": 0.8571
+      },
+      "group_metrics_secondary": {
+        "n_human_groups": 3,
+        "n_predicted_groups": 3,
+        "recovered_human_groups": 1,
+        "missed_human_groups": 2,
+        "missed_human_group_ids": [
+          "group_0",
+          "group_1"
+        ],
+        "matched_predicted_groups": 3,
+        "unmatched_predicted_groups": 0,
+        "pct_human_groups_recovered_jaccard_0_5": 0.3333,
+        "pct_predicted_groups_matched_jaccard_0_5": 1.0
+      },
+      "excluded_uncertain_or_inconsistent": 0,
+      "warnings": []
+    },
+    "templated_disagreement_count": 1,
+    "sample_note": "Representative: deterministic simple random sample; headline population metrics are reported from this partition only."
+  },
+  "challenge": {
+    "label_count": 12,
+    "representative": false,
+    "templated": {
+      "confusion": {
+        "threshold": 65.0,
+        "tp": 3,
+        "fp": 1,
+        "tn": 4,
+        "fn": 1,
+        "n_reference_positive": 4,
+        "n_reference_negative": 5,
+        "excluded_uncertain_and_missing": 3,
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75,
+        "fpr": 0.2,
+        "fnr": 0.25
+      },
+      "sweep": [
+        {
+          "threshold": 0.0,
+          "precision": 0.4444,
+          "recall": 1.0,
+          "f1": 0.6154,
+          "support": 9
+        },
+        {
+          "threshold": 5.0,
+          "precision": 0.4444,
+          "recall": 1.0,
+          "f1": 0.6154,
+          "support": 9
+        },
+        {
+          "threshold": 10.0,
+          "precision": 0.4444,
+          "recall": 1.0,
+          "f1": 0.6154,
+          "support": 9
+        },
+        {
+          "threshold": 15.0,
+          "precision": 0.4286,
+          "recall": 0.75,
+          "f1": 0.5455,
+          "support": 9
+        },
+        {
+          "threshold": 20.0,
+          "precision": 0.4286,
+          "recall": 0.75,
+          "f1": 0.5455,
+          "support": 9
+        },
+        {
+          "threshold": 25.0,
+          "precision": 0.4286,
+          "recall": 0.75,
+          "f1": 0.5455,
+          "support": 9
+        },
+        {
+          "threshold": 30.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 35.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 40.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 45.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 50.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 55.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 60.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 65.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 70.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 75.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 80.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 85.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 90.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 95.0,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "support": 9
+        },
+        {
+          "threshold": 100.0,
+          "precision": null,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 9
+        }
+      ],
+      "score_distribution_organic": {
+        "n": 5,
+        "min": 11.0,
+        "p25": 25.1,
+        "median": 26.0,
+        "mean": 37.38,
+        "p75": 28.1,
+        "p95": 96.7,
+        "max": 96.7
+      },
+      "score_distribution_templated": {
+        "n": 4,
+        "min": 14.3,
+        "p25": 96.7,
+        "median": 96.7,
+        "mean": 76.1,
+        "p75": 96.7,
+        "p95": 96.7,
+        "max": 96.7
+      },
+      "n_reference_organic": 5,
+      "n_reference_templated": 4,
+      "n_excluded_uncertain": 3
+    },
+    "specificity": {
+      "distributions_by_human_label": {
+        "high": {
+          "n": 1,
+          "min": 100.0,
+          "p25": 100.0,
+          "median": 100.0,
+          "mean": 100.0,
+          "p75": 100.0,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        "low": {
+          "n": 5,
+          "min": 12.5,
+          "p25": 12.5,
+          "median": 12.5,
+          "mean": 12.5,
+          "p75": 12.5,
+          "p95": 12.5,
+          "max": 12.5
+        },
+        "medium": {
+          "n": 5,
+          "min": 27.5,
+          "p25": 27.5,
+          "median": 33.0,
+          "mean": 41.6,
+          "p75": 60.0,
+          "p95": 60.0,
+          "max": 60.0
+        },
+        "uncertain": {
+          "n": 1,
+          "min": 60.0,
+          "p25": 60.0,
+          "median": 60.0,
+          "mean": 60.0,
+          "p75": 60.0,
+          "p95": 60.0,
+          "max": 60.0
+        }
+      },
+      "spearman_human_ordinal_vs_score": 0.9535,
+      "crosstab_human_vs_production_band": {
+        "LOW": {
+          "low": 5,
+          "medium": 3,
+          "high": 0
+        },
+        "MEDIUM": {
+          "low": 0,
+          "medium": 2,
+          "high": 0
+        },
+        "HIGH": {
+          "low": 0,
+          "medium": 0,
+          "high": 1
+        }
+      },
+      "n_ordinal_pair": 11,
+      "near_band_disagreements": 3,
+      "far_band_disagreements": 0,
+      "far_band_examples": []
+    },
+    "duplicate": {
+      "definitions": {
+        "primary": "pair-level: precision = TP/(TP+FP), recall = TP/(TP+FN), where TP/FP/FN are unordered review pairs inside human duplicate groups (ground truth) vs pairs inside ReviewScope duplicate groups (predicted), restricted to labeled reviews.",
+        "secondary": "group-level Jaccard>=0.5 match between a human group and a ReviewScope group. Descriptive only: split/merge ambiguity makes group matching inexact; it is never blended with pair-level numbers."
+      },
+      "pair_metrics": {
+        "tp_pairs": 3,
+        "fp_pairs": 4,
+        "fn_pairs": 1,
+        "known_duplicate_pairs_recovered": 3,
+        "known_duplicate_pairs_total": 4,
+        "missed_duplicate_pairs": 1,
+        "false_positive_pairs": 4,
+        "precision": 0.4286,
+        "recall": 0.75,
+        "f1": 0.5455
+      },
+      "group_metrics_secondary": {
+        "n_human_groups": 4,
+        "n_predicted_groups": 3,
+        "recovered_human_groups": 1,
+        "missed_human_groups": 3,
+        "missed_human_group_ids": [
+          "group_0",
+          "group_1",
+          "group_2"
+        ],
+        "matched_predicted_groups": 3,
+        "unmatched_predicted_groups": 0,
+        "pct_human_groups_recovered_jaccard_0_5": 0.25,
+        "pct_predicted_groups_matched_jaccard_0_5": 1.0
+      },
+      "excluded_uncertain_or_inconsistent": 1,
+      "warnings": []
+    },
+    "templated_disagreement_count": 2,
+    "sample_note": "Diagnostic only: score/duplicate-enriched challenge sample. These numbers are NOT representative of population performance and MUST NOT be quoted as headline precision/recall/F1/FPR/FNR."
+  },
+  "unattributed": {
+    "note": "Labels without a sample_type and not present in the supplied selection file. Excluded from both representative evaluation and challenge diagnostics.",
+    "count": 0
+  },
+  "disagreements": [
+    {
+      "review_id": "c07",
+      "kind": "duplicate_false_positive",
+      "human_label": "unique",
+      "reviewscope_result": "duplicate group p-coffee|g1",
+      "reviewscope_score": 7,
+      "signals": [],
+      "counter_signals": [],
+      "text": "Отличное место, всё понравилось, рекомендую всем!",
+      "notes": "Reads personal to me despite similarity.",
+      "sample_type": "challenge",
+      "sampling_stratum": "duplicate"
+    },
+    {
+      "review_id": "r03",
+      "kind": "duplicate_false_positive",
+      "human_label": "unique",
+      "reviewscope_result": "duplicate group p-rest|g1",
+      "reviewscope_score": 3,
+      "signals": [],
+      "counter_signals": [],
+      "text": "Вкусно, быстро, недорого. Берём бизнес-ланч почти каждый день!",
+      "notes": "",
+      "sample_type": "challenge",
+      "sampling_stratum": "duplicate"
+    },
+    {
+      "review_id": "r04",
+      "kind": "duplicate_missed_group",
+      "human_label": "duplicate",
+      "reviewscope_result": "unique",
+      "reviewscope_score": 0.0,
+      "signals": [],
+      "counter_signals": [],
+      "text": "Паста карбонара с гуанчиале, соус не пересушен. Порция большая, взяли на двоих с бокалом кьянти за 1900 рублей.",
+      "notes": "My partner's review is nearly the same.",
+      "sample_type": "evaluation",
+      "sampling_stratum": "random"
+    },
+    {
+      "review_id": "n01",
+      "kind": "duplicate_missed_group",
+      "human_label": "duplicate",
+      "reviewscope_result": "unique",
+      "reviewscope_score": 0.0,
+      "signals": [],
+      "counter_signals": [],
+      "text": "Очень вкусная шаурма, готовят быстро, соус фирменный.",
+      "notes": "Same wording with small changes.",
+      "sample_type": "challenge",
+      "sampling_stratum": "duplicate"
+    },
+    {
+      "review_id": "n02",
+      "kind": "duplicate_missed_group",
+      "human_label": "duplicate",
+      "reviewscope_result": "unique",
+      "reviewscope_score": 0.0,
+      "signals": [],
+      "counter_signals": [],
+      "text": "Шаурма вкусная, делают быстро, соус особенный.",
+      "notes": "Same wording with small changes.",
+      "sample_type": "challenge",
+      "sampling_stratum": "low"
+    },
+    {
+      "review_id": "h02",
+      "kind": "specificity_far_human_high",
+      "human_label": "high",
+      "reviewscope_result": "LOW specificity",
+      "reviewscope_score": 27.5,
+      "signals": [],
+      "counter_signals": [
+        "no numeric detail",
+        "low entity density",
+        "very short text"
+      ],
+      "text": "Отличный отель, чисто и уютно.",
+      "notes": "",
+      "sample_type": "evaluation",
+      "sampling_stratum": "random"
+    },
+    {
+      "review_id": "c08",
+      "kind": "specificity_far_human_low",
+      "human_label": "low",
+      "reviewscope_result": "HIGH specificity",
+      "reviewscope_score": 86.0,
+      "signals": [
+        "contains concrete numbers/time references",
+        "contains specific long-word entities",
+        "identifies involved staff/persons",
+        "narrative event description"
+      ],
+      "counter_signals": [],
+      "text": "Взяла фильтр Эфиопия Гуджи на V60, бариста Аня рассказала про лот и дескрипторы. Кислотность цитрусовая, послевкусие чайное, 300 мл за 350 рублей.",
+      "notes": "Very detailed but I still think it is part of a paid campaign.",
+      "sample_type": "evaluation",
+      "sampling_stratum": "random"
+    },
+    {
+      "review_id": "c08",
+      "kind": "templated_false_negative",
+      "human_label": "templated",
+      "reviewscope_result": "organic",
+      "reviewscope_score": 14.2,
+      "signals": [
+        "stylistically uniform with group",
+        "reviews published in narrow time window"
+      ],
+      "counter_signals": [
+        "textually distinct from peers",
+        "high unique detail density"
+      ],
+      "text": "Взяла фильтр Эфиопия Гуджи на V60, бариста Аня рассказала про лот и дескрипторы. Кислотность цитрусовая, послевкусие чайное, 300 мл за 350 рублей.",
+      "notes": "Very detailed but I still think it is part of a paid campaign.",
+      "sample_type": "evaluation",
+      "sampling_stratum": "random"
+    },
+    {
+      "review_id": "r02",
+      "kind": "templated_false_negative",
+      "human_label": "templated",
+      "reviewscope_result": "organic",
+      "reviewscope_score": 14.3,
+      "signals": [
+        "stylistically uniform with group",
+        "reviews published in narrow time window"
+      ],
+      "counter_signals": [
+        "textually distinct from peers",
+        "high unique detail density"
+      ],
+      "text": "Вкусно, быстро, недорого. Берём бизнес-ланч почти каждый день.",
+      "notes": "Repeated short lunch review.",
+      "sample_type": "challenge",
+      "sampling_stratum": "low"
+    },
+    {
+      "review_id": "c07",
+      "kind": "templated_false_positive",
+      "human_label": "organic",
+      "reviewscope_result": "templated",
+      "reviewscope_score": 96.7,
+      "signals": [
+        "high fraction of near-identical peer reviews",
+        "repeated generic phrases across reviews",
+        "high structural similarity with peers",
+        "low specificity (generic language)",
+        "few unique details vs the review cohort",
+        "stylistically uniform with group",
+        "reviews published in narrow time window"
+      ],
+      "counter_signals": [],
+      "text": "Отличное место, всё понравилось, рекомендую всем!",
+      "notes": "Reads personal to me despite similarity.",
+      "sample_type": "challenge",
+      "sampling_stratum": "duplicate"
+    }
+  ],
+  "score_distributions": {
+    "note": "Aggregated over all labeled reviews. If the challenge sample is present this mix is intentionally score-biased and must not be read as a population distribution.",
+    "templated_score_human_organic": {
+      "n": 11,
+      "min": 7.0,
+      "p25": 14.2,
+      "median": 25.1,
+      "mean": 26.47,
+      "p75": 28.1,
+      "p95": 96.7,
+      "max": 96.7
+    },
+    "templated_score_human_templated": {
+      "n": 8,
+      "min": 14.2,
+      "p25": 96.7,
+      "median": 96.7,
+      "mean": 76.09,
+      "p75": 96.7,
+      "p95": 96.7,
+      "max": 96.7
+    },
+    "specificity_score_by_human_label": {
+      "high": {
+        "n": 4,
+        "min": 27.5,
+        "p25": 82.0,
+        "median": 92.0,
+        "mean": 75.38,
+        "p75": 100.0,
+        "p95": 100.0,
+        "max": 100.0
+      },
+      "low": {
+        "n": 10,
+        "min": 12.5,
+        "p25": 12.5,
+        "median": 12.5,
+        "mean": 19.85,
+        "p75": 12.5,
+        "p95": 86.0,
+        "max": 86.0
+      },
+      "medium": {
+        "n": 7,
+        "min": 27.5,
+        "p25": 27.5,
+        "median": 60.0,
+        "mean": 50.0,
+        "p75": 60.0,
+        "p95": 82.0,
+        "max": 82.0
+      },
+      "uncertain": {
+        "n": 1,
+        "min": 60.0,
+        "p25": 60.0,
+        "median": 60.0,
+        "mean": 60.0,
+        "p75": 60.0,
+        "p95": 60.0,
+        "max": 60.0
+      }
+    }
+  },
+  "uncertain_labels": {
+    "templated_uncertain": 3,
+    "specificity_uncertain": 1,
+    "duplicate_uncertain": 1,
+    "note": "Uncertain labels are always reported with their own count and are never forced into a binary bucket for headline metrics."
+  },
+  "limitations": [
+    "This is a measurement baseline, produced before any calibration. If a detector performs poorly on real data, that is the finding to report, not a reason to retune thresholds during Phase 15.",
+    "Templated and duplicate scores are cohort-relative: they depend on the reviews of the same place in the FULL dataset. Scores are always computed on the full imported dataset and never recomputed on a sample; sampling only selects which reviews get labeled.",
+    "Threshold fitting on this dataset would leak into future evaluations: validation data must stay out of any calibration, training or test-tuning loop (see docs/REAL_DATA_VALIDATION.md for the train/calibration/test leakage risk).",
+    "Specificity ordinal agreement is descriptive (Spearman) only; no scientifically justified band mapping exists, so none is fabricated.",
+    "A challenge sample is present: challenge numbers are diagnostic only and deliberately score-stratified; they overstate detector performance relative to the population and must not be reported as headline metrics."
+  ],
+  "label_warnings": [],
+  "unmatched_review_ids": [],
+  "raw_metrics": {
+    "dataset": {
+      "reviews_loaded": 22,
+      "distinct_places": 4,
+      "places": [
+        "p-coffee",
+        "p-hotel",
+        "p-rest",
+        "p-shawarma"
+      ],
+      "fingerprint": "v1|22|4|a92e2e8945f168ce|9d5e8d8a7c4251d0|sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "embedding_model_name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "metric_definitions": {
+        "templated": "Confusion matrix, precision = TP/(TP+FP), recall = TP/(TP+FN), F1, FPR = FP/(FP+TN), FNR = FN/(FN+TP) at the reporting threshold (default 65, matching the production templated signal cut). 'uncertain' human labels are excluded from binary metrics and counted separately.",
+        "specificity": "Score distributions by human label; Spearman rank correlation between the human ordinal label (low=0/medium=1/high=2) and the ReviewScope specificity score; descriptive cross-tab with the production confidence bands (LOW<40, 40<=MEDIUM<65, HIGH>=65). No band mapping is invented.",
+        "duplicate": "PRIMARY: pair-level precision/recall/F1 (GT pairs = pairs of reviews sharing a human duplicate_group_id; predicted pairs = pairs inside ReviewScope duplicate groups, restricted to labeled reviews). SECONDARY (descriptive): Jaccard>=0.5 group matching whose split/merge ambiguity is documented. The two are never blended."
+      }
+    },
+    "label_coverage": {
+      "total_label_records": 22,
+      "matched_to_dataset": 22,
+      "unmatched_review_ids": [],
+      "by_label": {
+        "templated_label": {
+          "templated": 8,
+          "organic": 11,
+          "uncertain": 3
+        },
+        "template_group_id": {
+          "set": 8
+        },
+        "specificity_label": {
+          "low": 10,
+          "high": 4,
+          "medium": 7,
+          "uncertain": 1
+        },
+        "duplicate_label": {
+          "duplicate": 13,
+          "unique": 8,
+          "uncertain": 1
+        },
+        "sample_type": {
+          "evaluation": 10,
+          "challenge": 12
+        },
+        "sampling_stratum": {
+          "random": 10,
+          "high": 3,
+          "duplicate": 4,
+          "low": 5
+        }
+      },
+      "n_template_groups_annotated": 8,
+      "sample_type_counts": {
+        "evaluation": 10,
+        "challenge": 12
+      }
+    },
+    "evaluation": {
+      "label_count": 10,
+      "representative": true,
+      "templated": {
+        "confusion": {
+          "threshold": 65.0,
+          "tp": 3,
+          "fp": 0,
+          "tn": 6,
+          "fn": 1,
+          "n_reference_positive": 4,
+          "n_reference_negative": 6,
+          "excluded_uncertain_and_missing": 0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571,
+          "fpr": 0.0,
+          "fnr": 0.25
+        },
+        "sweep": [
+          {
+            "threshold": 0.0,
+            "precision": 0.4,
+            "recall": 1.0,
+            "f1": 0.5714,
+            "support": 10
+          },
+          {
+            "threshold": 5.0,
+            "precision": 0.4,
+            "recall": 1.0,
+            "f1": 0.5714,
+            "support": 10
+          },
+          {
+            "threshold": 10.0,
+            "precision": 0.4444,
+            "recall": 1.0,
+            "f1": 0.6154,
+            "support": 10
+          },
+          {
+            "threshold": 15.0,
+            "precision": 0.5,
+            "recall": 0.75,
+            "f1": 0.6,
+            "support": 10
+          },
+          {
+            "threshold": 20.0,
+            "precision": 0.6,
+            "recall": 0.75,
+            "f1": 0.6667,
+            "support": 10
+          },
+          {
+            "threshold": 25.0,
+            "precision": 0.6,
+            "recall": 0.75,
+            "f1": 0.6667,
+            "support": 10
+          },
+          {
+            "threshold": 30.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 35.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 40.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 45.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 50.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 55.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 60.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 65.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 70.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 75.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 80.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 85.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 90.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 95.0,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571,
+            "support": 10
+          },
+          {
+            "threshold": 100.0,
+            "precision": null,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 10
+          }
+        ],
+        "score_distribution_organic": {
+          "n": 6,
+          "min": 7.0,
+          "p25": 14.2,
+          "median": 15.6,
+          "mean": 17.38,
+          "p75": 25.1,
+          "p95": 28.1,
+          "max": 28.1
+        },
+        "score_distribution_templated": {
+          "n": 4,
+          "min": 14.2,
+          "p25": 96.7,
+          "median": 96.7,
+          "mean": 76.08,
+          "p75": 96.7,
+          "p95": 96.7,
+          "max": 96.7
+        },
+        "n_reference_organic": 6,
+        "n_reference_templated": 4,
+        "n_excluded_uncertain": 0
+      },
+      "specificity": {
+        "distributions_by_human_label": {
+          "high": {
+            "n": 3,
+            "min": 27.5,
+            "p25": 27.5,
+            "median": 82.0,
+            "mean": 67.17,
+            "p75": 92.0,
+            "p95": 92.0,
+            "max": 92.0
+          },
+          "low": {
+            "n": 5,
+            "min": 12.5,
+            "p25": 12.5,
+            "median": 12.5,
+            "mean": 27.2,
+            "p75": 12.5,
+            "p95": 86.0,
+            "max": 86.0
+          },
+          "medium": {
+            "n": 2,
+            "min": 60.0,
+            "p25": 60.0,
+            "median": 82.0,
+            "mean": 71.0,
+            "p75": 82.0,
+            "p95": 82.0,
+            "max": 82.0
+          }
+        },
+        "spearman_human_ordinal_vs_score": 0.6095,
+        "crosstab_human_vs_production_band": {
+          "LOW": {
+            "low": 4,
+            "medium": 0,
+            "high": 1
+          },
+          "MEDIUM": {
+            "low": 0,
+            "medium": 1,
+            "high": 0
+          },
+          "HIGH": {
+            "low": 1,
+            "medium": 1,
+            "high": 2
+          }
+        },
+        "n_ordinal_pair": 10,
+        "near_band_disagreements": 1,
+        "far_band_disagreements": 2,
+        "far_band_examples": [
+          {
+            "human_label": "high",
+            "production_band": "LOW",
+            "count": 1
+          },
+          {
+            "human_label": "low",
+            "production_band": "HIGH",
+            "count": 1
+          }
+        ]
+      },
+      "duplicate": {
+        "definitions": {
+          "primary": "pair-level: precision = TP/(TP+FP), recall = TP/(TP+FN), where TP/FP/FN are unordered review pairs inside human duplicate groups (ground truth) vs pairs inside ReviewScope duplicate groups (predicted), restricted to labeled reviews.",
+          "secondary": "group-level Jaccard>=0.5 match between a human group and a ReviewScope group. Descriptive only: split/merge ambiguity makes group matching inexact; it is never blended with pair-level numbers."
+        },
+        "pair_metrics": {
+          "tp_pairs": 3,
+          "fp_pairs": 0,
+          "fn_pairs": 1,
+          "known_duplicate_pairs_recovered": 3,
+          "known_duplicate_pairs_total": 4,
+          "missed_duplicate_pairs": 1,
+          "false_positive_pairs": 0,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571
+        },
+        "group_metrics_secondary": {
+          "n_human_groups": 3,
+          "n_predicted_groups": 3,
+          "recovered_human_groups": 1,
+          "missed_human_groups": 2,
+          "missed_human_group_ids": [
+            "group_0",
+            "group_1"
+          ],
+          "matched_predicted_groups": 3,
+          "unmatched_predicted_groups": 0,
+          "pct_human_groups_recovered_jaccard_0_5": 0.3333,
+          "pct_predicted_groups_matched_jaccard_0_5": 1.0
+        },
+        "excluded_uncertain_or_inconsistent": 0,
+        "warnings": []
+      },
+      "templated_disagreement_count": 1,
+      "sample_note": "Representative: deterministic simple random sample; headline population metrics are reported from this partition only."
+    },
+    "challenge": {
+      "label_count": 12,
+      "representative": false,
+      "templated": {
+        "confusion": {
+          "threshold": 65.0,
+          "tp": 3,
+          "fp": 1,
+          "tn": 4,
+          "fn": 1,
+          "n_reference_positive": 4,
+          "n_reference_negative": 5,
+          "excluded_uncertain_and_missing": 3,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75,
+          "fpr": 0.2,
+          "fnr": 0.25
+        },
+        "sweep": [
+          {
+            "threshold": 0.0,
+            "precision": 0.4444,
+            "recall": 1.0,
+            "f1": 0.6154,
+            "support": 9
+          },
+          {
+            "threshold": 5.0,
+            "precision": 0.4444,
+            "recall": 1.0,
+            "f1": 0.6154,
+            "support": 9
+          },
+          {
+            "threshold": 10.0,
+            "precision": 0.4444,
+            "recall": 1.0,
+            "f1": 0.6154,
+            "support": 9
+          },
+          {
+            "threshold": 15.0,
+            "precision": 0.4286,
+            "recall": 0.75,
+            "f1": 0.5455,
+            "support": 9
+          },
+          {
+            "threshold": 20.0,
+            "precision": 0.4286,
+            "recall": 0.75,
+            "f1": 0.5455,
+            "support": 9
+          },
+          {
+            "threshold": 25.0,
+            "precision": 0.4286,
+            "recall": 0.75,
+            "f1": 0.5455,
+            "support": 9
+          },
+          {
+            "threshold": 30.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 35.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 40.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 45.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 50.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 55.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 60.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 65.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 70.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 75.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 80.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 85.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 90.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 95.0,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1": 0.75,
+            "support": 9
+          },
+          {
+            "threshold": 100.0,
+            "precision": null,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 9
+          }
+        ],
+        "score_distribution_organic": {
+          "n": 5,
+          "min": 11.0,
+          "p25": 25.1,
+          "median": 26.0,
+          "mean": 37.38,
+          "p75": 28.1,
+          "p95": 96.7,
+          "max": 96.7
+        },
+        "score_distribution_templated": {
+          "n": 4,
+          "min": 14.3,
+          "p25": 96.7,
+          "median": 96.7,
+          "mean": 76.1,
+          "p75": 96.7,
+          "p95": 96.7,
+          "max": 96.7
+        },
+        "n_reference_organic": 5,
+        "n_reference_templated": 4,
+        "n_excluded_uncertain": 3
+      },
+      "specificity": {
+        "distributions_by_human_label": {
+          "high": {
+            "n": 1,
+            "min": 100.0,
+            "p25": 100.0,
+            "median": 100.0,
+            "mean": 100.0,
+            "p75": 100.0,
+            "p95": 100.0,
+            "max": 100.0
+          },
+          "low": {
+            "n": 5,
+            "min": 12.5,
+            "p25": 12.5,
+            "median": 12.5,
+            "mean": 12.5,
+            "p75": 12.5,
+            "p95": 12.5,
+            "max": 12.5
+          },
+          "medium": {
+            "n": 5,
+            "min": 27.5,
+            "p25": 27.5,
+            "median": 33.0,
+            "mean": 41.6,
+            "p75": 60.0,
+            "p95": 60.0,
+            "max": 60.0
+          },
+          "uncertain": {
+            "n": 1,
+            "min": 60.0,
+            "p25": 60.0,
+            "median": 60.0,
+            "mean": 60.0,
+            "p75": 60.0,
+            "p95": 60.0,
+            "max": 60.0
+          }
+        },
+        "spearman_human_ordinal_vs_score": 0.9535,
+        "crosstab_human_vs_production_band": {
+          "LOW": {
+            "low": 5,
+            "medium": 3,
+            "high": 0
+          },
+          "MEDIUM": {
+            "low": 0,
+            "medium": 2,
+            "high": 0
+          },
+          "HIGH": {
+            "low": 0,
+            "medium": 0,
+            "high": 1
+          }
+        },
+        "n_ordinal_pair": 11,
+        "near_band_disagreements": 3,
+        "far_band_disagreements": 0,
+        "far_band_examples": []
+      },
+      "duplicate": {
+        "definitions": {
+          "primary": "pair-level: precision = TP/(TP+FP), recall = TP/(TP+FN), where TP/FP/FN are unordered review pairs inside human duplicate groups (ground truth) vs pairs inside ReviewScope duplicate groups (predicted), restricted to labeled reviews.",
+          "secondary": "group-level Jaccard>=0.5 match between a human group and a ReviewScope group. Descriptive only: split/merge ambiguity makes group matching inexact; it is never blended with pair-level numbers."
+        },
+        "pair_metrics": {
+          "tp_pairs": 3,
+          "fp_pairs": 4,
+          "fn_pairs": 1,
+          "known_duplicate_pairs_recovered": 3,
+          "known_duplicate_pairs_total": 4,
+          "missed_duplicate_pairs": 1,
+          "false_positive_pairs": 4,
+          "precision": 0.4286,
+          "recall": 0.75,
+          "f1": 0.5455
+        },
+        "group_metrics_secondary": {
+          "n_human_groups": 4,
+          "n_predicted_groups": 3,
+          "recovered_human_groups": 1,
+          "missed_human_groups": 3,
+          "missed_human_group_ids": [
+            "group_0",
+            "group_1",
+            "group_2"
+          ],
+          "matched_predicted_groups": 3,
+          "unmatched_predicted_groups": 0,
+          "pct_human_groups_recovered_jaccard_0_5": 0.25,
+          "pct_predicted_groups_matched_jaccard_0_5": 1.0
+        },
+        "excluded_uncertain_or_inconsistent": 1,
+        "warnings": []
+      },
+      "templated_disagreement_count": 2,
+      "sample_note": "Diagnostic only: score/duplicate-enriched challenge sample. These numbers are NOT representative of population performance and MUST NOT be quoted as headline precision/recall/F1/FPR/FNR."
+    }
+  }
+}

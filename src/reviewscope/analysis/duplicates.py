@@ -62,7 +62,17 @@ class _UnionFind:
 
 @dataclass
 class DuplicateGroup:
-    """A connected group of near-identical reviews."""
+    """A connected component of detected pair relationships (SPEC.md §11, §29).
+
+    Merging is done with Union-Find over the four detected pair levels, so the
+    group is defined by *connectivity*, not by mutual similarity: A–B and B–C
+    place A, B and C in one group even when A–C itself never passed any
+    threshold.  ``edges`` records the pairs that were actually detected, which
+    is what makes that distinction observable to a reader.
+
+    Every field below is derived output of the same detection run; storing the
+    edge list changes no threshold, no pair classification and no membership.
+    """
 
     group_id: int
     review_ids: list[str]
@@ -73,6 +83,12 @@ class DuplicateGroup:
     avg_similarity: float = 0.0
     signals: list[str] = field(default_factory=list)
     counter_signals: list[str] = field(default_factory=list)
+    #: Directly detected links inside this group, sorted by ``(a, b)``:
+    #: ``(review_id_a, review_id_b, kind, score)`` where kind is one of
+    #: ``exact`` / ``fuzzy`` / ``near`` / ``semantic``.  Pairs that are only
+    #: connected *through* a third member are deliberately absent.  Empty for
+    #: groups rebuilt from a stored payload that never carried edge detail.
+    edges: list[tuple[str, str, str, float]] = field(default_factory=list)
 
 
 def _normalize_text(text: str | None) -> str:
@@ -289,9 +305,8 @@ class DuplicateDetector:
         # Exact pairs always take precedence (they are the strongest signal).
         for key, score in exact_pairs.items():
             uf.union(*key)
-            if key not in pair_scores or score >= pair_scores[key]:
-                pair_scores[key] = score
-                pair_types[key] = "exact"
+            pair_scores[key] = score
+            pair_types[key] = "exact"
 
         # 5. Build groups
         components: dict[int, list[int]] = {}
@@ -312,6 +327,7 @@ class DuplicateDetector:
             semantic = 0
             exact_pairs_in_group = 0
             pair_sims: list[float] = []
+            edge_rows: list[tuple[str, str, str, float]] = []
             for a in members:
                 for b in members:
                     if a >= b:
@@ -329,6 +345,10 @@ class DuplicateDetector:
                     elif kind == "semantic":
                         semantic += 1
                     pair_sims.append(pair_scores[key])
+                    edge_rows.append(
+                        (reviews[a].review_id, reviews[b].review_id, kind, pair_scores[key])
+                    )
+            edge_rows.sort()
             avg = float(np.mean(pair_sims)) if pair_sims else 0.0
             signals = []
             if exact >= 2:
@@ -347,6 +367,7 @@ class DuplicateDetector:
                     semantic_count=semantic,
                     avg_similarity=round(avg, 4),
                     signals=signals,
+                    edges=edge_rows,
                 )
             )
         groups.sort(key=lambda g: (len(g.review_ids), g.avg_similarity), reverse=True)

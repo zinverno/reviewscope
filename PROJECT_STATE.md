@@ -477,3 +477,508 @@ Results (AFTER, full metric, 1 058 reviews):
 - tests: 169 passed (was 151), Ruff clean;
 - data rebuilt: CSV/JSON 1 058 valid, DuckDB 1 058 re-ingested;
 - README 1 051 -> 1 058; AUDIT_REPORT.md added.
+
+---
+
+## Phase 15 — Real-Data Validation Framework
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ / smoke verified ✅
+
+Files changed:
+- `src/reviewscope/validation/` — new package: `models.py` (label/selection schema),
+  `loader.py` (tolerant dataset/label I/O), `sampling.py` (deterministic
+  evaluation + challenge selection), `scoring.py` (production detectors over a
+  full dataset + fingerprint-gated store), `metrics.py` (templated / specificity
+  / duplicate metrics + disagreements), `report.py` (Markdown + JSON report),
+  `annotation.py` (DuckDB annotation store)
+- `app_labeling.py` — **new** blind human-labeling Streamlit app
+- `scripts/validation_sample.py`, `scripts/validation_report.py` — **new** stage
+  1/3 CLIs
+- `tests/test_validation_models.py`, `test_validation_loader.py`,
+  `test_validation_sampling.py`, `test_validation_scoring.py`,
+  `test_validation_metrics.py`, `test_validation_report.py`,
+  `test_validation_annotation.py`, `tests/test_app_labeling_smoke.py` — new tests
+
+Implementation notes:
+- Measurement only: orchestrates the exact production detectors
+  (`TemplatedTextScorer`, `DuplicateDetector`, `specificity_score`) per place;
+  no detector logic, threshold or weight is duplicated or changed.
+- Two partitions kept strictly apart: representative evaluation SRS (headline
+  metrics) vs score/duplicate-stratified challenge (diagnostic only).
+- `sample_selection.json` is score-free to preserve annotator blindness.
+- Bugs found and fixed during verification: `scoring._write_metadata` needed
+  `CREATE TABLE IF NOT EXISTS`; `metrics.specificity_metrics` crosstab keyed by
+  lowercase human labels + `_specificity_near_far` adjacency; `report._partition_block`
+  projected to 2-tuples before metrics; `loader.read_labels` omits missing
+  columns; `sampling.Selection` field renamed to `fingerprint`.
+
+Command results:
+- `pytest -o addopts="" -q` — **239 passed**, 0 failed
+- Phase 15 subset (`tests/test_validation_*.py tests/test_app_labeling_smoke.py`)
+  — **70 passed**
+- `ruff check .` — All checks passed
+
+Requirements completed:
+- Score a real dataset with production detectors; deterministic evaluation +
+  challenge sampling; blind annotation app; score/label/sample join; Markdown +
+  JSON report with confusion metrics, specificity agreement and duplicate
+  pair metrics; documented limitations and no-calibration disclaimer.
+
+---
+
+## Phase 15.1 — Validation Hardening
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ / smoke verified ✅
+
+Files changed:
+- `.gitignore` — ignore `validation_data/` plus the common private artifact names
+  (`annotations.duckdb`, `labels.csv`, `score_table.json`,
+  `sample_selection.json`, `validation_report.md`, `validation_report.json`)
+- `src/reviewscope/validation/annotation.py` — batch lifecycle: OPEN/FINALIZED
+  singleton row, `finalize`, `batch_metadata`, `batch_status`, `is_finalized`,
+  `verify_fingerprint`, revision-archiving overrides, `BatchFinalizedError` /
+  `FingerprintMismatchError`
+- `src/reviewscope/validation/loader.py` — `load_selection_header` (exposes the
+  score-free top-level fingerprint/seed without loading entries)
+- `app_labeling.py` — batch status caption, read-only locked view for finalized
+  batches, in-app finalize button bound to the dataset fingerprint
+- `scripts/validation_finalize.py` — **new** lock-the-batch CLI
+- `scripts/generate_example_report.py` — **new** offline, model-free example
+  generator (fixed `generated_at`, `use_embeddings=False`)
+- `tests/data/fixtures/example_reviews.csv`,
+  `tests/data/fixtures/example_labels.csv` — public synthetic fixture
+- `docs/REAL_DATA_VALIDATION.md` — full protocol (privacy, pipeline, schema,
+  sampling, blindness, finalization/fingerprint, metrics, leakage risk)
+- `docs/examples/real_data_validation_example.md` / `.json` — committed example
+  report (regenerated deterministically; byte-identical across runs)
+- `README.md` — Phase 15 section linking the docs and the privacy rule
+- `tests/test_validation_annotation.py` — finalization/lock/revision/fingerprint
+  tests; `tests/test_validation_loader.py` — selection-header test;
+  `tests/test_app_labeling_smoke.py` — finalized-batch lock smoke test
+
+Implementation notes:
+- Once FINALIZED, `save_label` raises unless `override=True`; overrides archive
+  the superseded verdict in `annotation_revisions` rather than destroying
+  provenance.
+- A stored dataset fingerprint can never be replaced by a different one;
+  `verify_fingerprint` rejects reports built against a mutated dataset.
+- Fixture is fully synthetic; the example report is generated offline with the
+  text-bigram fallback (no model download) and a pinned timestamp.
+
+Command results:
+- `pytest -o addopts="" -q` — **248 passed**, 0 failed (0:06:00)
+- `ruff check .` — All checks passed
+- `python scripts/generate_example_report.py` — 22 reviews / 22 labels;
+  evaluation templated TP=3 FP=0 TN=6 FN=1; 10 disagreements; deterministic
+  (identical md5 on re-run)
+- `python scripts/validation_finalize.py` — OPEN -> FINALIZED, then refuses
+  re-finalization without `--force`
+- `git check-ignore` confirms `validation_data/` and the private artifact names
+  are ignored; `git diff --check` clean
+
+Requirements completed:
+- Private validation data cannot be committed accidentally
+- Annotation batch is explicitly OPEN/FINALIZED; finalization persists
+  `finalized_at`, `annotator_id`, dataset fingerprint and label count; overrides
+  are revision-archived
+- Docs, README link, public example and PROJECT_STATE are in place
+- No production detector, threshold, weight, demo generator or main UI change
+
+---
+
+## Phase 16 — Dataset-level Discover page
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ / real-corpus smoke verified ✅
+
+Files added:
+- `src/reviewscope/discovery/__init__.py` — public API (`build_dataset_summary`,
+  `get_dataset_summary`, `clear_dataset_cache`, `dataset_cache_info`,
+  `DatasetSummary`, `DatasetCapabilities`, `RankingSection`, `filter_places`,
+  `ranking_sections`, `category_summary`, `display_places_frame`,
+  `display_category_frame`, `DISPLAY_COLUMNS`, `NOT_AVAILABLE`, `source_badge`,
+  `dataset_identity`)
+- `src/reviewscope/discovery/summary.py` — capability detection, per-place
+  aggregation, filters, descriptive rankings, category medians/quartiles,
+  identity-keyed in-process + on-disk cache
+- `src/reviewscope/ui/discover.py` — the Discover page
+- `tests/test_discover.py` — 53 unit + AppTest tests
+
+Files changed:
+- `app.py` — `Discover` registered and dispatched as page 2
+- `src/reviewscope/ui/common.py` — `PAGE_ORDER`, explicit widget keys,
+  `apply_pending_navigation`, `open_place`
+- `src/reviewscope/ui/__init__.py` — exports `render_discover_page`
+- `src/reviewscope/storage/duckdb_store.py` — `db_path` attribute (cache identity)
+- `src/reviewscope/ui/duplicates.py` — **pre-existing crash fix**: the
+  "Minimum group size" slider got `min_value == max_value == 2` for places
+  whose largest repeated-text group has 2 reviews, which Streamlit rejects
+- `tests/test_app_smoke.py` — `Discover` in the all-pages smoke run and in the
+  place-selection regression; new Duplicates group-of-two regression test;
+  new dataset-summary smoke test
+
+Implementation notes:
+- Every Discover number is a read-only projection of the existing production
+  per-place `AnalysisEngine.analyze()` result. No detector, threshold, weight,
+  formula or embedding was touched; a failing place becomes an `N/A` row
+  instead of zeros, and the count of such places is shown as a warning.
+- Missing evidence is stated before results: capability notes come from the raw
+  review fields only (no detector run), so they are valid even when the
+  expensive pass fails. Coordinated activity is not ranked when the dataset has
+  no publication timestamps; the per-place score stays on Overview.
+- Ranking wording is strictly descriptive (highest/lowest/most/largest) and the
+  page repeats that a place can top both a "most 5★" and a "lowest specificity"
+  list. An unavailable ranking renders a note instead of a table — the module
+  also empties such frames so no caller can render one by accident.
+- Duplicate rate reuses the Overview definition (reviews in repeated-text
+  groups of 3+ / place reviews); templated high count reuses
+  `CONFIG.templated.high_threshold`; the rating delta is the difference of the
+  two ratings the row displays, the same derivation as the Overview verdict
+  line (corrected during the consistency audit — see below).
+- Category comparison uses medians and quartiles of place-level values (no
+  opaque category score) and always covers the whole dataset; only the
+  comparison table and the ranking cards follow the active filters.
+- Caching: identity = resolved DB path + size + `mtime_ns` + embedding model; an in-process dict
+  plus a JSON sidecar under `RS_CACHE_DIR` or `XDG_CACHE_HOME`
+  (`reviewscope/discovery-cache/`), cache-version-stamped and rewritten after a
+  live build. `RS_DISCOVERY_DISK_CACHE=0` disables the sidecar. Cached values
+  never contain review text — only aggregates.
+- Navigation: `open_place` writes a pending place + page before the sidebar
+  widgets exist, so the deferred selection is applied on the next run; the
+  existing place-selection regression test now walks through Discover.
+
+Consistency audit (pre-commit, real corpus — every check re-run on all 190
+places, plus 12 places compared page-to-page through the rendered app):
+- Totals tie out: 10,454 reviews in the DB = sum of per-place `review_count`;
+  190 ids = 190 analysed places, 0 failures; `total_categories` = 25 distinct
+  stored `place_category` values; the per-place `review_count` sum equals the
+  dataset total.
+- Per-place values verified against the production `AnalyzedPlace` objects for
+  all 190 places: review/reviewer counts, raw and weighted ratings, display
+  duplicate rate, largest group, topic-cluster count, templated
+  min/median/max/high-count, 1★/5★ shares and specificity min/median/mean —
+  no mismatch.
+- UI-to-UI (Discover vs Overview vs Duplicates) for 12 named places: reviews,
+  reviewers, raw/weighted ratings, duplicate rate, group count and largest group
+  agree everywhere. Базар: Discover/Overview 15.0%, Duplicates "Share of place
+  reviews" 20.0% — different group floors (3+ vs 2+), not a mismatch.
+- **Correction 1 — rating delta.** `rating_delta`/`abs_rating_delta` reused
+  the production `details["delta"]`, which production computes *before*
+  rounding raw/weighted to 2 decimals, so a row's "Raw − weighted" could differ
+  from the two ratings printed in the same row (165/190 rows differed at stored
+  precision, 48/190 at display precision). Discover now derives the delta from
+  the displayed pair, matching the Overview verdict line; the finer-grained
+  production delta stays on the place Overview under technical details.
+  After the fix: 0/190 rows differ.
+- **Correction 2 — duplicate-group scope.** `duplicate_group_count` counts all
+  detected groups (2+), which is exactly the Duplicates page's "Repeated-text
+  groups", but the adjacent "Dup groups" label invited reading it as the count
+  behind the 3+ rate. The column is now `Dup groups (2+)`, the ranking card and
+  the Methodology block state the two floors explicitly, and the underlying
+  value is unchanged. Regression test builds a place with a group of 3 and a
+  pair and pins both readings.
+- Two apparent findings were investigated and dismissed as non-bugs: the
+  live vs on-disk cache frames are byte-identical (`places`/`categories`
+  `.equals()` is `True`, same `RangeIndex`, same dtypes) — the earlier mismatch
+  was an artifact of the audit script's own `set_index`; and `place_id` vs
+  `place_name` counts (190 vs 182) are eight genuinely shared venue names, not
+  a join error.
+- The 25-vs-10 category difference is a definition difference, not a bug: the
+  exploration manifest groups 10 generation-side target categories, while the DB
+  stores the organisation's primary rubric string. The 10 manifest groups
+  partition 10,454 reviews and 190 orgs, so the manifest is not a per-row
+  `place_category` mapping.
+
+Command results:
+- `pytest` — **332 passed**, 0 failed (see audit run)
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+- `tests/test_discover.py` — 53 passed; `tests/test_app_smoke.py` — 10 passed
+
+Real-corpus verification (`validation_data/private/yandex_geo_2023/exploration/
+exploration_analysis.duckdb`, 10,454 reviews / 190 place ids / 182 distinct
+names / 25 categories):
+- Cold build 38.9–44.8 s (190 places, 0 failures); in-process warm 0.0001 s;
+  fresh-process warm from the on-disk sidecar 0.09 s
+- Full-app AppTest on the real DB: no exceptions, warnings or errors; 12
+  dataframes; place drill-down to Overview and all other pages keep the
+  selected place
+- Aggregate facts: 0 dated reviews, 0 coordinates, 10,454 distinct reviewers
+  (0 with history in more than one place), 60 places with repeated-text groups,
+  27 places with semantic topic clusters, 0 places with a templated score
+  ≥ 65 (dataset max 62.5, median 25.7)
+- Highest duplicate rate: Базар 15.0% (largest group 6), Авиапарк 10.5%
+  (largest group 9); highest templated text: Остров мечты 62.5; largest
+  specificity spread between shopping centres (median 60.0) and hotels
+  (median 78.0)
+
+Requirements completed:
+- Dataset-level view of where review evidence sits, with descriptive rankings
+  and category context, and no accusatory wording
+- Missing evidence rendered as `N/A` with an explanation; coordinated activity
+  gated on temporal capability
+- Cached dataset identity so the page is usable on a 10k-review corpus
+- No change to any detector, threshold, weight, formula or embedding
+
+## Phase 17G — Repeated-text family semantics (§29)
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ /
+real-corpus verified ✅ / no commit made (report-only phase)
+
+`DuplicateGroup` has always been a **connected component** of detected
+pairwise links (exact / fuzzy / near / semantic), but the product never said
+so — cards read as if every member were similar to every other member. Phase
+17G changes *presentation only*: it makes the UI accurately describe what a
+group is.
+
+Not changed: duplicate pair thresholds, the four detectors, connected-component
+grouping, scoring, embeddings, the corpus, rating logic, the score JSON
+payload, and group membership.
+
+Files changed:
+- `src/reviewscope/analysis/duplicates.py` — `DuplicateGroup` gained one
+  read-only `edges: list[tuple[str, str, str, float]]` field (a, b, kind,
+  score), populated in the existing pair loop and sorted. Everything else
+  (links, kind breakdown, possible pairs, density, transitivity, weakest link)
+  is derived from it in the UI. Detector output verified byte-for-byte
+  identical against the pre-change canonical snapshot.
+- `src/reviewscope/ui/duplicates.py` — rewritten around pure helpers
+  (`FamilyStructure`, `interpretation`, `member_evidence`, `member_labels`,
+  `rating_context`, `rating_line`): page header “Repeated-text families”,
+  verbatim connected-component caption, `N direct links of M possible pairs`,
+  **Contains transitive connections** when fewer than half of all pairs link,
+  a “Relationship evidence” expander, rating alignment shown as separate
+  non-deciding context, and “near-copies”/“across the family” withheld unless
+  every possible pair is linked.
+- `src/reviewscope/discovery/summary.py`, `src/reviewscope/ui/discover.py` —
+  *Families (2+)*, *Largest family*, *Largest repeated-text families*,
+  *Places with repeated-text families*, plus a methodology bullet defining a
+  family as a connected component.
+- `src/reviewscope/ui/common.py` — attribute tag now “in a repeated-text
+  family of N”.
+
+Tests:
+- `tests/test_transitive_family.py` (new, 29 tests): A–B–C synthetic chain
+  forms one family with 2 of 3 possible links; transitive indication on/off;
+  direct size-2 family never marked transitive; exact family; mixed
+  lexical+semantic family; member evidence lists only direct links; copy
+  never claims all-pair similarity; rating context is descriptive and ratings
+  do not change membership; edge-less groups render “not stored” rather than
+  zeros; AppTest rendering of the transitive label and terminology.
+- Presentation fixtures updated (labels only): `tests/test_discover.py`,
+  `tests/test_app_smoke.py`.
+
+Command results:
+- `pytest` — **419 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+
+Real-corpus verification (Vermont rich corpus, 21,831 reviews / 250 places):
+- Canonical detector snapshot before vs after: **byte-for-byte identical**
+  (611 families, 1,793 reviews, 250 places)
+- 611 families: 367 direct size-2 (60.1%), 186 transitive (30.4%), 58 fully
+  connected (9.5%), 27 structural chain-heavy (density < 0.50)
+- Largest family: 19 reviews, 56 of 171 pairs linked (density 0.327)
+- 1,663 links: 62 exact / 33 fuzzy / 34 near / 1,534 semantic; 95 families
+  (15.5%) carry at least one lexical link
+- Phase 17F aggregates reproduce exactly: 199 families with a below-threshold
+  pair, 47 majority-below, 186 transitively added
+- Reports (gitignored): `validation_data/private/google_local_vermont/
+  phase17g_snapshot.py`, `phase17g_verify.py`, `phase17g_verification.md`
+
+## Phase 18 — Case Investigation Workspace (§30)
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ /
+real-corpus verified ✅ / no commit made (report-only phase)
+
+The repeated-text family cards (§29) show one detection result; you could not
+move from a specific family to its members. Phase 18 adds a **Case
+Investigation Workspace** — a sub-view of the Duplicates page reachable from a
+family card, from the Discover "Investigate family" action, or from a pending
+resume prompt. It lets you:
+
+- inspect each member (reviewer, rating, published date, full text),
+- see the family as a row-and-column relationship matrix whose coloured cells
+  are the *actual detected pairs* (`kind` + score, e.g. "identical text",
+  "semantic similarity 0.98"),
+- select a member and read exactly which **direct links** the detector stored
+  for it (`N of M`), with the member summary kept in sync as you switch across
+  the two member selectors,
+- see the connected-component caption and transitive note per member context.
+
+Not changed: detector thresholds / the four detectors, connected-component
+grouping, scoring, embeddings, the corpus, rating logic, the score JSON
+payload, group membership, page routing (`app.py` unchanged), and
+`src/reviewscope/analysis/duplicates.py` untouched.
+
+Files changed:
+- `src/reviewscope/ui/investigate.py` (new) — the workspace module: pure
+  helpers (`family_identity`, `family_options`, `option_label`, `kind_phrase`,
+  `member_frame`, `relationship_frame`, `_largest_family_size` gating),
+  session-state operations (open / clear / dataset-invalidity fallback /
+  `begin_family_investigation`), and rendering (`render_resume_bar`,
+  `maybe_render_workspace`, `_render_members`, `_render_inspector`,
+  `_render_relationships`). A family identity is member-based and
+  group-id-independent: `"<place_id>::" + ",".join(sorted(review_ids))`.
+  Selection is kept in session state across page navigation and dropped on
+  dataset or place change.
+- `src/reviewscope/ui/duplicates.py` — `_KIND_LABELS` renamed to
+  `KIND_LABELS`, `_group_stats` to `group_stats` (annotation corrected), plus
+  a shared `family_summary_block` used by both card and workspace; every
+  family card now has an "Open investigation workspace" button; a resume bar
+  ("Investigation in progress") offers Resume / Clear after backing out; the
+  workspace is dispatched through `maybe_render_workspace` after the group
+  list. A lazy import keeps the investigate↔duplicates module cycle out of the
+  import graph.
+- `src/reviewscope/ui/discover.py` — `_focus_controls` gained a fourth,
+  gated action "Investigate family" (disabled when the focused place has no
+  families) that selects the largest family (size desc, then avg similarity
+  desc, then identity) and jumps to its workspace on the Duplicates page.
+
+Tests:
+- `tests/test_investigate.py` (new, 45 tests): unit coverage for the identity
+  and label helpers, members/relationship table builders and the largest-family
+  gate; AppTest coverage for opening the workspace from a card and from
+  Discover, inspector text sync across both member selectors, switching
+  families in-place, back/clear/resume flows, a synthetic transitive chain
+  (A–B, B–C with A–C unlinked, rendered "—"), edge-less families rendering as
+  "not stored", dataset-switch invalidation, and copy staying neutral (no
+  fraud/manipulation claims). Module-scoped fixtures reuse cached embeddings
+  so no model compute is needed per test.
+
+Command results:
+- `pytest` — **478 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+
+Real-corpus verification (Vermont rich corpus, 21,831 reviews / 250 places):
+- 611 families across 250 places → **611 unique identities** (no key
+  collisions across re-analysis and re-computation)
+- A fresh `DuplicateDetector` run on the largest family's place reproduces the
+  exact same family identity (member-based, order-independent)
+- Member and relationship tables consistent with `DuplicateGroup.edges`: every
+  edge's endpoints belong to the family, member direct-link counts sum to
+  2×edges (each pair counted at both endpoints), and the matrix exists with
+  shape `(n, n)` for every family carrying edges
+- Largest family: 19 reviews at place
+  `0x89e0248b97f8bf0b:0xeb95aa7083f3afc1`, 56 of 171 pairs linked; option
+  label "19 reviews (A–S) · 56 direct links · similarity 0.92"
+- AppTest boot with the workspace pre-opened on that place: 19-row member
+  table, 19×19 relationship matrix, zero exceptions and zero Streamlit
+  warnings (verified)
+- Semantic scores for identical text pairs may exceed 1.0 by a floating-point
+  epsilon (≤ ~2.4e-7); pre-existing detector behaviour, renders as "1.00".
+
+## Phase 18.1 — UX-grade investigation workspace (§30)
+
+Status: implemented ✅ / unit tested ✅ / integration verified ✅ /
+real-corpus verified ✅ / no commit made (report-only phase)
+
+Phase 18 was functional but table-heavy: members, a matrix and a plain-text
+inspector, no way to see *which pairs are linked*. Phase 18.1 turns the
+workspace into a visual tool:
+
+- **Relationship graph** — the family as a force-directed node/edge diagram.
+  Nodes are the family reviews; edges are **only the stored detector pairs**
+  (one trace per detection level present: "identical text" solid blue, "fuzzy
+  match" dashed green, "near duplicate" dotted amber, "semantic similarity"
+  long-dashed violet). No A–C edge appears just because A–B and B–C are
+  linked; geometry is purely for display and never invents pairs.
+- **Selection sync** — a "Selected review" + "Compare with" selectbox pair
+  (state keys `investigation_member`, `investigation_comparison`) drives the
+  graph highlight (selected = gold star, size 26; direct neighbours = blue
+  circles, size 16; everyone else size 11) and the side-by-side card below.
+- **Side-by-side comparison** — two bordered member cards; the caption states
+  the stored relationship between the two (`direct links of N-1 possible`),
+  including an explicit "no direct detector relationship was recorded" cue.
+  Default comparison target is the first direct neighbour (else first member).
+- **Compact safe text** — `render_review_text` escapes Markdown specials and
+  collapses newlines, so full review text renders as a card rather than a raw
+  text area; reviews longer than 280 chars preview with a "Show full text"
+  expander. `st.text_area` is gone.
+- **Info hierarchy** — `### Family summary` (Reviews / Distinct reviewers /
+  Direct links "X of Y" / Link density + interpretation line + transitive
+  note), `### Relationship graph` (+ "Graph data as a table" expander with
+  per-member `N of M` evidence bullets), `### Side-by-side comparison`,
+  `### Family members`, and a "Technical details" expander (links by detection
+  level, relationship matrix, diagnostics, family definition).
+- **Neutral copy** — `interpretation()` gained a semantic-only branch:
+  complete families say "Strong semantic similarity was detected between
+  directly linked reviews.", otherwise "…along the family's direct links.";
+  the pairing caption never claims an unlinked pair is duplicate text.
+
+State (§6) is preserved across navigation and reset consistently: family
+switch and Clear pop both `investigation_member` and
+`investigation_comparison`; compare resets to default when it equals the
+selected member or leaves the family.
+
+Not changed: detector thresholds / detectors, connected-component grouping,
+scoring, embeddings, corpus, rating logic, score JSON payload, group
+membership, page routing (`app.py`), and
+`src/reviewscope/analysis/duplicates.py` untouched.
+
+Files changed:
+- `src/reviewscope/ui/investigate.py` — pure helpers added (`escape_review_text`,
+  `render_review_text`, `edges_frame`, `direct_neighbors`, `node_positions`,
+  `default_comparison`, `_graph_kind_styles`, `build_graph_figure`);
+  session-state ops pop the comparison key; renderers split into
+  `_render_summary`, `_render_graph_section`, `_render_pair_comparison`,
+  `_render_member_card`, `_render_members`, `_render_technical_details`;
+  `TEXT_KEY` removed, `COMPARE_KEY = "investigation_comparison"` and
+  `GRAPH_KEY = "family_ws_graph"` added.
+- `src/reviewscope/ui/duplicates.py` — `interpretation` gained the semantic-only
+  wording branch (UI copy only).
+- `tests/test_investigate_ux.py` (new, 25 tests) — compact-text escaping,
+  graph geometry determinism/order-invariance, one line trace per detection
+  level present, on-screen edge counts (6-exact and 2-semantic fixtures),
+  selected/neighbour marker sizes and star/gold styling, selection-sync
+  defaults + compare reset + family-switch reset, precise language (a
+  semantic chain never renders "near-copies of each other"), summary metrics
+  and technical details. `tests/test_investigate.py` and
+  `tests/test_transitive_family.py` updated for the new copy/controls.
+
+A notable bug found by real-corpus verification: the first force-directed
+layout diverged to `nan` on the 19-node family (large attractive pulls with no
+damping). Replaced with a bounded Fruchterman-Ringold embedder (simultaneous
+moves, cooled displacement cap, coordinates clamped and normalised to
+[0.08, 0.92]²) plus a regression test for a dense 19-node synthetic family.
+
+Command results:
+- `pytest` — **503 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean
+
+Real-corpus verification (Vermont rich corpus, largest family, 19 reviews /
+56 edges at `0x89e0248b97f8bf0b:0xeb95aa7083f3afc1`):
+- Layout finite and inside the unit square; 56 line segments and 19 node
+  markers draw in the AppTest spec; legend carries only the kinds present
+  ("identical text", "semantic similarity")
+- Summary metrics: Reviews 19 · Distinct reviewers 19 · Direct links "56 of
+  171" · Link density 33%; selected defaults to a member, compare to a direct
+  neighbour; marker sizes [26, 16×neighbours, 11×rest] correct
+- Zero exceptions, zero crashes across boot → navigate → workspace (~13 s
+  warm)
+
+Phase 18.1 polish (post-review):
+- **Evidence-aware family labels** — the card and workspace title now names
+  the detection levels actually stored: "Semantic similarity family"
+  (semantic-only), "Repeated-text family" (lexical-only), "Mixed similarity
+  family" (both); a family rebuilt without its edge list falls back to the
+  neutral term. Detector results, membership and identities unchanged.
+- **Compact deterministic layouts** — two members render side by side
+  (horizontal), three form an open V with the middle member at the point (so
+  a 3-node A–C–B chain draws exactly two edges and never looks like one
+  continuous line); ≥4 members keep the bounded force-directed layout.
+  2–3-member graphs use a shorter figure height (300 vs 460).
+- **Fewer methodological repetitions** — one concise caption sits by the
+  graph; the edge list / per-member evidence moved into a collapsed expander;
+  duplicated evidence and definition captions removed from the technical
+  details expander.
+- Tests: `tests/test_investigate_ux.py` added `TestFamilyLabels` and layout
+  tests (side-by-side two-member, open-V three-member, V point on screen,
+  compact height); `tests/test_transitive_family.py` pinned the new semantic
+  card title.
+
+Command results:
+- `pytest` — **515 passed**, 0 failed
+- `ruff check .` — All checks passed
+- `git diff --check` — clean

@@ -11,8 +11,13 @@ dist/
 venv/
 env/
 
-# Streamlit / runtime state
-.streamlit/
+# Streamlit / runtime state (config.toml is committed; secrets never are)
+.streamlit/*
+!.streamlit/config.toml
+
+# Packaged public-demo artifact is tracked on purpose; local builds may
+# leave a WAL sidecar behind.
+demo/*.duckdb.wal
 
 # Data (generated at runtime)
 data/*.csv
@@ -38,3 +43,17 @@ htmlcov/
 
 # Reports
 smoke_out/SPEC.md
+
+# Real-world validation data (PRIVATE — never commit real datasets, labels or
+# reports). Public synthetic fixtures live under tests/data/fixtures/ instead.
+validation_data/
+annotations.duckdb
+labels.csv
+score_table.json
+sample_selection.json
+validation_report.md
+validation_report.json
+
+# Local agent skills installed from project environment
+.agents/skills/
+.claude/skills/

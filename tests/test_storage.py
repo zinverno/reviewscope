@@ -91,6 +91,85 @@ class TestDuckDBStore:
         store.close()
 
 
+class TestNullHandling:
+    """A SQL NULL must read back as None, not as a pandas NaN.
+
+    Regression: a NULL in a *partially* populated VARCHAR column reaches pandas
+    as float NaN under its ``str`` dtype, and passing that straight into
+    ``city: str | None`` raised a pydantic ValidationError that made
+    ``fetch_reviews`` unusable on any corpus with a nullable city or region.
+    """
+
+    @staticmethod
+    def _store_with_nulls() -> DuckDBStore:
+        from reviewscope.models.review import NormalizedReview
+
+        store = DuckDBStore()
+        reviews = [
+            NormalizedReview(
+                review_id="r-1",
+                place_id="p-1",
+                place_name="With City",
+                place_category="cafe",
+                reviewer_id="u-1",
+                rating=5,
+                text="A review that carries a city.",
+                published_at="2024-05-01T10:00:00",
+                city="Rutland",
+                region="VT",
+                latitude=43.61,
+                longitude=-72.96,
+            ),
+            NormalizedReview(
+                review_id="r-2",
+                place_id="p-1",
+                place_name="No City",
+                place_category="cafe",
+                reviewer_id="u-2",
+                rating=4,
+                text="A review whose address could not be parsed.",
+                published_at="2024-06-01T10:00:00",
+                city=None,
+                region=None,
+                latitude=None,
+                longitude=None,
+            ),
+        ]
+        store.ingest(reviews)
+        return store
+
+    def test_partially_null_string_columns_roundtrip(self) -> None:
+        store = self._store_with_nulls()
+        try:
+            fetched = {r.review_id: r for r in store.fetch_reviews()}
+        finally:
+            store.close()
+        assert set(fetched) == {"r-1", "r-2"}
+        assert fetched["r-2"].city is None
+        assert fetched["r-2"].region is None
+        assert fetched["r-1"].city == "Rutland"
+        assert fetched["r-1"].region == "VT"
+
+    def test_partially_null_coordinates_roundtrip(self) -> None:
+        store = self._store_with_nulls()
+        try:
+            fetched = {r.review_id: r for r in store.fetch_reviews()}
+        finally:
+            store.close()
+        assert fetched["r-2"].latitude is None
+        assert fetched["r-2"].longitude is None
+        assert fetched["r-1"].latitude == 43.61
+
+    def test_nulls_survive_reviews_frame(self) -> None:
+        store = self._store_with_nulls()
+        try:
+            frame = store.reviews_frame()
+        finally:
+            store.close()
+        assert int(frame["city"].isna().sum()) == 1
+        assert int(frame["latitude"].isna().sum()) == 1
+
+
 class TestEmbeddingCache:
     def test_store_and_get(self) -> None:
         store = DuckDBStore()

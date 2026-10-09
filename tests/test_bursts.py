@@ -25,6 +25,17 @@ def _review(review_id: str, place_id: str, rating: int, day: date) -> Normalized
     )
 
 
+def _undated_review(review_id: str, place_id: str, rating: int = 4) -> NormalizedReview:
+    return NormalizedReview(
+        review_id=review_id,
+        place_id=place_id,
+        reviewer_id=f"u{review_id}",
+        rating=rating,
+        text=f"Отзыв {review_id}",
+        published_at=None,
+    )
+
+
 def _history(place_id: str, baseline_per_day: int, days: int, start: date) -> list[NormalizedReview]:
     """Organic reviews at ``baseline_per_day``/day from the first day on, so the
     filled daily series has a real baseline before any burst day."""
@@ -51,6 +62,12 @@ class TestDailyCounts:
     def test_empty(self) -> None:
         assert daily_counts([]).empty
 
+    def test_no_dates_returns_empty_frame_with_columns(self) -> None:
+        reviews = [_undated_review("a", "p1"), _undated_review("b", "p1")]
+        frame = daily_counts(reviews)
+        assert frame.empty
+        assert list(frame.columns) == ["place_id", "date", "count"]
+
 
 class TestFilledDailyCounts:
     def test_gap_days_filled_with_zero(self) -> None:
@@ -62,6 +79,23 @@ class TestFilledDailyCounts:
         p1 = frame[frame.place_id == "p1"].sort_values("date")
         assert len(p1) == 3
         assert int(p1["count"].iloc[1]) == 0
+
+    def test_empty_input_returns_empty_frame(self) -> None:
+        """Regression: all ratings undated must not raise pd.concat([])."""
+        frame = _filled_daily_counts(daily_counts([]))
+        assert frame.empty
+        assert list(frame.columns) == ["place_id", "date", "count"]
+
+    def test_missing_dates_ignored(self) -> None:
+        reviews = [
+            _review("a", "p1", 5, date(2026, 1, 1)),
+            _undated_review("b", "p1"),
+            _review("c", "p1", 5, date(2026, 1, 3)),
+        ]
+        frame = _filled_daily_counts(daily_counts(reviews))
+        p1 = frame[frame.place_id == "p1"].sort_values("date")
+        assert len(p1) == 3
+        assert int(p1["count"].sum()) == 2
 
 
 class TestBurstDetection:
@@ -107,6 +141,29 @@ class TestBurstDetection:
 
     def test_empty_input(self) -> None:
         assert BurstDetector().detect([]) == []
+
+    def test_all_missing_dates_no_events(self) -> None:
+        """Regression: a place with reviews but no timestamps yields no events."""
+        reviews = [_undated_review(f"r{i}", "p1") for i in range(40)]
+        assert BurstDetector().detect(reviews) == []
+
+    def test_one_valid_timestamp_no_events(self) -> None:
+        """A single dated review has no baseline, so nothing is flagged."""
+        reviews = [_undated_review(f"r{i}", "p1") for i in range(39)]
+        reviews.append(_review("dated", "p1", 5, date(2026, 1, 1)))
+        assert BurstDetector().detect(reviews) == []
+
+    def test_mixed_valid_and_missing_dates_uses_only_dated(self) -> None:
+        """Undated reviews must not distort the burst baseline."""
+        start = date(2025, 1, 1)
+        reviews = _history("p1", 5, 60, start)
+        burst_day = start + timedelta(days=55)
+        for i in range(37):
+            reviews.append(_review(f"burst{i}", "p1", 5, burst_day))
+        reviews.extend(_undated_review(f"u{i}", "p1") for i in range(10))
+        events = BurstDetector().detect(reviews)
+        assert any(e.observed == 42 for e in events)
+        assert all(e.observed <= 42 for e in events)
 
     def test_to_score_result(self) -> None:
         event = BurstEvent(
@@ -181,3 +238,9 @@ class TestRatingAnomaly:
 
     def test_empty(self) -> None:
         assert self._detector().detect([]) == []
+
+    def test_no_dates_no_anomalies(self) -> None:
+        """Regression: undated reviews must yield empty anomaly results."""
+        reviews = [_undated_review(f"r{i}", "p1") for i in range(40)]
+        assert self._detector().detect(reviews) == []
+        assert self._detector().detect(reviews, events=[]) == []
