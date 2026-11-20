@@ -1,0 +1,100 @@
+@layer tokens {
+  :root {
+    color-scheme: dark;
+    --base: #1a1a1a;
+    --surface: #252525;
+    --text: #e0e0e0;
+    --muted: #b7b3b0;
+    --quiet: #a6a19d;
+    --red: #e53935;
+    --red-light: #f18477;
+    --green: #689f38;
+    --blue: #64b5f6;
+    --border: rgba(255, 255, 255, 0.14);
+    --sans: Inter, "Segoe UI", Arial, sans-serif;
+    --serif: "Noto Serif", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --radius: 24px;
+    --glass: rgba(44, 43, 43, 0.7);
+    font-family: var(--sans);
+    color: var(--text);
+    background: var(--base);
+    font-synthesis: style;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+  }
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+  button,
+  a,
+  select,
+  input {
+    touch-action: manipulation;
+  }
+  button,
+  a {
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  a {
+    text-decoration: none;
+  }
+  button {
+    border: 0;
+    background: transparent;
+  }
+  button:disabled {
+    opacity: 0.54;
+    cursor: not-allowed;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: 3px solid #a9d9ff;
+    outline-offset: 3px;
+  }
+  main:focus {
+    outline: none;
+  }
+  h1,
+  h2,
+  h3,
+  p,
+  blockquote {
+    margin: 0;
+  }
+  p {
+    line-height: 1.57;
+  }
+  svg {
+    flex: none;
+  }
+  ::selection {
+    background: #733b37;
+    color: white;
+  }
+  mark {
+    background: linear-gradient(transparent 82%, rgba(104, 159, 56, 0.78) 82%);
+    color: inherit;
+  }
+  h2 {
+    font-size: 21px;
+    font-weight: 590;
+    letter-spacing: -0.04em;
+    line-height: 1.16;
+  }
+  select {
+    padding: 7px 10px;
+    font-size: 13px;
+  }
+}
