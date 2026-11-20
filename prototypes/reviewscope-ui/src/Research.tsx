@@ -1,7 +1,7 @@
-import { useState } from "react";
+import type { Context } from "./navigation";
 import { direct, inPeriod } from "./analysis";
 import { edges, labels } from "./fixture";
-import type { Period, Review, Stance } from "./fixture";
+import type { Review, Stance } from "./fixture";
 import Graph from "./Graph";
 import { Badge, Highlight, Icon, ReviewMeta, SectionTitle } from "./shared";
 
@@ -79,17 +79,13 @@ function Evidence({
   );
 }
 export default function Research({
-  period,
-  id,
-  setId,
+  context,
+  update,
 }: {
-  period: Period;
-  id: string;
-  setId: (id: string) => void;
+  context: Context;
+  update: (patch: Partial<Context>) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [stance, setStance] = useState<Stance | "">("");
-  const [other, setOther] = useState("");
+  const { period, id, query, stance, other } = context;
   const rows = inPeriod(period).filter(
     (r) =>
       (!stance || stance === r.stance) &&
@@ -106,12 +102,10 @@ export default function Research({
   const ids = new Set(rows.map((r) => r.review_id));
   const links = edges.filter((e) => ids.has(e.a) && ids.has(e.b));
   function select(id: string) {
-    setId(id);
-    setOther("");
+    update({ id, other: "" });
   }
   function reset() {
-    setQuery("");
-    setStance("");
+    update({ query: "", stance: "" });
   }
   return (
     <>
@@ -122,13 +116,13 @@ export default function Research({
             aria-label="Поиск по тексту или номеру"
             placeholder="Найти фразу или номер…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => update({ query: e.target.value })}
           />
         </label>
         <select
           aria-label="Позиция автора"
           value={stance}
-          onChange={(e) => setStance(e.target.value as Stance | "")}
+          onChange={(e) => update({ stance: e.target.value as Stance | "" })}
         >
           <option value="">Все позиции</option>
           {Object.entries(labels).map(([k, v]) => (
@@ -165,11 +159,15 @@ export default function Research({
             peer={peer}
             onNode={select}
             onPair={(a, b) => {
-              setId(a);
-              setOther(b);
+              update({ id: a, other: b });
             }}
           />
-          <Evidence first={selected} second={peer} options={choices} choose={setOther} />
+          <Evidence
+            first={selected}
+            second={peer}
+            options={choices}
+            choose={(other) => update({ other })}
+          />
         </div>
       ) : (
         <section className="panel empty">

@@ -2,10 +2,10 @@ import { edges, reviews } from "./fixture.ts";
 import type { Period, Review } from "./fixture.ts";
 
 export const inPeriod = (period: Period) => reviews.filter((r) => r.period === period);
-export const isIssue = (r: Review) =>
+type EvidenceRow = Pick<Review, "text" | "aspect" | "stance">;
+export const isIssue = (r: EvidenceRow) =>
   Boolean(r.text.trim()) && r.aspect === "Выдача" && r.stance === "complaint";
-export function counts(period: Period) {
-  const rows = inPeriod(period);
+export function summarize(rows: EvidenceRow[]) {
   const total = rows.filter((r) => r.text.trim()).length;
   const hits = rows.filter(isIssue).length;
   return {
@@ -14,6 +14,9 @@ export function counts(period: Period) {
     missing: rows.length - total,
     percent: total ? (100 * hits) / total : null,
   };
+}
+export function counts(period: Period) {
+  return summarize(inPeriod(period));
 }
 export function direct(a: string, b: string) {
   return edges.find((e) => (e.a === a && e.b === b) || (e.a === b && e.b === a));
