@@ -39,6 +39,8 @@ results in a Streamlit dashboard.
 
 ## Architecture
 
+Development plan (RU) · [Baseline](docs/development/baseline.md) · [Product contract and acceptance criteria](docs/development/product-contract.md) · [Handoff](docs/development/handoff.md)
+
 ```text
 reviewscope/
 ├── app.py                          ← Streamlit entry point
