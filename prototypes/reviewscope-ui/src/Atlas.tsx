@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isIssue } from "./analysis";
 import { issue, labels, periods, type Period } from "./fixture";
-import { fraction, mapFrame, own, places, project, selection, type PlaceId } from "./network";
+import { fraction, mapFrame, own, places, selection, type PlaceId } from "./network";
+import { particleCenter, placeParticles } from "./pointTexture";
 import { Icon, PeriodPicker } from "./shared";
 
 const modes = ["Одна точка", "Моя сеть", "Сравнение"] as const;
@@ -70,13 +71,54 @@ export default function Atlas() {
     setSide(p);
   }
   const visible = mode === "Сравнение" ? places : own;
+  const visibleIds = visible.map((p) => p.id);
+  const selected = mode === "Одна точка" ? point : mode === "Сравнение" ? side : "";
   const ids = side === "all" ? own.map((p) => p.id) : [side];
   const name = places.find((p) => p.id === side)?.name ?? "Вся сеть";
   const summary = selection(ids, period);
   const comparison = mode === "Сравнение";
   const ownName = places.find((p) => p.id === point)?.name;
+  const plane = useRef<HTMLDivElement>(null),
+    chooseRef = useRef(choose),
+    pointerPick = useRef(false);
+  chooseRef.current = choose;
+  useEffect(() => {
+    document.getElementById("features")?.dispatchEvent(new Event("map-selection"));
+    const node = plane.current;
+    if (!node) return;
+    function pick(event: PointerEvent) {
+      if (!node) return;
+      const box = node.getBoundingClientRect(),
+        x = event.clientX - box.left,
+        y = event.clientY - box.top;
+      let nearest: PlaceId | null = null,
+        distance = 44 * 44;
+      for (const button of node.querySelectorAll<HTMLButtonElement>(".pin")) {
+        const target = button.getBoundingClientRect(),
+          dx = x - (target.left + target.width / 2 - box.left),
+          dy = y - (target.top + target.height / 2 - box.top),
+          candidate = dx * dx + dy * dy;
+        if (candidate < distance) {
+          distance = candidate;
+          nearest = button.dataset.place as PlaceId;
+        }
+      }
+      if (nearest) {
+        pointerPick.current = true;
+        chooseRef.current(nearest);
+      }
+    }
+    node.addEventListener("pointerdown", pick, true);
+    return () => node.removeEventListener("pointerdown", pick, true);
+  });
   return (
-    <section id="features" className="atlas story-section" aria-labelledby="atlas-title">
+    <section
+      id="features"
+      className="atlas story-section"
+      aria-labelledby="atlas-title"
+      data-selected={selected}
+      data-places={visibleIds.join(",")}
+    >
       <div className="wrap atlas-heading">
         <div className="folio">
           <span className="rule" />
@@ -107,25 +149,32 @@ export default function Atlas() {
         <div className="cartography">
           <div
             className="atlas-plane"
+            ref={plane}
             style={{ aspectRatio: `${mapFrame.width} / ${mapFrame.height}` }}
           >
             {visible.map((p) => {
-              const [x, y] = project(p);
+              const center = particleCenter(p.id);
               return (
                 <button
                   type="button"
                   key={p.id}
                   style={{
-                    left: `${(100 * (x - mapFrame.left)) / mapFrame.width}%`,
-                    top: `${(100 * y) / mapFrame.height}%`,
+                    left: `${(100 * (center.x - mapFrame.left)) / mapFrame.width}%`,
+                    top: `${(100 * center.y) / mapFrame.height}%`,
                   }}
                   className="pin"
                   data-place={p.id}
-                  aria-pressed={side === p.id}
+                  data-particle={placeParticles().get(p.id)}
+                  aria-pressed={mode === "Моя сеть" ? side === p.id : selected === p.id}
                   aria-label={`На карте: ${p.name}`}
-                  onClick={() => choose(p.id)}
+                  onClick={() => {
+                    if (pointerPick.current) {
+                      pointerPick.current = false;
+                      return;
+                    }
+                    choose(p.id);
+                  }}
                 >
-                  <i aria-hidden="true" />
                   <span>{p.name}</span>
                 </button>
               );

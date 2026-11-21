@@ -1,15 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { dateLabel } from "./analysis";
-import { labels, reviews } from "./fixture";
+import { reviews } from "./fixture";
 import { Badge, Highlight, Icon } from "./shared";
 import { useCardBoard } from "./useCardBoard";
 
 const cards = reviews.slice(0, 3);
+const steps = [
+  ["Влево", "←", -32, 0],
+  ["Вверх", "↑", 0, -28],
+  ["Вниз", "↓", 0, 28],
+  ["Вправо", "→", 32, 0],
+] as const;
+
 export default function ReviewBoard() {
   const { board, move, reset } = useCardBoard();
   const [shown, show] = useState<number | null>(null),
     [front, raise] = useState(0),
-    [moving, setMoving] = useState(false);
+    [menu, setMenu] = useState<number | null>(null),
+    [moving, setMoving] = useState<number | null>(null);
   const touch = useRef(false),
     tapWasOpen = useRef(false),
     hover = useRef<number | null>(null);
@@ -17,7 +25,8 @@ export default function ReviewBoard() {
     function dismiss(e: KeyboardEvent) {
       if (e.key === "Escape") {
         show(null);
-        setMoving(false);
+        setMoving(null);
+        setMenu(null);
       }
     }
     window.addEventListener("keydown", dismiss);
@@ -25,7 +34,7 @@ export default function ReviewBoard() {
   }, []);
   return (
     <div className="review-board">
-      <div className="board-canvas" ref={board} data-move={moving || undefined}>
+      <div className="board-canvas" ref={board} data-move={moving !== null || undefined}>
         <svg className="threads" aria-hidden="true">
           <path />
           <path strokeDasharray="4 6" />
@@ -79,7 +88,7 @@ export default function ReviewBoard() {
                     show((v) => (v === i ? null : v));
                 }}
                 onClick={(e) => {
-                  if (moving) {
+                  if (moving !== null) {
                     e.preventDefault();
                     raise(i);
                     show(i);
@@ -120,66 +129,59 @@ export default function ReviewBoard() {
                   <Icon name="external" size={18} />
                 </span>
               </a>
+              <button
+                type="button"
+                className="slip-actions-toggle"
+                aria-label={`Действия с карточкой #${r.review_id}`}
+                aria-expanded={menu === i}
+                aria-controls={`card-actions-${r.review_id}`}
+                onClick={() => {
+                  setMenu((v) => (v === i ? null : i));
+                  setMoving(null);
+                  raise(i);
+                }}
+              >
+                <Icon name="menu" size={16} />
+              </button>
+              {menu === i && (
+                <fieldset
+                  className="slip-actions-menu"
+                  id={`card-actions-${r.review_id}`}
+                  aria-label={`Действия с карточкой #${r.review_id}`}
+                >
+                  <legend>Карточка #{r.review_id}</legend>
+                  <button
+                    type="button"
+                    aria-pressed={moving === i}
+                    onClick={() => {
+                      setMoving((v) => (v === i ? null : i));
+                      raise(i);
+                      show(i);
+                    }}
+                  >
+                    {moving === i ? "Готово" : "Перемещение"}
+                  </button>
+                  <span className="slip-actions-grid">
+                    {steps.map(([label, symbol, dx, dy]) => (
+                      <button
+                        type="button"
+                        key={label}
+                        aria-label={label}
+                        onClick={() => move.current(i, dx, dy)}
+                      >
+                        {symbol}
+                      </button>
+                    ))}
+                  </span>
+                  <button type="button" onClick={() => reset.current()}>
+                    Сбросить расположение
+                  </button>
+                </fieldset>
+              )}
             </article>
           );
         })}
       </div>
-      <div className="board-tools">
-        <span>
-          <i /> Одна проблема
-        </span>
-        <span>
-          <i /> Общая тема
-        </span>
-        <button
-          type="button"
-          aria-pressed={moving}
-          aria-controls="move-options"
-          onClick={() => setMoving(!moving)}
-        >
-          {moving ? "Готово" : "Перемещение"}
-        </button>
-        <button type="button" onClick={() => reset.current()}>
-          Сбросить расположение
-        </button>
-      </div>
-      {moving && (
-        <fieldset className="moves" id="move-options">
-          <legend>Перемещение карточки</legend>
-          <select
-            aria-label="Карточка для перемещения"
-            value={front}
-            onChange={(e) => {
-              const i = Number(e.target.value);
-              raise(i);
-              show(i);
-            }}
-          >
-            {cards.map((r, i) => (
-              <option key={r.review_id} value={i}>
-                #{r.review_id} · {labels[r.stance]}
-              </option>
-            ))}
-          </select>
-          {(
-            [
-              ["Влево", "←", -32, 0],
-              ["Вверх", "↑", 0, -28],
-              ["Вниз", "↓", 0, 28],
-              ["Вправо", "→", 32, 0],
-            ] as const
-          ).map(([label, symbol, dx, dy]) => (
-            <button
-              type="button"
-              key={label}
-              aria-label={label}
-              onClick={() => move.current(front, dx, dy)}
-            >
-              {symbol}
-            </button>
-          ))}
-        </fieldset>
-      )}
     </div>
   );
 }

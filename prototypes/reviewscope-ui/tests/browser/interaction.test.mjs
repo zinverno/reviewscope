@@ -69,6 +69,7 @@ test("touch uses two taps; move mode and its arrow controls do not navigate", as
     await page.waitForSelector(".review-row[aria-pressed=true]");
     assert.match(await page.locator(".review-row[aria-pressed=true]").innerText(), /#03/);
     await page.goBack();
+    await page.getByRole("button", { name: "Действия с карточкой #03" }).tap();
     await page.getByRole("button", { name: "Перемещение", exact: true }).tap();
     await link.locator(".slip-arrow").tap();
     assert.equal(new URL(page.url()).hash, "");
@@ -79,7 +80,7 @@ test("touch uses two taps; move mode and its arrow controls do not navigate", as
     await link.focus();
     await page.keyboard.press("Escape");
     assert.equal(await page.locator("#face-03-back").getAttribute("aria-hidden"), "true");
-    await page.locator(".next-scene").focus();
+    await page.getByRole("button", { name: "Действия с карточкой #03" }).focus();
     await link.focus();
     assert.equal(await page.locator("#face-03-back").getAttribute("aria-hidden"), "false");
     await page.keyboard.press("Enter");
@@ -98,7 +99,7 @@ test("the board grid morphs reversibly into the same land centres as the marker 
         hit = ctx.isPointInPath;
       ctx.isPointInPath = function (path, x, y, ...args) {
         const inside = hit.call(this, path, x, y, ...args);
-        if (inside && this.canvas.matches(".point-field")) window.land.push([x, y]);
+        if (inside) window.land.push([x, y]);
         return inside;
       };
     });
@@ -143,7 +144,8 @@ test("the board grid morphs reversibly into the same land centres as the marker 
     const board = await page.locator(".board-canvas").boundingBox();
     assert.ok(Math.min(...xs) > board.x - board.width * 0.22, "quiet title area");
     await stage(0.5);
-    const middle = await field.evaluate(pixels);
+    const middle = await field.evaluate(pixels),
+      middleTransform = await field.evaluate((el) => el.style.transform);
     assert.notDeepEqual(middle, grid);
     await stage(1);
     async function checkCoast() {
@@ -167,11 +169,10 @@ test("the board grid morphs reversibly into the same land centres as the marker 
     await page.waitForFunction(() => scrollY > document.querySelector("#features").offsetTop + 100);
     assert.equal(await checkCoast(), 0);
     await stage(0.5);
-    const back = await field.evaluate(pixels);
-    // Halo brightness can move the antialiased edge by a pixel.
-    for (const [x, y] of middle.filter((_, i) => i % 11 === 0)) {
-      assert.ok(back.some(([u, v]) => Math.abs(x - u) <= 2 && Math.abs(y - v) <= 2));
-    }
+    const back = await field.evaluate(pixels),
+      backTransform = await field.evaluate((el) => el.style.transform);
+    assert.equal(backTransform, middleTransform);
+    assert.notDeepEqual(back, grid);
     await page.setViewportSize({ width: 1000, height: 900 });
     await stage(1);
     assert.equal(await checkCoast(), 0);
@@ -257,6 +258,81 @@ test("history restores the landing scene and research context per entry", async 
       await page.getByRole("button", { name: "Октябрь" }).getAttribute("aria-pressed"),
       "true",
     );
+  } finally {
+    await page.close();
+  }
+});
+
+test("the hero keeps its field alive at morph zero and drops the permanent guides", async () => {
+  const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+  try {
+    await page.goto(origin);
+    await page.waitForFunction(() => document.querySelector("canvas").dataset.stage === "0.000");
+    for (const text of [
+      "Наведите для чтения",
+      "Коснитесь для чтения",
+      "К точкам на карте",
+      "Одна проблема",
+      "Общая тема",
+      "Сбросить расположение",
+    ])
+      assert.equal(await page.getByText(text, { exact: false }).count(), 0, text);
+    assert.equal(await page.getByRole("button", { name: "Перемещение", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Действия с карточкой #02" }).count(), 1);
+    const read = () =>
+      page.locator("canvas").evaluate((el) => {
+        const { data } = el.getContext("2d").getImageData(0, 0, el.width, el.height);
+        const alphas = [];
+        for (let i = 3; i < data.length; i += 160) alphas.push(data[i]);
+        return alphas;
+      });
+    const before = await read();
+    await page.waitForTimeout(1700);
+    const after = await read();
+    const changed = before.filter((a, i) => Math.abs(a - after[i]) > 2).length;
+    assert.ok(changed > 20, `only ${changed} alpha samples changed on a still hero`);
+    assert.equal(await page.locator("canvas").getAttribute("data-stage"), "0.000");
+  } finally {
+    await page.close();
+  }
+});
+
+test("companies are coloured particles, not drawn marker disks", async () => {
+  const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+  try {
+    await page.goto(origin + "#features");
+    await page.waitForFunction(() => document.querySelector("canvas").dataset.stage === "1.000");
+    const pin = (id) => page.locator(`.pin[data-place="${id}"]`);
+    for (const id of ["arc", "line", "cape"]) {
+      assert.equal(await pin(id).locator("i").count(), 0);
+      assert.equal(await pin(id).evaluate((e) => getComputedStyle(e).pointerEvents), "auto");
+    }
+    assert.equal(
+      await page.evaluate(() => new Set([...document.querySelectorAll(".pin")].map((e) => e.dataset.particle)).size),
+      3,
+    );
+    const sample = (id) =>
+      pin(id).evaluate((el) => {
+        const canvas = document.querySelector("canvas"),
+          box = el.getBoundingClientRect(),
+          rect = canvas.getBoundingClientRect();
+        const x = Math.round(((box.left + box.width / 2 - rect.left) * canvas.width) / rect.width),
+          y = Math.round(((box.top + box.height / 2 - rect.top) * canvas.height) / rect.height),
+          data = canvas.getContext("2d").getImageData(x, y, 1, 1).data;
+        return [data[0], data[1], data[2], data[3]];
+      });
+    const arcSelected = await sample("arc"),
+      lineIdle = await sample("line");
+    assert.ok(arcSelected[0] > arcSelected[2], `selected particle should be red: ${arcSelected}`);
+    assert.ok(lineIdle[2] > lineIdle[0], `unselected particle should be blue: ${lineIdle}`);
+    const line = await pin("line").boundingBox();
+    await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2);
+    await page.waitForFunction(() => document.querySelector("#features").dataset.selected === "line");
+    await page.waitForTimeout(240);
+    const arcIdle = await sample("arc"),
+      lineSelected = await sample("line");
+    assert.ok(arcIdle[2] > arcIdle[0], `hidden particle should be neutral: ${arcIdle}`);
+    assert.ok(lineSelected[0] > lineSelected[2], `selected particle should be red: ${lineSelected}`);
   } finally {
     await page.close();
   }

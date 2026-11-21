@@ -30,21 +30,9 @@ export default function Landing({ active }: { active: boolean }) {
                 Находите повторяющиеся проблемы в отзывах. Проверяйте исходные фразы и сравнивайте
                 изменения — в одной точке или по всей сети.
               </p>
-              <p className="opening-hint">
-                <span aria-hidden="true">↗</span>{" "}
-                <span className="mouse-hint">
-                  Наведите для чтения. Потяните карточку или нажмите для исследования.
-                </span>
-                <span className="tap-hint">
-                  Коснитесь для чтения. Второе касание открывает отзыв.
-                </span>
-              </p>
             </div>
             <ReviewBoard />
           </div>
-          <a className="next-scene" href="#features">
-            К точкам на карте <span aria-hidden="true">↓</span>
-          </a>
         </div>
       </section>
       <Atlas />
