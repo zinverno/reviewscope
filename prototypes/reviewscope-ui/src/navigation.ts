@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { reviews, type Period, type Stance } from "./fixture";
+import { sceneScrollTarget } from "./story";
 
 export type Context = {
   id: string;
@@ -93,8 +94,17 @@ export function useNavigation() {
     const main = document.getElementById(title[page] ? "main" : "landing");
     const saved = positions.current.get(key);
     if (saved !== undefined) window.scrollTo(0, saved);
-    else if (page === "features" || page === "how") document.getElementById(page)?.scrollIntoView();
-    else window.scrollTo(0, 0);
+    else if (page === "features" || page === "how") {
+      const apply = () => {
+        const target = sceneScrollTarget(page);
+        if (target !== null) window.scrollTo(0, target);
+        else document.getElementById(page)?.scrollIntoView();
+      };
+      apply();
+      requestAnimationFrame(apply);
+      const timer = window.setTimeout(apply, 80);
+      return () => window.clearTimeout(timer);
+    } else window.scrollTo(0, 0);
     if (!first.current) main?.focus({ preventScroll: true });
     first.current = false;
   }, [key, page]);

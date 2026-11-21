@@ -34,41 +34,57 @@
   isolation: isolate;
   background: var(--base);
 }
-.landing::before {
+.story {
+  position: relative;
+  height: calc(100svh * 2.8);
+}
+.story-stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  overflow: clip;
+  isolation: isolate;
+}
+.story-stage::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
-  height: 165svh;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 40% 16% at 80% 13%, #e5393540, transparent) top / 100% 100svh no-repeat,
-    radial-gradient(ellipse 44% 29% at 78% 76%, #64b5f65c, transparent) top / 100% 100svh no-repeat,
-    linear-gradient(#0000 68svh, #64b5f612 96svh, #0000 165svh);
+    radial-gradient(ellipse 40% 18% at 82% 12%, #e5393538, transparent 70%),
+    radial-gradient(ellipse 46% 34% at 76% 82%, #64b5f64f, transparent 72%),
+    linear-gradient(#0000 62%, #64b5f610);
 }
 .point-field {
   will-change: transform;
   position: absolute;
   top: 0;
   left: 0;
+  z-index: 1;
   width: 100%;
   pointer-events: none;
 }
 .opening {
-  position: relative;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: calc(1 - var(--hero-out, 0));
+  transform: translateY(calc(var(--hero-out, 0) * -16px));
 }
 .opening-wrap {
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding-block: clamp(26px, 4.7vh, 52px);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(34px, 5vh, 68px);
+  padding-block: clamp(24px, 3.8vh, 48px) clamp(16px, 2.6vh, 32px);
 }
 .mast {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  opacity: calc(1 - var(--hero-out, 0) * 0.85);
 }
 .mast .brand {
   width: fit-content;
@@ -80,13 +96,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.03fr);
   gap: 3%;
-  align-items: center;
-  padding-block: 22px;
-  opacity: clamp(0, calc(1 - var(--morph, 0) * 1.24), 1);
-  transform: translateY(calc(var(--morph, 0) * -38px));
-}
-.mast {
-  opacity: clamp(0, calc(1 - var(--morph, 0) * 1.5), 1);
+  align-items: start;
 }
 .opening h1,
 .story-section h2 {
@@ -318,16 +328,20 @@
   margin: 14px 0;
 }
 .atlas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(8px, 1.6vh, 18px);
+  padding: clamp(18px, 3vh, 36px) 0 clamp(14px, 2.4vh, 28px);
   background: transparent;
-  border-top: 1px solid #ffffff12;
+  opacity: var(--atlas-in, 0);
+  transform: translateY(calc((1 - var(--atlas-in, 1)) * 14px));
 }
 .atlas-heading {
-  opacity: clamp(0, calc((var(--morph, 0) - 0.32) * 2.7), 1);
-  transform: translateY(calc((1 - var(--morph, 0)) * 32px));
-}
-.atlas-stage {
-  opacity: clamp(0, calc((var(--morph, 0) - 0.52) * 2.6), 1);
-  transform: translateY(calc((1 - var(--morph, 0)) * 46px));
+  opacity: 1;
+  transform: none;
 }
 .atlas-head {
   display: flex;
@@ -335,15 +349,11 @@
   justify-content: space-between;
   gap: 32px;
 }
-.atlas-head .story-sub {
-  max-width: 32ch;
-  margin-bottom: 14px;
-}
 .atlas-controls {
-  gap: 14px;
+  gap: 12px;
   justify-content: space-between;
   flex-wrap: wrap;
-  margin-top: 22px;
+  margin-top: 8px;
 }
 .cartography {
   position: relative;
@@ -351,12 +361,11 @@
   background:
     repeating-linear-gradient(0deg, transparent 0 54px, #ffffff08 55px, transparent 56px),
     repeating-linear-gradient(90deg, transparent 0 74px, #ffffff08 75px, transparent 76px);
-  margin-top: 8px;
 }
 .atlas-plane {
   position: relative;
-  width: 100%;
-
+  width: var(--map-width, 100%);
+  margin-inline: auto;
 }
 
 .pin {
@@ -397,53 +406,26 @@
   color: #ccc;
 }
 .atlas-stage {
-  display: grid;
+  position: relative;
+  align-self: center;
   width: 94%;
   margin-inline: auto;
 }
-.atlas.story-section {
-  padding-block: clamp(28px, 4vh, 54px) clamp(28px, 4vh, 48px);
-}
-.cartography, .atlas-data { grid-area: 1 / 1; }
-.cartography { align-self: start; }
-.atlas-data {
-  position: relative;
-  align-self: start;
-  justify-self: end;
-  margin: 28% 4% 0 auto;
-  width: min(410px, 44%);
-  display: grid;
-  gap: 8px;
-}
-.atlas-proof h3 {
-  font-size: clamp(20px, 1.8vw, 29px);
-  letter-spacing: -0.045em;
-}
-.atlas-proof :where(details) p, .comparison-caption {
-  font-size: 14px;
-  color: #c2c2c2;
-}
-.network-total {
-  justify-self: start;
-  padding: 8px 13px;
-  border-radius: 24px;
-  background: #252525;
-  color: var(--blue);
-}
-.comparison-caption { margin: 0; }
-.network-breakdown {
+.atlas-brief {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  margin: 0;
-  font: 12px / 1.6 var(--mono);
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 94%;
+  margin-inline: auto;
 }
-.network-breakdown dd { margin: 0; color: var(--text); }
 .atlas-proof {
   padding: 22px 26px;
   animation: panel-settle 220ms ease-out;
 }
 .atlas-proof h3 {
+  font-size: clamp(20px, 1.8vw, 29px);
+  letter-spacing: -0.045em;
   margin-top: 10px;
 }
 .ratio {
@@ -492,6 +474,110 @@
   display: block;
   font-size: 11px;
   color: #bcbcbc;
+}
+.proof-reason {
+  margin-top: 6px;
+  color: #bcbcbc;
+  font-size: 12px;
+}
+.comparison-caption {
+  margin: 0;
+  font-size: 14px;
+  color: #c2c2c2;
+}
+.network-total,
+.details-action {
+  justify-self: start;
+  padding: 8px 13px;
+  border-radius: 24px;
+  background: #252525;
+  color: var(--blue);
+}
+.atlas-details {
+  scroll-margin-top: 24px;
+}
+.network-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+  font: 12px / 1.6 var(--mono);
+}
+.network-breakdown dd {
+  margin: 0;
+  color: var(--text);
+}
+.atlas-details {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 14px;
+  padding-block: 44px 70px;
+}
+.compact-proof {
+  width: min(360px, 42%);
+  padding: 14px 18px;
+}
+.compact-proof .folio {
+  font-size: 9px;
+}
+.compact-proof h3 {
+  font-size: clamp(16px, 1.25vw, 21px);
+  margin-top: 6px;
+}
+.atlas-details .atlas-proof {
+  width: min(900px, 100%);
+}
+.landing[data-layout="flow"] .story {
+  height: auto;
+}
+.landing[data-layout="flow"] .story-stage {
+  position: relative;
+  height: auto;
+  overflow: visible;
+}
+.landing[data-layout="flow"] .opening,
+.landing[data-layout="flow"] .atlas {
+  position: relative;
+  inset: auto;
+  opacity: 1;
+  transform: none;
+}
+.landing[data-layout="flow"] .opening-wrap {
+  height: auto;
+  min-height: 100svh;
+}
+.landing[data-layout="flow"] .opening-grid {
+  opacity: clamp(0, calc(1 - var(--morph, 0) * 1.24), 1);
+  transform: translateY(calc(var(--morph, 0) * -24px));
+}
+.landing[data-layout="flow"] .mast {
+  opacity: clamp(0, calc(1 - var(--morph, 0) * 1.5), 1);
+}
+.landing[data-layout="flow"] .atlas {
+  display: block;
+  padding-block: 48px;
+}
+.landing[data-layout="flow"] .atlas-heading {
+  opacity: clamp(0, calc((var(--morph, 0) - 0.24) * 3), 1);
+  transform: translateY(calc((1 - var(--morph, 0)) * 22px));
+}
+.landing[data-layout="flow"] .atlas-stage {
+  opacity: clamp(0, calc((var(--morph, 0) - 0.45) * 3), 1);
+  transform: translateY(calc((1 - var(--morph, 0)) * 32px));
+  width: 100%;
+}
+.landing[data-layout="flow"] .atlas-plane {
+  width: 100%;
+}
+.landing[data-layout="flow"] .atlas-brief {
+  width: 100%;
+  margin-top: 18px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.landing[data-layout="flow"] .compact-proof {
+  width: min(360px, 100%);
 }
 .method {
   border-top: 1px solid #ffffff15;
@@ -638,9 +724,8 @@
     width: min(77%, 330px);
   }
   .atlas-stage { display: block; }
-  .atlas-data {
-    width: auto;
-    margin: 12px 2% 0;
+  .compact-proof {
+    width: 100%;
   }
   .atlas-head {
     display: block;
@@ -705,4 +790,29 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+.compact-proof .ratio {
+  display: block;
+  margin: 4px 0;
+  color: var(--text);
+  font: italic 30px / 1.05 var(--serif);
+}
+.compact-proof .ratio b {
+  font-size: 30px;
+}
+.compact-proof .ratio span {
+  font-size: 11px;
+}
+.compact-proof .ratio small {
+  display: inline;
+  font: 10px var(--mono);
+}
+.landing[data-layout="fit"] .atlas-heading h2 {
+  font-size: clamp(32px, 3.1vw, 56px);
+  margin: 6px 0;
+}
+.landing[data-layout="fit"] .atlas-heading .story-sub {
+  font-size: 14px;
+  max-width: 52ch;
+  margin-bottom: 6px;
 }

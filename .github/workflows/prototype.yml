@@ -30,13 +30,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox
       - run: npm run test:browser
+      - run: BROWSER=firefox npm run test:browser
       - name: Check out the previous owner-reviewed prototype for matching captures
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
         uses: actions/checkout@v4
         with:
-          ref: 73bad0a5c49469e8e1feffc8811c931cf16d366d
+          ref: 08e7d0e2fa4b5479d93e19ca5e12666c9c666f6d
           path: .ux-before
           persist-credentials: false
       - name: Build the comparison snapshot
@@ -50,7 +51,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
         uses: actions/upload-artifact@v4
         with:
-          name: reviewscope-pr03-ux-v5
+          name: reviewscope-pr03-ux-v6
           path: ${{ runner.temp }}/reviewscope-pr03-media
           retention-days: 14
           if-no-files-found: error
