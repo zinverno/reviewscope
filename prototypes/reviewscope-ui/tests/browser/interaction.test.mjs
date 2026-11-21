@@ -89,56 +89,139 @@ test("touch uses two taps; move mode and its arrow controls do not navigate", as
     await page.close();
   }
 });
-test("the same coast sample is traversed in both directions and survives resize", async () => {
+test("the board grid morphs reversibly into the same land centres as the marker plane", async () => {
   const page = await browser.newPage({ viewport: { width: 1200, height: 1050 } });
   try {
     await page.addInitScript(() => {
+      window.land = [];
       const ctx = CanvasRenderingContext2D.prototype,
-        arc = ctx.arc,
-        clear = ctx.clearRect,
         hit = ctx.isPointInPath;
-      window.fieldProbe = { sample: [], checks: 0 };
-      ctx.isPointInPath = function (...args) {
-        window.fieldProbe.checks++;
-        return hit.apply(this, args);
-      };
-      ctx.clearRect = function (...args) {
-        window.fieldProbe.sample = [];
-        return clear.apply(this, args);
-      };
-      ctx.arc = function (x, y, ...args) {
-        if (window.fieldProbe.sample.length < 15) window.fieldProbe.sample.push([x, y]);
-        return arc.call(this, x, y, ...args);
+      ctx.isPointInPath = function (path, x, y, ...args) {
+        const inside = hit.call(this, path, x, y, ...args);
+        if (inside && this.canvas.matches(".point-field")) window.land.push([x, y]);
+        return inside;
       };
     });
     await page.goto(origin);
-    async function sample(progress) {
-      await page.evaluate((p) => {
-        const atlas = document.querySelector("#features"),
-          end = atlas.getBoundingClientRect().top + scrollY,
-          start = Math.max(0, end - innerHeight);
-        scrollTo(0, start + (end - start) * p);
-      }, progress);
+    const field = page.locator(".point-field");
+    async function stage(p) {
+      await page.evaluate((v) => {
+        const end = document.querySelector("#features").getBoundingClientRect().top + scrollY;
+        const start = Math.max(0, end - innerHeight);
+        scrollTo(0, start + v * (end - start));
+      }, p);
       await page.waitForFunction(
-        (p) => Math.abs(Number(document.querySelector("canvas").dataset.stage) - p) < 0.005,
-        progress,
+        (v) => Math.abs(Number(document.querySelector("canvas").dataset.stage) - v) < 0.004,
+        p,
       );
-      return page.evaluate(() => window.fieldProbe.sample);
     }
-    const start = await sample(0),
-      mid = await sample(0.5),
-      end = await sample(1),
-      back = await sample(0.5);
-    const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-    assert.ok(distance(start[0], mid[0]) > 12 && distance(end[0], mid[0]) > 12);
-    for (let i = 0; i < mid.length; i++) assert.ok(distance(mid[i], back[i]) < 8);
-    const checks = await page.evaluate(() => window.fieldProbe.checks);
-    assert.ok(checks > 0);
+    // Sample alpha peaks from the actual rendered pixels, independently of the paint API.
+    function pixels(el) {
+      const ctx = el.getContext("2d"),
+        { width: w, height: h } = el;
+      const data = ctx.getImageData(0, 0, w, h).data,
+        step = el.clientWidth / w;
+      const peaks = [];
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const off = 4 * (y * w + x) + 3;
+          if (
+            data[off] > 12 &&
+            (x === 0 || data[off - 4] <= 12) &&
+            (y === 0 || data[off - 4 * w] <= 12)
+          )
+            peaks.push([x * step, y * step]);
+        }
+      return peaks;
+    }
+    await stage(0);
+    const grid = await field.evaluate(pixels);
+    assert.ok(grid.length > 50);
+    const xs = new Set(grid.map(([x]) => x)),
+      ys = new Set(grid.map(([, y]) => y));
+    assert.ok(xs.size * ys.size < grid.length * 12, "hero centres form rows and columns");
+    const board = await page.locator(".board-canvas").boundingBox();
+    assert.ok(Math.min(...xs) > board.x - board.width * 0.22, "quiet title area");
+    await stage(0.5);
+    const middle = await field.evaluate(pixels);
+    assert.notDeepEqual(middle, grid);
+    await stage(1);
+    async function checkCoast() {
+      return field.evaluate((el) => {
+        const r = el.getBoundingClientRect(),
+          map = document.querySelector(".atlas-plane").getBoundingClientRect();
+        const ctx = el.getContext("2d"),
+          { width: w, height: h, data } = ctx.getImageData(0, 0, el.width, el.height);
+        const scale = w / r.width;
+        return window.land.filter(([x, y]) => {
+          const px = Math.floor((map.left - r.left + ((x - 32) * map.width) / 514) * scale);
+          const py = Math.floor(((map.top - r.top + (y * map.height) / 292) * h) / r.height);
+          return (data[4 * (py * w + px) + 3] ?? 0) < 66;
+        }).length;
+      });
+    }
+    const count = await page.evaluate(() => window.land.length);
+    assert.ok(count > 100);
+    assert.equal(await checkCoast(), 0);
+    await page.mouse.wheel(0, 140);
+    await page.waitForFunction(() => scrollY > document.querySelector("#features").offsetTop + 100);
+    assert.equal(await checkCoast(), 0);
+    await stage(0.5);
+    const back = await field.evaluate(pixels);
+    // Halo brightness can move the antialiased edge by a pixel.
+    for (const [x, y] of middle.filter((_, i) => i % 11 === 0)) {
+      assert.ok(back.some(([u, v]) => Math.abs(x - u) <= 2 && Math.abs(y - v) <= 2));
+    }
     await page.setViewportSize({ width: 1000, height: 900 });
-    await sample(1);
-    await page.getByRole("button", { name: "Моя сеть", exact: true }).click();
-    assert.equal(await page.evaluate(() => window.fieldProbe.checks), checks);
-    assert.match(await page.locator(".atlas-proof").innerText(), /3\/10/);
+    await stage(1);
+    assert.equal(await checkCoast(), 0);
+    assert.equal(await page.evaluate(() => window.land.length), count);
+    await page.goto(origin + "#features");
+    await page.waitForFunction(() => document.querySelector("canvas").dataset.stage === "1.000");
+    assert.equal(await checkCoast(), 0);
+  } finally {
+    await page.close();
+  }
+});
+
+test("map markers select the evidence, with a network total and both comparison samples", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  try {
+    await page.goto(origin + "#features");
+    await page.waitForFunction(() => document.querySelector(".point-field").dataset.stage === "1.000");
+    const pin = (name) => page.getByRole("button", { name: "На карте: " + name, exact: true });
+    const button = (name) => page.getByRole("button", { name, exact: true });
+    const panels = page.locator(".atlas-proof");
+    assert.equal(await page.getByRole("heading", { name: "Выберите точку" }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Арка", exact: true }).count(), 0);
+    await button("Моя сеть").click();
+    assert.match(await panels.innerText(), /3\/10/);
+    await pin("Арка").focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    assert.equal(await pin("Линия").getAttribute("aria-pressed"), "true");
+    assert.equal(await pin("Линия").evaluate((e) => e === document.activeElement), true);
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Space");
+    await button("Октябрь").tap();
+    assert.match(await panels.innerText(), /Мыс/i);
+    assert.match(await panels.innerText(), /Нет данных/);
+    await panels.locator("summary").click();
+    assert.equal(await panels.locator("li").count(), 3);
+    await button("← К итогу всей сети").tap();
+    await button("Сентябрь").tap();
+    assert.match(await panels.innerText(), /3\/10/);
+    await button("Сравнение").tap();
+    await pin("Арка").tap();
+    await pin("Луч").tap();
+    assert.equal(await panels.count(), 2);
+    assert.match(await panels.first().innerText(), /Луч/i);
+    assert.match(await panels.first().innerText(), /1\/4/);
+    assert.match(await panels.last().innerText(), /2\/3/);
+    for (const panel of await panels.all()) {
+      await panel.locator("summary").click();
+      assert.ok((await panel.locator("li").count()) >= 3);
+    }
   } finally {
     await page.close();
   }

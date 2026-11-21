@@ -1,198 +1,170 @@
 import { useLayoutEffect, useRef } from "react";
-import geometry from "./eurasia.svg?raw";
-
-const W = 615,
-  H = 305,
-  TAU = 2 * Math.PI;
-const unit = (n: number) => n - Math.floor(n);
-const bound = (n: number) => Math.min(1, Math.max(0, n));
-const ease = (n: number) => {
-  const t = bound(n);
-  return t * t * (3 - 2 * t);
-};
-const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-const inks = ["#b8cad7", "#a6a8aa", "#76accc", "#d09290"];
-
-function sampleLand(ctx: CanvasRenderingContext2D) {
-  const outline = new DOMParser()
-    .parseFromString(geometry, "image/svg+xml")
-    .querySelector("path")
-    ?.getAttribute("d");
-  if (!outline) throw Error("Отсутствует геометрия Евразии");
-  const land = new Path2D(outline);
-  const dots: {
-    id: number;
-    x: number;
-    y: number;
-    u: number;
-    v: number;
-    phase: number;
-    size: number;
-    ink: number;
-  }[] = [];
-  for (let y = 4; y < H - 3; y += 6)
-    for (let x = 4; x < W - 3; x += 6) {
-      if (!ctx.isPointInPath(land, x, y, "nonzero")) continue;
-      const id = dots.length,
-        phase = TAU * unit(id * 0.618033989);
-      // Low-discrepancy starting positions keep the field dispersed and reproducible.
-      const u = unit(0.31 + id * 0.754877666),
-        v = unit(0.67 + id * 0.569840296);
-      dots.push({
-        id,
-        x,
-        y,
-        u: 0.035 + 0.94 * Math.sqrt(u),
-        v: 0.025 + 0.95 * v,
-        phase,
-        size: 0.78 + 0.42 * unit(id * 0.414213562),
-        ink: Math.floor(4 * unit(id * 0.324717957)),
-      });
-    }
-  return inks.map((_, i) => dots.filter((p) => p.ink === i));
-}
+import { mapFrame } from "./network";
+import { columns, spacing, clamp, mix, smooth, sampleLand, paintField } from "./pointTexture";
 
 export default function PointField({ active }: { active: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const particles = useRef<ReturnType<typeof sampleLand> | null>(null);
+  const sample = useRef<ReturnType<typeof sampleLand> | null>(null);
   const clock = useRef(0);
   useLayoutEffect(() => {
     const el = canvas.current;
     if (!el || !active) return;
-    const parent = el.closest("main");
-    const atlas = parent?.querySelector<HTMLElement>("#features"),
-      plane = parent?.querySelector<HTMLElement>(".atlas-plane"),
-      method = parent?.querySelector<HTMLElement>("#how");
+    const root = el.closest("main");
+    const atlas = root?.querySelector<HTMLElement>("#features");
+    const plane = atlas?.querySelector<HTMLElement>(".atlas-plane");
+    const board = root?.querySelector<HTMLElement>(".board-canvas");
+    const head = atlas?.querySelector<HTMLElement>(".atlas-heading");
     const ctx = el.getContext("2d");
-    if (!ctx || !parent || !atlas || !plane || !method) return;
-    if (!particles.current) particles.current = sampleLand(ctx);
-    const dots = particles.current;
+    if (!root || !atlas || !plane || !board || !head || !ctx) return;
+    if (!sample.current) sample.current = sampleLand(ctx);
+    const dots = sample.current;
+    let bitmap: ImageData;
     const media = matchMedia("(prefers-reduced-motion: reduce)");
     let width = 0,
       height = 0,
-      mapX = 0,
+      heroY = 0,
       mapY = 0,
-      scale = 1,
-      start = 0,
+      mapX = 0,
+      scale = 1;
+    let start = 0,
       end = 1,
-      outStart = 0,
-      outEnd = 1;
-    let frame = 0,
-      last = 0,
-      visible = true;
-    function stop() {
-      cancelAnimationFrame(frame);
-      frame = 0;
+      measured = false,
+      frame = 0,
+      timer = 0,
       last = 0;
+    let lastMorph = -1,
+      lastOrigin = -1;
+    let scrollEnd = 0;
+    function finishScroll() {
+      clearTimeout(scrollEnd);
+      root?.removeAttribute("data-scrolling");
+    }
+    function onScroll() {
+      // Sampling a changing backdrop dominates Firefox's software render path.
+      // Keep the actual transparent surface and restore its blur when scroll rests.
+      if (!root?.hasAttribute("data-scrolling")) root?.setAttribute("data-scrolling", "");
+      clearTimeout(scrollEnd);
+      scrollEnd = window.setTimeout(finishScroll, 140);
+      request();
+    }
+    function stop() {
+      finishScroll();
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+      frame = timer = last = 0;
     }
     function request() {
-      if (!frame && visible && !document.hidden) frame = requestAnimationFrame(draw);
+      if (!frame && !document.hidden) frame = requestAnimationFrame(draw);
+    }
+    function measure() {
+      if (!el || !ctx || !root || !atlas || !plane || !board) return;
+      const origin = root.getBoundingClientRect(),
+        map = plane.getBoundingClientRect();
+      const cards = board.getBoundingClientRect();
+      width = origin.width;
+      if (!width || !map.width) return;
+      const rows = Math.ceil(dots.length / columns);
+      const gridHeight = rows * spacing;
+      // Both endpoint rectangles live in the landing's document coordinate system.
+      heroY = cards.top - origin.top + (cards.height - gridHeight) / 2;
+      mapY = map.top - origin.top;
+      scale = map.width / mapFrame.width;
+      mapX = map.left - origin.left - mapFrame.left * scale;
+      height = Math.ceil(Math.max(gridHeight, map.height) + 8);
+      el.style.height = `${height}px`;
+      const dpr = Math.min(devicePixelRatio || 1, 1.5);
+      const bw = Math.round(width * dpr),
+        bh = Math.round(height * dpr);
+      if (el.width !== bw) el.width = bw;
+      if (el.height !== bh) el.height = bh;
+      if (!bitmap || bitmap.width !== bw || bitmap.height !== bh)
+        bitmap = ctx.createImageData(bw, bh);
+      const middle = cards.left - origin.left + cards.width / 2;
+      for (const dot of dots) {
+        const dx = (dot.col - (columns - 1) / 2) * spacing;
+        const dy = (dot.row - (rows - 1) / 2) * spacing;
+        dot.hx = middle + dx;
+        dot.hy = gridHeight / 2 + dy;
+        const r = Math.hypot(
+          dx / Math.min((columns * spacing) / 2, cards.width * 0.74),
+          dy / (gridHeight / 2),
+        );
+        dot.alpha = 0.29 * smooth(clamp((1 - r) * 1.7));
+      }
+      end = atlas.getBoundingClientRect().top + scrollY;
+      start = Math.max(origin.top + scrollY, end - innerHeight);
+      lastMorph = -1;
+      measured = true;
     }
     function draw(now: number) {
       frame = 0;
-      if (!el || !ctx || !visible || document.hidden) return;
-      const y = window.scrollY,
-        p = bound((y - start) / (end - start)),
-        out = bound((y - outStart) / (outEnd - outStart));
-      const staticMode = media.matches;
-      const exit = staticMode ? Number(out >= .5) : ease(out);
-      const morph = staticMode ? Number(p >= 0.5) : ease(p);
-      // Once assembled, the projected centres travel with the HTML marker plane.
-      const top = mapY - (staticMode ? y : Math.max(end, y));
-      const moving = !staticMode && exit < 1;
-      if (moving && last && now - last < 1000 / 24) {
-        request();
-        return;
-      }
-      if (moving && last) clock.current += Math.min(now - last, 70) * 0.001;
-      last = moving ? now : 0;
-      const t = clock.current;
-      ctx.clearRect(0, 0, width, height);
-      const stage = p.toFixed(3);
-      if (el.dataset.stage !== stage) el.dataset.stage = stage;
-      ctx.globalAlpha = mix(mix(0.45, 0.73, morph), 0.12, exit);
-      for (const [ink, group] of dots.entries()) {
-        ctx.beginPath();
-        ctx.fillStyle = inks[ink];
-        for (const dot of group) {
-          const amplitude = staticMode
-            ? 0
-            : mix(2.8, Math.min(0.55, scale * 0.34), morph) * (1 - exit);
-          const hx = 4 + dot.u * (width - 8),
-            hy = 4 + dot.v * (height - 8);
-          const px =
-            mix(mix(hx, mapX + dot.x * scale, morph), hx, exit) +
-            amplitude * Math.sin(t * 0.76 + dot.phase);
-          const py =
-            mix(mix(hy, top + dot.y * scale, morph), hy, exit) +
-            amplitude * Math.cos(t * 0.61 + dot.phase);
-          const radius =
-            dot.size *
-            mix(Math.max(1.25, Math.min(1.95, width / 690)), Math.max(0.63, scale * 1.22), morph);
-          if (py < -radius || py > height + radius) continue;
-          ctx.moveTo(px + radius, py);
-          ctx.arc(px, py, radius, 0, TAU);
-        }
-        ctx.fill();
-      }
-      if (moving) request();
-    }
-    function measure() {
-      if (!el || !ctx || !parent || !atlas || !method || !plane) return;
-      const size = el.getBoundingClientRect(),
-        map = plane.getBoundingClientRect();
-      width = size.width;
-      height = size.height;
-      if (!width || !height) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      if (el.width !== Math.round(width * dpr)) el.width = Math.round(width * dpr);
-      if (el.height !== Math.round(height * dpr)) el.height = Math.round(height * dpr);
-      ctx.setTransform(el.width / width, 0, 0, el.height / height, 0, 0);
+      if (!el || !ctx || document.hidden) return;
+      if (!measured) measure();
+      if (!measured) return;
       const scroll = window.scrollY;
-      mapX = map.left - size.left;
-      mapY = map.top + scroll;
-      scale = map.width / W;
-      end = atlas.getBoundingClientRect().top + scroll;
-      start = Math.max(parent.getBoundingClientRect().top + scroll, end - height);
-      const third = method.getBoundingClientRect().top + scroll;
-      outEnd = Math.max(
-        end + 2,
-        Math.min(third - height * 0.08, parent.getBoundingClientRect().bottom + scroll - height),
+      const p = scroll >= end - 1 ? 1 : clamp((scroll - start) / Math.max(1, end - start));
+      const morph = media.matches ? Number(p >= 0.5) : smooth(p);
+      const origin = mix(heroY, mapY, morph);
+      if (origin !== lastOrigin) {
+        el.style.transform = `translateY(${origin}px)`;
+        lastOrigin = origin;
+      }
+      // Inside the atlas the canvas shares native document scrolling with the pins.
+      // Only the light needs another paint once the centres have reached their targets.
+      // Freeze the last sliver of coast above the manual third scene.
+      const visibleHeight =
+        Math.min(origin + (morph === 1 ? mapFrame.height * scale : height), scroll + innerHeight) -
+        Math.max(origin, scroll);
+      const visible = visibleHeight > Math.min(0.18 * mapFrame.height * scale, 0.16 * innerHeight);
+      const pulsing = visible && !media.matches && morph > 0;
+      if (!pulsing) {
+        clearTimeout(timer);
+        timer = last = 0;
+      }
+      if (morph === lastMorph && (!pulsing || (last && now - last < 65))) return;
+      if (pulsing && last) clock.current += Math.min(now - last, 100) / 1000;
+      last = pulsing ? now : 0;
+      lastMorph = morph;
+      el.dataset.stage = p.toFixed(3);
+      paintField(
+        bitmap,
+        dots,
+        morph,
+        mapX,
+        scale,
+        bitmap.width / width,
+        clock.current,
+        media.matches,
       );
-      outStart = Math.max(end + 1, Math.min(outEnd - 1, third - height * 0.68));
-      stop();
-      if (visible && !document.hidden) draw(performance.now());
+      ctx.putImageData(bitmap, 0, 0);
+      if (pulsing) {
+        clearTimeout(timer);
+        timer = window.setTimeout(request, 75);
+      }
+    }
+    function layout() {
+      measured = false;
+      request();
     }
     function visibility() {
       stop();
-      if (!document.hidden) measure();
+      if (!document.hidden) layout();
     }
-    const sizes = new ResizeObserver(measure);
-    for (const node of [el, parent, atlas, plane, method]) sizes.observe(node);
-    const observer = new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
-      if (visible) measure();
-      else stop();
-    });
-    observer.observe(parent);
-    window.addEventListener("scroll", request, { passive: true });
-    window.addEventListener("resize", measure);
+    const sizes = new ResizeObserver(layout);
+    for (const node of [root, board, head, plane, atlas]) sizes.observe(node);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", layout);
     document.addEventListener("visibilitychange", visibility);
-    media.addEventListener("change", measure);
-    measure();
+    media.addEventListener("change", layout);
+    layout();
     return () => {
       stop();
-      observer.disconnect();
       sizes.disconnect();
-      window.removeEventListener("scroll", request);
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", layout);
       document.removeEventListener("visibilitychange", visibility);
-      media.removeEventListener("change", measure);
+      media.removeEventListener("change", layout);
     };
   }, [active]);
-  return (
-    <div className="field-anchor" aria-hidden="true">
-      <canvas ref={canvas} className="point-field" />
-    </div>
-  );
+  return <canvas ref={canvas} className="point-field" inert />;
 }

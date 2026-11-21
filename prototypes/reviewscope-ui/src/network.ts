@@ -80,7 +80,8 @@ export const fraction = (value: ReturnType<typeof selection>) =>
   value.percent === null
     ? "Нет данных"
     : `${new Intl.NumberFormat("ru", { maximumFractionDigits: 1 }).format(value.percent)}%`;
-// Same projection and viewBox as the local Natural Earth illustration.
+// Land centres span x=46…532, y=10…280 in the original 615×305 projection.
+export const mapFrame = { left: 32, width: 514, height: 292 } as const;
 export function project({ lon, lat }: { lon: number; lat: number }) {
   return [(lon - 75) * Math.cos((0.58 * lat * Math.PI) / 180) * 3.05 + 280, (80 - lat) * 3.05 + 10];
 }

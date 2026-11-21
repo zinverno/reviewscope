@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isIssue } from "./analysis";
 import { issue, labels, periods, type Period } from "./fixture";
-import { fraction, own, places, project, selection, type PlaceId } from "./network";
+import { fraction, mapFrame, own, places, project, selection, type PlaceId } from "./network";
 import { Icon, PeriodPicker } from "./shared";
 
 const modes = ["Одна точка", "Моя сеть", "Сравнение"] as const;
@@ -73,26 +73,11 @@ export default function Atlas() {
   const ids = side === "all" ? own.map((p) => p.id) : [side];
   const name = places.find((p) => p.id === side)?.name ?? "Вся сеть";
   const summary = selection(ids, period);
-  function metric(id: PlaceId | "all", title: string) {
-    const value = selection(id === "all" ? own.map((p) => p.id) : [id], period);
-    return (
-      <button
-        type="button"
-        key={id}
-        aria-pressed={side === id}
-        onClick={() => (id === "all" ? setSide("all") : choose(id))}
-      >
-        <span>{title}</span>
-        <strong>{fraction(value)}</strong>{" "}
-        <small>
-          {value.hits}/{value.total}
-        </small>
-      </button>
-    );
-  }
+  const comparison = mode === "Сравнение";
+  const ownName = places.find((p) => p.id === point)?.name;
   return (
     <section id="features" className="atlas story-section" aria-labelledby="atlas-title">
-      <div className="wrap">
+      <div className="wrap atlas-heading">
         <div className="folio">
           <span className="rule" />
           География отзывов
@@ -117,21 +102,30 @@ export default function Atlas() {
           </fieldset>
           <PeriodPicker period={period} onChange={setPeriod} />
         </div>
+      </div>
+      <div className="atlas-stage">
         <div className="cartography">
-          <div className="atlas-plane">
+          <div
+            className="atlas-plane"
+            style={{ aspectRatio: `${mapFrame.width} / ${mapFrame.height}` }}
+          >
             {visible.map((p) => {
               const [x, y] = project(p);
               return (
                 <button
                   type="button"
                   key={p.id}
-                  style={{ left: `${(100 * x) / 615}%`, top: `${(100 * y) / 305}%` }}
+                  style={{
+                    left: `${(100 * (x - mapFrame.left)) / mapFrame.width}%`,
+                    top: `${(100 * y) / mapFrame.height}%`,
+                  }}
                   className="pin"
+                  data-place={p.id}
                   aria-pressed={side === p.id}
                   aria-label={`На карте: ${p.name}`}
                   onClick={() => choose(p.id)}
                 >
-                  <i />
+                  <i aria-hidden="true" />
                   <span>{p.name}</span>
                 </button>
               );
@@ -142,50 +136,49 @@ export default function Atlas() {
           </span>
         </div>
         <div className="atlas-data">
-          <div className="atlas-index">
-            <h3>
-              {mode === "Сравнение"
-                ? "Демонстрационное сравнение"
-                : mode === "Моя сеть"
-                  ? "Точки моей сети"
-                  : "Выберите точку"}
-            </h3>
-            {mode === "Сравнение" && <p>Своя точка и точка другой компании · {periods[period]}</p>}
-            <fieldset className="place-picker" aria-label="Список точек">
-              {visible.map((p) => (
-                <button
-                  type="button"
-                  key={p.id}
-                  aria-pressed={side === p.id}
-                  onClick={() => choose(p.id)}
-                >
-                  {p.name}
-                  {p.id === "ray" ? " · другая компания" : ""}
-                </button>
-              ))}
-            </fieldset>
-            {mode !== "Одна точка" && (
-              <div className="metrics">
-                {mode === "Моя сеть" ? (
-                  <>
-                    {metric("all", "Вся сеть")}
-                    {own.map((p) => metric(p.id, p.name))}
-                  </>
-                ) : (
-                  <>
-                    {metric(point, `Своя · ${places.find((p) => p.id === point)?.name}`)}
-                    {metric("ray", "Другая · Луч")}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          {mode === "Моя сеть" && side !== "all" && (
+            <button type="button" className="network-total" onClick={() => setSide("all")}>
+              ← К итогу всей сети
+            </button>
+          )}
+          {comparison && (
+            <p className="comparison-caption">Демонстрационное сравнение · {periods[period]}</p>
+          )}
           <Calculation
             key={`${side}-${period}-${mode}`}
-            name={name}
+            name={
+              comparison
+                ? side === "ray"
+                  ? "Другая компания · Луч"
+                  : `Своя точка · ${name}`
+                : name
+            }
             result={summary}
             period={period}
           />
+          {comparison && (
+            <Calculation
+              key={`other-${point}-${side}-${period}`}
+              name={side === "ray" ? `Своя точка · ${ownName}` : "Другая компания · Луч"}
+              result={selection([side === "ray" ? point : "ray"], period)}
+              period={period}
+            />
+          )}
+          {mode === "Моя сеть" && side === "all" && (
+            <dl className="network-breakdown" aria-label="Доли по точкам сети">
+              {own.map((p) => {
+                const part = selection([p.id], period);
+                return (
+                  <div key={p.id}>
+                    <dt>{p.name}</dt>
+                    <dd>
+                      {fraction(part)} · {part.hits}/{part.total}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          )}
         </div>
       </div>
     </section>
