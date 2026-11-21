@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { isIssue } from "./analysis";
 import { issue, labels, periods, type Period } from "./fixture";
 import { fraction, own, places, project, selection, type PlaceId } from "./network";
@@ -61,18 +61,6 @@ export default function Atlas() {
   const [period, setPeriod] = useState<Period>("sep");
   const [point, setPoint] = useState<PlaceId>("arc");
   const [side, setSide] = useState<PlaceId | "all">("arc");
-  const area = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const node = area.current;
-    if (!node) return;
-    const media = matchMedia("(min-width: 761px) and (prefers-reduced-motion: no-preference)");
-    const observer = new IntersectionObserver(
-      ([entry]) => node.classList.toggle("in-view", entry.isIntersecting),
-      { threshold: 0.08 },
-    );
-    if (media.matches) observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
   function changeMode(next: Mode) {
     setMode(next);
     setSide(next === "Моя сеть" ? "all" : point);
@@ -129,9 +117,8 @@ export default function Atlas() {
           </fieldset>
           <PeriodPicker period={period} onChange={setPeriod} />
         </div>
-        <div className="cartography" ref={area}>
+        <div className="cartography">
           <div className="atlas-plane">
-            <img src="./eurasia.svg" width="615" height="305" alt="Схема Европы и Азии" />
             {visible.map((p) => {
               const [x, y] = project(p);
               return (

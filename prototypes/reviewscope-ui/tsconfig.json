@@ -9,6 +9,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowImportingTsExtensions": true,
+    "types": ["vite/client"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true
   },

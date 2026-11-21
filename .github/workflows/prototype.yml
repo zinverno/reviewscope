@@ -32,3 +32,14 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      - name: Record the draft UX review
+        if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
+        run: npm run capture:ux -- "$RUNNER_TEMP/reviewscope-pr03-media"
+      - name: Attach recordings and screenshots
+        if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewscope-pr03-ux-v3
+          path: ${{ runner.temp }}/reviewscope-pr03-media
+          retention-days: 14
+          if-no-files-found: error

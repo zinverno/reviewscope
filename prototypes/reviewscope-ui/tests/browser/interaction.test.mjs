@@ -16,56 +16,72 @@ after(async () => {
   await server?.close();
 });
 
-test("drag moves the card and relation; release leaves the explicit review link usable", async () => {
+test("a review swaps faces in place; dragging its quote updates the edge without following the link", async () => {
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   try {
     await page.goto(origin);
-    const card = page.locator(".review-slip").nth(1),
-      handle = card.getByRole("button", { name: "Переместить #02" });
-    await handle.hover();
-    const box = await handle.boundingBox(),
-      path = page.locator(".threads path").first();
-    const initial = await path.getAttribute("d");
-    await page.mouse.move(box.x + 10, box.y + 10);
-    await page.mouse.down();
-    await page.mouse.move(box.x - 68, box.y + 44, { steps: 8 });
+    const link = page.getByRole("link", { name: "Открыть отзыв #02" }),
+      card = link.locator("..");
+    const rect = () => card.boundingBox();
+    const initial = await rect();
+    await link.hover();
+    await page.waitForFunction(
+      () => document.querySelector("#face-02-back").ariaHidden === "false",
+    );
+    assert.equal((await rect()).height, initial.height);
+    assert.equal(await page.locator("#face-02-front").getAttribute("aria-hidden"), "true");
+    const path = page.locator(".threads path").first(),
+      before = await path.getAttribute("d");
+    const drag = async () => {
+      const b = await page.locator("#face-02-back").boundingBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width / 2 - 85, b.y + b.height / 2 + 24, { steps: 8 });
+    };
+    await drag();
+    await page.keyboard.press("Escape");
     await page.mouse.up();
+    assert.ok(Math.abs((await rect()).x - initial.x) < 1);
+    assert.equal(await page.locator("#face-02-back").getAttribute("aria-hidden"), "true");
+    await page.mouse.move(0, 0);
+    await link.hover();
+    await drag();
+    await page.mouse.up();
+    assert.ok((await rect()).x < initial.x - 20);
+    assert.notEqual(await path.getAttribute("d"), before);
     assert.equal(new URL(page.url()).hash, "");
-    assert.equal(await handle.getAttribute("aria-expanded"), "false");
-    assert.notEqual(await path.getAttribute("d"), initial);
-    await handle.click();
-    await page.getByRole("button", { name: "Влево", exact: true }).click();
-    await page.getByRole("button", { name: "Готово" }).click();
-    await card.locator(".slip-trigger").hover();
-    await card.getByRole("link").click();
+    await link.click();
     await page.waitForSelector(".review-row[aria-pressed=true]");
     assert.match(await page.locator(".review-row[aria-pressed=true]").innerText(), /#02/);
   } finally {
     await page.close();
   }
 });
-test("touch disclosure, explicit close and keyboard entry", async () => {
+test("touch uses two taps; move mode and its arrow controls do not navigate", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
   try {
     await page.goto(origin);
-    const card = page.locator(".review-slip").last(),
-      header = card.locator(".slip-trigger"),
-      link = card.getByRole("link");
-    assert.equal(await link.count(), 0);
-    await header.tap();
-    assert.equal(await header.getAttribute("aria-expanded"), "true");
-    await link.waitFor();
-    await header.tap();
-    assert.equal(await header.getAttribute("aria-expanded"), "false");
-    assert.equal(await link.count(), 0);
+    const link = page.getByRole("link", { name: "Открыть отзыв #03" });
+    await link.tap();
+    assert.equal(new URL(page.url()).hash, "");
+    assert.equal(await page.locator("#face-03-back").getAttribute("aria-hidden"), "false");
+    await link.tap();
+    await page.waitForSelector(".review-row[aria-pressed=true]");
+    assert.match(await page.locator(".review-row[aria-pressed=true]").innerText(), /#03/);
+    await page.goBack();
+    await page.getByRole("button", { name: "Перемещение", exact: true }).tap();
+    await link.locator(".slip-arrow").tap();
+    assert.equal(new URL(page.url()).hash, "");
+    const x = (await link.locator("..").boundingBox()).x;
+    await page.getByRole("button", { name: "Вправо", exact: true }).tap();
+    assert.ok((await link.locator("..").boundingBox()).x > x);
+    await page.getByRole("button", { name: "Готово", exact: true }).tap();
+    await link.focus();
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#face-03-back").getAttribute("aria-hidden"), "true");
     await page.locator(".next-scene").focus();
-    await header.focus();
-    await link.waitFor();
-    await page.keyboard.press("Enter");
-    assert.equal(await link.count(), 0);
-    await page.keyboard.press("Enter");
-    await page.keyboard.press("Tab");
-    assert.equal(await link.evaluate((e) => e === document.activeElement), true);
+    await link.focus();
+    assert.equal(await page.locator("#face-03-back").getAttribute("aria-hidden"), "false");
     await page.keyboard.press("Enter");
     await page.waitForSelector(".review-row[aria-pressed=true]");
     assert.match(await page.locator(".review-row[aria-pressed=true]").innerText(), /#03/);
@@ -73,6 +89,61 @@ test("touch disclosure, explicit close and keyboard entry", async () => {
     await page.close();
   }
 });
+test("the same coast sample is traversed in both directions and survives resize", async () => {
+  const page = await browser.newPage({ viewport: { width: 1200, height: 1050 } });
+  try {
+    await page.addInitScript(() => {
+      const ctx = CanvasRenderingContext2D.prototype,
+        arc = ctx.arc,
+        clear = ctx.clearRect,
+        hit = ctx.isPointInPath;
+      window.fieldProbe = { sample: [], checks: 0 };
+      ctx.isPointInPath = function (...args) {
+        window.fieldProbe.checks++;
+        return hit.apply(this, args);
+      };
+      ctx.clearRect = function (...args) {
+        window.fieldProbe.sample = [];
+        return clear.apply(this, args);
+      };
+      ctx.arc = function (x, y, ...args) {
+        if (window.fieldProbe.sample.length < 15) window.fieldProbe.sample.push([x, y]);
+        return arc.call(this, x, y, ...args);
+      };
+    });
+    await page.goto(origin);
+    async function sample(progress) {
+      await page.evaluate((p) => {
+        const atlas = document.querySelector("#features"),
+          end = atlas.getBoundingClientRect().top + scrollY,
+          start = Math.max(0, end - innerHeight);
+        scrollTo(0, start + (end - start) * p);
+      }, progress);
+      await page.waitForFunction(
+        (p) => Math.abs(Number(document.querySelector("canvas").dataset.stage) - p) < 0.005,
+        progress,
+      );
+      return page.evaluate(() => window.fieldProbe.sample);
+    }
+    const start = await sample(0),
+      mid = await sample(0.5),
+      end = await sample(1),
+      back = await sample(0.5);
+    const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    assert.ok(distance(start[0], mid[0]) > 12 && distance(end[0], mid[0]) > 12);
+    for (let i = 0; i < mid.length; i++) assert.ok(distance(mid[i], back[i]) < 8);
+    const checks = await page.evaluate(() => window.fieldProbe.checks);
+    assert.ok(checks > 0);
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await sample(1);
+    await page.getByRole("button", { name: "Моя сеть", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.fieldProbe.checks), checks);
+    assert.match(await page.locator(".atlas-proof").innerText(), /3\/10/);
+  } finally {
+    await page.close();
+  }
+});
+
 test("history restores the landing scene and research context per entry", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {

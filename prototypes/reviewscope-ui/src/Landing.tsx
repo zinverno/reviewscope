@@ -1,3 +1,4 @@
+import PointField from "./PointField";
 import Atlas from "./Atlas";
 import ReviewBoard from "./ReviewBoard";
 import StorySteps from "./StorySteps";
@@ -6,6 +7,7 @@ import { Brand } from "./shared";
 export default function Landing({ active }: { active: boolean }) {
   return (
     <main id="landing" tabIndex={-1} className="landing">
+      <PointField active={active} />
       <section className="opening">
         <div className="wrap opening-wrap">
           <div className="mast">
@@ -29,7 +31,13 @@ export default function Landing({ active }: { active: boolean }) {
                 изменения — в одной точке или по всей сети.
               </p>
               <p className="opening-hint">
-                <span aria-hidden="true">↗</span> Откройте карточку, чтобы прочитать фразу.
+                <span aria-hidden="true">↗</span>{" "}
+                <span className="mouse-hint">
+                  Наведите для чтения. Потяните карточку или нажмите для исследования.
+                </span>
+                <span className="tap-hint">
+                  Коснитесь для чтения. Второе касание открывает отзыв.
+                </span>
               </p>
             </div>
             <ReviewBoard />
@@ -40,7 +48,7 @@ export default function Landing({ active }: { active: boolean }) {
         </div>
       </section>
       <Atlas />
-      <StorySteps active={active} />
+      <StorySteps />
     </main>
   );
 }

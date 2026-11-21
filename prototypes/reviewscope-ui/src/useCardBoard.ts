@@ -7,7 +7,8 @@ const homes = [
 ];
 const clamp = (n: number, max: number) => Math.min(Math.max(0, n), Math.max(0, max));
 type Drag = {
-  handle: HTMLButtonElement;
+  link: HTMLAnchorElement;
+  original: number[];
   pointer: number;
   index: number;
   x: number;
@@ -28,9 +29,7 @@ export function useCardBoard() {
     const paths = Array.from(host.querySelectorAll<SVGPathElement>(".threads path"));
     let drag: Drag | null = null,
       frame = 0;
-    let suppressed: HTMLButtonElement | null = null;
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-    const lift = (card: HTMLElement) => (card.dataset.open === "true" && !reduced.matches ? 5 : 0);
+    let suppressed: HTMLAnchorElement | null = null;
     function draw() {
       if (!host) return;
       const w = host.clientWidth,
@@ -43,7 +42,7 @@ export function useCardBoard() {
         const minY = i === 0 ? 0 : (i === 1 ? 0.29 : 0.6) * h;
         const maxY = Math.min(h - height, (i === 0 ? 0.24 : i === 1 ? 0.55 : 1) * h);
         const y = clamp(
-          Math.max(minY, Math.min(maxY, homes[i][1] * h + offsets.current[i][1] - lift(card))),
+          Math.max(minY, Math.min(maxY, homes[i][1] * h + offsets.current[i][1])),
           h - height,
         );
         card.style.transform = `translate3d(${x}px,${y}px,0)`;
@@ -82,49 +81,66 @@ export function useCardBoard() {
           draw();
         });
     }
-    function finish() {
+    function finish(cancelled = false) {
       if (!drag || !host) return;
-      const { handle, pointer } = drag;
+      const current = drag;
       drag = null;
+      if (cancelled) offsets.current[current.index] = current.original;
+      if (current.moved || cancelled) suppressed = current.link;
       delete host.dataset.dragging;
-      if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+      delete host.dataset.pending;
+      if (current.link.hasPointerCapture(current.pointer))
+        current.link.releasePointerCapture(current.pointer);
+      draw();
     }
     function down(e: PointerEvent) {
-      const handle = (e.target as Element).closest<HTMLButtonElement>(".grip");
-      if (!host || !handle || !e.isPrimary || e.button !== 0 || drag) return;
+      if (!host || !e.isPrimary || e.button !== 0 || drag) return;
       suppressed = null;
-      const index = cards.indexOf(handle.closest("article") as HTMLElement);
-      // Rebase on the clamped position, including any prior viewport resize.
-      const r = cards[index].getBoundingClientRect(),
-        b = host.getBoundingClientRect();
-      const x = r.left - b.left - homes[index][0] * (b.width - r.width),
-        y = r.top - b.top - homes[index][1] * b.height + lift(cards[index]);
+      if (
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey ||
+        (e.pointerType === "touch" && !host.hasAttribute("data-move"))
+      )
+        return;
+      const link = (e.target as Element).closest<HTMLAnchorElement>(".slip-shell");
+      if (!link) return;
+      const index = cards.indexOf(link.parentElement as HTMLElement);
+      const box = cards[index].getBoundingClientRect(),
+        base = host.getBoundingClientRect();
       drag = {
-        handle,
-        pointer: e.pointerId,
+        link,
         index,
-        x,
-        y,
+        pointer: e.pointerId,
+        original: [...offsets.current[index]],
+        x: box.left - base.left - homes[index][0] * (base.width - box.width),
+        y: box.top - base.top - homes[index][1] * base.height,
         startX: e.clientX,
         startY: e.clientY,
         moved: false,
       };
-      host.dataset.dragging = String(index);
-      handle.setPointerCapture(e.pointerId);
+      host.dataset.pending = String(index);
     }
     function motion(e: PointerEvent) {
-      if (!drag || drag.pointer !== e.pointerId) return;
+      if (!host || !drag || drag.pointer !== e.pointerId) return;
       const dx = e.clientX - drag.startX,
         dy = e.clientY - drag.startY;
-      if (!drag.moved && Math.hypot(dx, dy) < 6) return;
-      drag.moved = true;
+      if (!drag.moved) {
+        if (Math.hypot(dx, dy) < 8) return;
+        drag.moved = true;
+        host.dataset.dragging = String(drag.index);
+        drag.link.setPointerCapture(e.pointerId);
+      }
       offsets.current[drag.index] = [drag.x + dx, drag.y + dy];
       schedule();
     }
     function end(e: PointerEvent) {
-      if (drag?.pointer !== e.pointerId) return;
-      if (drag.moved && e.type === "pointerup") suppressed = drag.handle;
-      finish();
+      if (
+        drag?.pointer === e.pointerId &&
+        (e.type !== "lostpointercapture" || e.target === drag.link)
+      )
+        finish(e.type !== "pointerup");
     }
     function click(e: MouseEvent) {
       if (suppressed && e.detail > 0 && suppressed.contains(e.target as Node)) {
@@ -134,10 +150,10 @@ export function useCardBoard() {
       suppressed = null;
     }
     function key(e: KeyboardEvent) {
-      if (e.key === "Escape") finish();
+      if (e.key === "Escape") finish(true);
     }
     function resize() {
-      finish();
+      finish(true);
       schedule();
     }
     move.current = (i, dx, dy) => {
@@ -145,7 +161,7 @@ export function useCardBoard() {
         base = host.getBoundingClientRect();
       offsets.current[i] = [
         box.left - base.left - homes[i][0] * (base.width - box.width) + dx,
-        box.top - base.top - homes[i][1] * base.height + lift(cards[i]) + dy,
+        box.top - base.top - homes[i][1] * base.height + dy,
       ];
       draw();
     };
@@ -160,9 +176,9 @@ export function useCardBoard() {
       observer.observe(c);
     });
     host.addEventListener("pointerdown", down);
-    host.addEventListener("pointermove", motion);
-    host.addEventListener("pointerup", end);
-    host.addEventListener("pointercancel", end);
+    window.addEventListener("pointermove", motion);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
     host.addEventListener("lostpointercapture", end);
     host.addEventListener("click", click, true);
     window.addEventListener("keydown", key);
@@ -173,9 +189,9 @@ export function useCardBoard() {
       observer.disconnect();
       cancelAnimationFrame(frame);
       host.removeEventListener("pointerdown", down);
-      host.removeEventListener("pointermove", motion);
-      host.removeEventListener("pointerup", end);
-      host.removeEventListener("pointercancel", end);
+      window.removeEventListener("pointermove", motion);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
       host.removeEventListener("lostpointercapture", end);
       host.removeEventListener("click", click, true);
       window.removeEventListener("keydown", key);
