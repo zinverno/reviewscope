@@ -20,6 +20,8 @@ jobs:
         working-directory: prototypes/reviewscope-ui
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -37,7 +39,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
         uses: actions/checkout@v4
         with:
-          ref: 08e7d0e2fa4b5479d93e19ca5e12666c9c666f6d
+          ref: 079eeee1ca90240647b4176b30510c8efe587117
           path: .ux-before
           persist-credentials: false
       - name: Build the comparison snapshot
@@ -51,7 +53,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
         uses: actions/upload-artifact@v4
         with:
-          name: reviewscope-pr03-ux-v6
+          name: reviewscope-pr03-ux-v7
           path: ${{ runner.temp }}/reviewscope-pr03-media
           retention-days: 14
           if-no-files-found: error

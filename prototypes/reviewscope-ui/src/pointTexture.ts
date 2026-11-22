@@ -2,28 +2,22 @@ import geometry from "./eurasia.svg?raw";
 import { places, project, type PlaceId } from "./network";
 
 export const W = 615,
-  H = 305,
-  columns = 57,
-  spacing = 15.5;
+  H = 305;
 export const clamp = (x: number) => Math.max(0, Math.min(1, x));
 export const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 export const smooth = (t: number) => t * t * (3 - 2 * t);
 
-const DOT_COLOR = [208, 221, 230, 255] as const;
-const BLUE = [100, 181, 246, 255] as const;
-const RED = [229, 57, 53, 255] as const;
-const wobble = 0.26;
-
+type Target = { x: number; y: number; alpha: number };
 export type Dot = {
   id: number;
   x: number;
   y: number;
-  col: number;
-  row: number;
   phase: number;
-  hx: number;
-  hy: number;
-  alpha: number;
+  hero: Target;
+  atlas: Target;
+  method: Target;
+  groupX: number;
+  groupY: number;
 };
 
 export function sampleLand(ctx: CanvasRenderingContext2D): Dot[] {
@@ -32,22 +26,17 @@ export function sampleLand(ctx: CanvasRenderingContext2D): Dot[] {
   const samples: Array<[number, number]> = [];
   for (let y = 4; y < H - 3; y += 5)
     for (let x = 4; x < W - 3; x += 5) if (ctx.isPointInPath(land, x, y)) samples.push([x, y]);
-  return samples.map(([x, y], i) => {
-    const col = i % columns,
-      row = Math.floor(i / columns),
-      phase = (i * 0.61803398875) % 1;
-    return {
-      id: i,
-      x,
-      y,
-      col,
-      row,
-      phase: phase * Math.PI * 2,
-      hx: Math.sin(phase * 17.3) * wobble,
-      hy: Math.cos(phase * 23.7) * wobble,
-      alpha: 0,
-    };
-  });
+  return samples.map(([x, y], id) => ({
+    id,
+    x,
+    y,
+    phase: ((id * 0.61803398875) % 1) * 2 * Math.PI,
+    hero: { x: 0, y: 0, alpha: 0 },
+    atlas: { x: 0, y: 0, alpha: 0.64 },
+    method: { x: 0, y: 0, alpha: 0 },
+    groupX: 0,
+    groupY: 0,
+  }));
 }
 
 let dotsCache: Dot[] | null = null;
@@ -72,7 +61,10 @@ export function placeParticles(): Map<PlaceId, number> {
         .sort((a, b) => a.distance - b.distance || a.id - b.id);
       return { place, nearest };
     })
-    .sort((a, b) => a.nearest[0].distance - b.nearest[0].distance || a.place.id.localeCompare(b.place.id));
+    .sort(
+      (a, b) =>
+        a.nearest[0].distance - b.nearest[0].distance || a.place.id.localeCompare(b.place.id),
+    );
   const taken = new Set<number>(),
     result = new Map<PlaceId, number>();
   for (const { place, nearest } of ranked) {
@@ -93,100 +85,87 @@ export function particleCenter(place: PlaceId) {
   return { x: dot.x, y: dot.y };
 }
 
-const profiles = new Map<string, Float32Array>();
-function profile(radius: number, kind: "core" | "halo") {
-  const key = `${kind}:${Math.round(radius * 20) / 20}`,
-    size = Math.ceil(radius) * 2 + 1,
-    extent = (size - 1) / 2;
-  let table = profiles.get(key);
-  if (!table) {
-    table = new Float32Array(size * size);
-    for (let y = -extent; y <= extent; y++)
-      for (let x = -extent; x <= extent; x++) {
-        const distance = Math.hypot(x, y);
-        table[(y + extent) * size + x + extent] =
-          kind === "core"
-            ? clamp(radius + 0.5 - distance)
-            : distance >= radius
-              ? 0
-              : (1 - distance / radius) ** 2;
+type Box = { x: number; y: number; width: number; height: number };
+
+export function arrangeGrid(dots: Dot[], target: "hero" | "method", box: Box) {
+  const columns = Math.max(1, Math.round(Math.sqrt((dots.length * box.width) / box.height)));
+  const rows = Math.ceil(dots.length / columns);
+  const step = Math.min(box.width / columns, box.height / rows);
+  const ordered = [...dots].sort((a, b) => a.y - b.y || a.x - b.x);
+  for (let row = 0; row < rows; row++) {
+    const band = ordered.slice(row * columns, (row + 1) * columns).sort((a, b) => a.x - b.x);
+    band.forEach((dot, col) => {
+      const dx = (col - (band.length - 1) / 2) * step;
+      const dy = (row - (rows - 1) / 2) * step;
+      const edge = Math.max(Math.abs((dx * 2) / box.width), Math.abs((dy * 2) / box.height));
+      if (target === "method") {
+        dot.groupX = box.x + box.width / 2;
+        dot.groupY = box.y + box.height / 2;
       }
-    profiles.set(key, table);
+      dot[target] = {
+        x: box.x + box.width / 2 + dx,
+        y: box.y + box.height / 2 + dy,
+        alpha: (target === "hero" ? 0.54 : 0.36) * smooth(clamp((1 - edge) * 4)),
+      };
+    });
   }
-  return { table, size, extent };
 }
 
-export function paintField(
-  image: ImageData,
-  dots: Dot[],
-  morph: number,
-  mapX: number,
-  scale: number,
-  dpr: number,
-  time: number,
-  boardWidth: number,
-  highlight: { selected: string; visible: string[] } = { selected: "", visible: [] },
-) {
-  const { width, height, data } = image;
-  data.fill(0);
-  const rows = Math.max(...dots.map((dot) => dot.row)) + 1,
-    gridWidth = columns * spacing,
-    gridHeight = rows * spacing,
-    radius = dpr * mix(1.1, Math.min(1.85, Math.max(0.54, scale * 0.8)), morph),
-    glow = 0.42 + 0.12 * morph,
-    edgeX = Math.min(gridWidth / 2, boardWidth * 0.74);
-  const assignment = placeParticles(),
-    company = new Map<number, readonly [number, number, number, number]>();
-  for (const id of highlight.visible) {
-    const particle = assignment.get(id as PlaceId);
-    if (particle !== undefined)
-      company.set(particle, id === highlight.selected ? RED : BLUE);
+// Reuse the light profile of a particle; only its centre and brightness change each frame.
+function sprite(color: string, company: boolean) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D is required for particle lighting");
+  const glow = ctx.createRadialGradient(48, 48, 0, 48, 48, 48);
+  for (const [stop, alpha] of [
+    [0, 1],
+    [0.11, 1],
+    [0.18, company ? 0.75 : 0.9],
+    [0.25, company ? 0.56 : 0.4],
+    [0.4, company ? 0.34 : 0.21],
+    [0.7, 0.09],
+    [1, 0],
+  ]) {
+    glow.addColorStop(stop, `rgba(${color},${alpha})`);
   }
-  const seconds = time / 1000;
-  for (const dot of dots) {
-    const cx = mix(dot.hx, mapX + dot.x * scale, morph) * dpr,
-      cy = mix(dot.hy, dot.y * scale, morph) * dpr;
-    if (cx < -14 || cy < -14 || cx > width + 14 || cy > height + 14) continue;
-    const edge = Math.hypot(
-      ((dot.col - (columns - 1) / 2) * spacing) / edgeX,
-      ((dot.row - (rows - 1) / 2) * spacing) / (gridHeight / 2),
-    );
-    const heroAlpha = 0.29 * smooth(clamp((1 - edge) * 1.7));
-    const opacity = mix(heroAlpha, 0.79, morph);
-    if (opacity < 0.01) continue;
-    const light =
-      0.12 + 0.83 * (0.5 + 0.5 * Math.sin(seconds * (1.42 + (dot.id % 9) * 0.045) + dot.phase));
-    const tint = company.get(dot.id),
-      core = profile(radius * (tint ? 1.14 : 1), "core"),
-      halo = profile(radius * (tint ? 4.8 : 4.1), "halo"),
-      haloGain = tint ? 0.56 + 0.34 * light : glow * (0.25 + 1.15 * light),
-      coreGain = 0.82 + 0.18 * light,
-      color = tint ?? DOT_COLOR;
-    const ix = Math.round(cx),
-      iy = Math.round(cy);
-    for (let oy = -halo.extent; oy <= halo.extent; oy++) {
-      const py = iy + oy;
-      if (py < 0 || py >= height) continue;
-      const hi = (oy + halo.extent) * halo.size + halo.extent;
-      const inCoreY = Math.abs(oy) <= core.extent;
-      for (let ox = -halo.extent; ox <= halo.extent; ox++) {
-        const px = ix + ox;
-        if (px < 0 || px >= width) continue;
-        const alpha = Math.min(
-          1,
-          opacity *
-            (halo.table[hi + ox] * haloGain +
-              (inCoreY && Math.abs(ox) <= core.extent
-                ? core.table[(oy + core.extent) * core.size + ox + core.extent] * coreGain
-                : 0)),
-        );
-        const offset = (py * width + px) * 4;
-        if (alpha <= data[offset + 3] / 255) continue;
-        data[offset] = color[0];
-        data[offset + 1] = color[1];
-        data[offset + 2] = color[2];
-        data[offset + 3] = alpha * 255;
-      }
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 96, 96);
+  return canvas;
+}
+
+export function fieldRenderer(ctx: CanvasRenderingContext2D, dots: Dot[]) {
+  const neutral = sprite("213,228,240", false);
+  const red = sprite("255,76,67", true);
+  const blue = sprite("94,184,255", true);
+  return (
+    first: number,
+    second: number,
+    time: number,
+    highlight: Map<number, boolean>,
+    mapRadius: number,
+    top: number,
+    bottom: number,
+  ) => {
+    const from = second > 0 ? "atlas" : "hero";
+    const to = second > 0 ? "method" : "atlas";
+    const t = second > 0 ? second : first;
+    const accent = smooth(clamp((first - 0.68) / 0.32)) * (1 - smooth(clamp(second / 0.18)));
+    const radius = mix(mix(5.6, mapRadius, first), 5, second);
+    const gather = 0.34 * Math.sin(Math.PI * second);
+    for (const dot of dots) {
+      const a = dot[from],
+        b = dot[to];
+      const x = mix(mix(a.x, b.x, t), dot.groupX, gather);
+      const y = mix(mix(a.y, b.y, t), dot.groupY, gather);
+      if (y < top - 22 || y > bottom + 22) continue;
+      const light = (1 + Math.sin(time * (0.00142 + (dot.id % 9) * 0.000045) + dot.phase)) / 2;
+      const selected = highlight.get(dot.id);
+      const lit = selected !== undefined && accent > 0;
+      const r = lit ? mix(radius, 20, accent) : radius;
+      const alpha = mix(a.alpha, b.alpha, t) * (0.53 + 0.47 * light);
+      ctx.globalAlpha = lit ? mix(alpha, 0.85 + 0.15 * light, accent) : alpha;
+      ctx.drawImage(lit ? (selected ? red : blue) : neutral, x - r, y - r, r * 2, r * 2);
     }
-  }
+  };
 }

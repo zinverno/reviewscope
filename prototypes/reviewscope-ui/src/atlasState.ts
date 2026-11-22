@@ -26,7 +26,7 @@ export function useAtlasState() {
 
   const visible = mode === "Сравнение" ? places : own;
   const visibleIds = visible.map((item) => item.id);
-  const selected = mode === "Моя сеть" ? "" : mode === "Сравнение" ? side : point;
+  const selected = side === "all" ? "" : side;
   const ids = side === "all" ? OWN_IDS : [side];
   const summary = selection(ids, period);
   const name = places.find((item) => item.id === side)?.name ?? "Вся сеть";

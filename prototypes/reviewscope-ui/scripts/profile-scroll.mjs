@@ -1,13 +1,15 @@
 /** Measure real wheel-driven morph frames without recording, using only this page's context. */
 export async function profileScroll(browser, url, reversals = false) {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   try {
     await page.addInitScript(() => {
       const raf = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = (cb) =>
         raf((t) => {
           window.displayFrame = t;
+          const start = performance.now(), count = window.draws?.length;
           cb(t);
+          if (window.draws && window.draws.length > count) window.paintTimes.push(performance.now() - start);
         });
       const context = CanvasRenderingContext2D.prototype;
       for (const op of ["clearRect", "putImageData"]) {
@@ -26,6 +28,7 @@ export async function profileScroll(browser, url, reversals = false) {
     await page.waitForFunction((y) => scrollY >= y - 1, initial);
     await page.evaluate(() => {
       window.framesSeen = [];
+      window.paintTimes = [];
       window.draws = [];
       requestAnimationFrame(function sample(t) {
         if (!window.framesSeen) return;
@@ -37,8 +40,8 @@ export async function profileScroll(browser, url, reversals = false) {
       for (let i = 0; i < (reversals ? 12 : 48); i++) await page.mouse.wheel(0, 12 * direction);
     }
     await page.waitForTimeout(90);
-    const [frames, paints] = await page.evaluate(() => {
-      const result = [window.framesSeen, window.draws];
+    const [frames, paints, costs] = await page.evaluate(() => {
+      const result = [window.framesSeen, window.draws, window.paintTimes.sort((a,b) => a-b)];
       window.framesSeen = window.draws = null;
       return result;
     });
@@ -55,7 +58,11 @@ export async function profileScroll(browser, url, reversals = false) {
     return {
       browser: browser.browserType().name(),
       version: browser.version(),
-      viewport: "1440x900",
+      viewport: "1920x1080",
+      dpr: await page.evaluate(() => devicePixelRatio),
+      durationMs: Math.round(finish - start),
+      paintCallbackMedianMs: +costs[Math.floor(costs.length * 0.5)].toFixed(2),
+      paintCallbackP95Ms: +costs[Math.floor(costs.length * 0.95)].toFixed(2),
       input: reversals
         ? "96 wheel events, 8 short runs near the atlas, 12 CSS px each"
         : "96 wheel events, one down/up pass, 12 CSS px each",

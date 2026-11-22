@@ -175,6 +175,11 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     const board = await page.locator(".board-canvas").boundingBox();
     assert.ok(Math.min(...xs) > board.x - board.width * 0.22, "quiet title area");
 
+    for (const card of await page.locator(".review-slip").all()) {
+      const box = await card.boundingBox();
+      assert.ok(grid.filter(([x, y]) => x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height).length > 35);
+    }
+
     await toProgress(0.5);
     assert.equal(await scene.getAttribute("data-phase"), "MORPH");
     const middle = await field.evaluate(pixels),
@@ -189,11 +194,14 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     await page.waitForTimeout(850);
     assert.ok(sameBox(title, await page.locator("#atlas-title").boundingBox()));
     assert.ok(sameBox(map, await page.locator(".atlas-plane").boundingBox()));
+    const silhouette = await field.evaluate(pixels);
+    const coastX = silhouette.map(([x]) => x);
+    assert.ok(Math.max(...coastX) - Math.min(...coastX) > 1440 * 0.85);
     const count = await page.evaluate(() => window.land.length);
     assert.ok(count > 100);
     assert.equal(await checkCoast(), 0);
 
-    await toProgress(1.7);
+    await toProgress(1.47);
     assert.equal(await scene.getAttribute("data-phase"), "ATLAS_HOLD");
     assert.ok(sameBox(title, await page.locator("#atlas-title").boundingBox()));
     assert.equal(await checkCoast(), 0);
@@ -206,6 +214,19 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
       backTransform = await field.evaluate((el) => el.style.transform);
     assert.equal(backTransform, middleTransform);
     assert.notDeepEqual(back, grid);
+
+    await toProgress(1.95);
+    const gathering = await field.evaluate(pixels);
+    await page.goto(origin + "#how");
+    await page.waitForFunction(() => !document.getElementById("how").inert && document.getElementById("features").inert);
+    assert.equal(await page.locator(".atlas-details:visible").count(), 0);
+    const method = await field.evaluate(pixels);
+    assert.notDeepEqual(gathering, method);
+    for (const card of await page.locator(".step").all()) {
+      const box = await card.boundingBox();
+      assert.ok(box.y >= 0 && box.y + box.height <= 900);
+      assert.ok(method.filter(([x,y]) => x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height).length > 40);
+    }
 
     await page.setViewportSize({ width: 1000, height: 900 });
     await toProgress(1.2);
@@ -242,8 +263,11 @@ test("map markers select the evidence, with a network total and both comparison 
     await button("Октябрь").tap();
     assert.match(await panels.innerText(), /Мыс/i);
     assert.match(await panels.innerText(), /Нет данных/);
-    await details.locator("summary").first().click();
+    const action = button("Состав расчёта");
+    await action.tap();
     assert.equal(await details.locator("li").count(), 3);
+    await button("Закрыть").tap();
+    assert.equal(await action.evaluate(el => el === document.activeElement), true);
     await button("← К итогу всей сети").tap();
     await button("Сентябрь").tap();
     assert.match(await panels.innerText(), /3\/10/);
@@ -254,13 +278,17 @@ test("map markers select the evidence, with a network total and both comparison 
     assert.match(await panels.first().innerText(), /Луч/i);
     assert.match(await panels.first().innerText(), /1\/4/);
     assert.match(await panels.last().innerText(), /2\/3/);
-    for (const panel of await details.locator(".atlas-proof").all()) {
-      await panel.locator("summary").click();
+    await action.scrollIntoViewIfNeeded();
+    const y = await page.evaluate(() => scrollY);
+    await action.tap();
+    for (const panel of await details.locator(".atlas-proof").all())
       assert.ok((await panel.locator("li").count()) >= 3);
-    }
-    await page.getByRole("button", { name: "Состав расчёта", exact: true }).click();
-    assert.equal(await details.locator("details").first().evaluate((el) => el.open), true);
-    assert.equal(await details.evaluate((el) => el === document.activeElement), true);
+    assert.equal(await details.locator(".atlas-proof").count(), 2);
+    await details.evaluate(el => el.scrollTop = el.scrollHeight);
+    await page.keyboard.press("Escape");
+    assert.equal(await details.isVisible(), false);
+    assert.equal(await action.evaluate(el => el === document.activeElement), true);
+    assert.equal(await page.evaluate(() => scrollY), y);
   } finally {
     await page.close();
   }
@@ -372,6 +400,13 @@ test("companies are coloured particles, not drawn marker disks", async () => {
       lineIdle = await sample("line");
     assert.ok(arcSelected[0] > arcSelected[2], `selected particle should be red: ${arcSelected}`);
     assert.ok(lineIdle[2] > lineIdle[0], `unselected particle should be blue: ${lineIdle}`);
+    const arcBox = await pin("arc").boundingBox();
+    await page.mouse.click(arcBox.x - 3, arcBox.y + arcBox.height / 2);
+    await pin("arc").dispatchEvent("pointerdown", { pointerType: "touch" });
+    await pin("arc").dispatchEvent("pointercancel", { pointerType: "touch" });
+    await pin("cape").focus();
+    await page.keyboard.press("Space");
+    assert.equal(await pin("cape").getAttribute("aria-pressed"), "true");
     const line = await pin("line").boundingBox();
     await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2);
     await page.waitForFunction(() => document.querySelector("#features").dataset.selected === "line");
@@ -410,13 +445,13 @@ test("reduced motion uses the short flow layout with readable scenes and no morp
     assert.equal(await page.getByRole("heading", { name: /Одна точка. Вся сеть/ }).isVisible(), true);
     assert.equal(await page.getByRole("button", { name: "Сравнение", exact: true }).isVisible(), true);
     assert.equal(await page.locator(".atlas").getAttribute("inert"), null);
-    const atlasTop = await page.evaluate(
-      () => document.getElementById("features").getBoundingClientRect().top + scrollY,
-    );
-    await page.evaluate((top) => scrollTo(0, top - 2), atlasTop);
-    await page.waitForFunction(() => document.querySelector("canvas").dataset.morph === "0.000");
-    await page.evaluate((top) => scrollTo(0, top + 2), atlasTop);
-    await page.waitForFunction(() => document.querySelector("canvas").dataset.morph === "1.000");
+    await page.locator(".atlas-plane").scrollIntoViewIfNeeded();
+    const still = () => page.locator("canvas").evaluate(el => el.toDataURL());
+    await page.waitForTimeout(100);
+    const initial = await still();
+    await page.waitForTimeout(450);
+    assert.equal(await still(), initial);
+    assert.equal(await page.locator("#how").getAttribute("inert"), null);
   } finally {
     await page.close();
   }

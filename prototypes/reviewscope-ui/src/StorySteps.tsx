@@ -18,7 +18,7 @@ export default function StorySteps() {
       <div className="wrap">
         <div className="folio">
           <span className="rule" />
-          Основания вывода
+          Пример проверки одной точки
         </div>
         <div className="method-head">
           <h2 id="method-title">
@@ -63,6 +63,7 @@ export default function StorySteps() {
               )}
               <div hidden={step !== i} id={`step-detail-${i}`} className="step-detail">
                 <p>{explanations[i]}</p>
+                {i < 2 && <a className="inline-link" href={`#research?review=0${i + 1}`}>Исследовать отзывы <Icon name="arrow" size={15} /></a>}
                 {i === 2 && (
                   <a className="inline-link" href="#changes">
                     Открыть изменения <Icon name="arrow" size={15} />

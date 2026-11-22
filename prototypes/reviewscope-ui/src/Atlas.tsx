@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useRef, type MouseEvent } from "react";
 import { isIssue } from "./analysis";
 import type { AtlasState, OwnId } from "./atlasState";
 import { issue, labels, periods, type Period } from "./fixture";
@@ -29,10 +29,12 @@ function CalculationCard({
   name,
   result,
   period,
+  onDetails,
 }: {
   name: string;
   result: Result;
   period: Period;
+  onDetails?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <section className="atlas-proof glass compact-proof" aria-label={`Основания расчёта · ${name}`}>
@@ -42,6 +44,11 @@ function CalculationCard({
       <h3>{issue}</h3>
       <Ratio result={result} />
       <Quote result={result} />
+      {onDetails && (
+        <button type="button" className="details-action" onClick={onDetails}>
+          Состав расчёта
+        </button>
+      )}
     </section>
   );
 }
@@ -50,42 +57,29 @@ function CalculationDetails({ name, result }: { name: string; result: Result }) 
   return (
     <section className="atlas-proof glass" aria-label={`Состав расчёта · ${name}`}>
       <div className="folio">{name}</div>
-      <details>
-        <summary>Состав расчёта · {result.rows.length} записей</summary>
-        <p>Без текста: {result.missing}. Каждая текстовая запись учтена один раз.</p>
-        <ul>
-          {result.rows.map((row) => (
-            <li key={row.id}>
-              <small>
-                {places.find((place) => place.id === row.place)?.name} · {row.id} · {labels[row.stance]}
-              </small>
-              {row.text || "Текст отсутствует"}
-              <b>
-                {isIssue(row)
-                  ? "В числителе и знаменателе"
-                  : row.text
-                    ? "Только в знаменателе"
-                    : "Исключена"}
-              </b>
-            </li>
-          ))}
-        </ul>
-      </details>
+      <h3>Исходные записи · {result.rows.length}</h3>
+      <Ratio result={result} />
+      <p>Без текста: {result.missing}. Каждая текстовая запись учтена один раз.</p>
+      <ul>
+        {result.rows.map((row) => (
+          <li key={row.id}>
+            <small>
+              {places.find((place) => place.id === row.place)?.name} · {row.id} ·{" "}
+              {labels[row.stance]}
+            </small>
+            {row.text || "Текст отсутствует"}
+            <b>
+              {isIssue(row)
+                ? "В числителе и знаменателе"
+                : row.text
+                  ? "Только в знаменателе"
+                  : "Исключена"}
+            </b>
+          </li>
+        ))}
+      </ul>
     </section>
   );
-}
-
-function openCalculationDetails() {
-  const details = document.getElementById("atlas-breakdown");
-  if (!details) return;
-  details.querySelectorAll("details").forEach((node) => {
-    node.open = true;
-  });
-  details.scrollIntoView({
-    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    block: "start",
-  });
-  details.focus({ preventScroll: true });
 }
 
 function NetworkBreakdown({ state }: { state: AtlasState }) {
@@ -107,46 +101,37 @@ function NetworkBreakdown({ state }: { state: AtlasState }) {
 }
 
 export function AtlasStage({ state }: { state: AtlasState }) {
-  const plane = useRef<HTMLDivElement>(null);
-  const chooseRef = useRef(state.choosePlace);
-  const pointerPick = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const other = state.mode === "Сравнение" ? state.comparison : null;
-  const measureKey = `${state.mode}|${state.period}|${state.side}|${state.point}`;
-  chooseRef.current = state.choosePlace;
+  function openDetails(event: MouseEvent<HTMLButtonElement>) {
+    trigger.current = event.currentTarget;
+    dialog.current?.showModal();
+    dialog.current?.focus({ preventScroll: true });
+  }
 
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("story-measure", { detail: measureKey }));
-  }, [measureKey]);
-
-  useEffect(() => {
-    const currentNode = plane.current;
-    if (!currentNode) return;
-    const node = currentNode;
-    function pick(event: PointerEvent) {
-      const box = node.getBoundingClientRect();
-      const x = event.clientX - box.left;
-      const y = event.clientY - box.top;
-      let nearest: PlaceId | null = null;
-      let distance = 44 * 44;
-      for (const button of node.querySelectorAll<HTMLButtonElement>(".pin")) {
-        const target = button.getBoundingClientRect();
-        const dx = x - (target.left + target.width / 2 - box.left);
-        const dy = y - (target.top + target.height / 2 - box.top);
-        const candidate = dx * dx + dy * dy;
-        if (candidate < distance) {
-          distance = candidate;
-          nearest = button.dataset.place as PlaceId;
-        }
-      }
-      if (nearest) {
-        pointerPick.current = true;
-        chooseRef.current(nearest);
-        window.dispatchEvent(new Event("map-selection"));
-      }
-    }
-    node.addEventListener("pointerdown", pick, true);
-    return () => node.removeEventListener("pointerdown", pick, true);
-  }, []);
+  function selectPin(event: MouseEvent<HTMLButtonElement>) {
+    const clicked = event.currentTarget;
+    const buttons = Array.from(
+      clicked.parentElement?.querySelectorAll<HTMLButtonElement>(".pin") ?? [],
+    );
+    // Neighbouring touch targets overlap on small maps. Resolve a completed click by centre.
+    const distance = (button: HTMLButtonElement) => {
+      const box = button.getBoundingClientRect();
+      return Math.hypot(
+        event.clientX - box.left - box.width / 2,
+        event.clientY - box.top - box.height / 2,
+      );
+    };
+    const target =
+      event.detail && clicked === event.target
+        ? buttons.reduce(
+            (best, button) => (distance(button) < distance(best) ? button : best),
+            clicked,
+          )
+        : clicked;
+    state.choosePlace(target.dataset.place as PlaceId);
+  }
 
   return (
     <section
@@ -192,7 +177,6 @@ export function AtlasStage({ state }: { state: AtlasState }) {
         <div className="cartography">
           <div
             className="atlas-plane"
-            ref={plane}
             style={{ aspectRatio: `${mapFrame.width} / ${mapFrame.height}` }}
           >
             {state.visible.map((place) => {
@@ -204,21 +188,17 @@ export function AtlasStage({ state }: { state: AtlasState }) {
                   style={{
                     left: `${(100 * (center.x - mapFrame.left)) / mapFrame.width}%`,
                     top: `${(100 * center.y) / mapFrame.height}%`,
-                    "--pin": placeParticles().get(place.id),
-                  } as CSSProperties}
+                  }}
                   className="pin"
+                  onClick={selectPin}
                   data-place={place.id}
                   data-particle={placeParticles().get(place.id)}
-                  aria-pressed={state.mode === "Моя сеть" ? state.side === place.id : state.selected === place.id}
+                  aria-pressed={
+                    state.mode === "Моя сеть"
+                      ? state.side === place.id
+                      : state.selected === place.id
+                  }
                   aria-label={`На карте: ${place.name}`}
-                  onClick={() => {
-                    if (pointerPick.current) {
-                      pointerPick.current = false;
-                      return;
-                    }
-                    state.choosePlace(place.id);
-                    window.dispatchEvent(new Event("map-selection"));
-                  }}
                 >
                   <span>{place.name}</span>
                 </button>
@@ -240,11 +220,8 @@ export function AtlasStage({ state }: { state: AtlasState }) {
         {state.mode === "Сравнение" ? (
           <p className="comparison-caption">Демонстрационное сравнение · {state.periodLabel}</p>
         ) : null}
-        <button type="button" className="details-action glass" onClick={openCalculationDetails}>
-          Состав расчёта
-        </button>
         <CalculationCard
-          key={`${state.side}-${state.period}-${state.mode}`}
+          onDetails={openDetails}
           name={state.mode === "Сравнение" ? state.comparisonName : state.name}
           result={state.summary}
           period={state.period}
@@ -258,34 +235,27 @@ export function AtlasStage({ state }: { state: AtlasState }) {
           />
         ) : null}
       </div>
+      <dialog
+        className="atlas-details"
+        ref={dialog}
+        tabIndex={-1}
+        aria-labelledby="proof-title"
+        onClose={() => trigger.current?.focus({ preventScroll: true })}
+      >
+        <header>
+          <h2 id="proof-title">Состав расчёта</h2>
+          <button type="button" onClick={() => dialog.current?.close()}>
+            Закрыть
+          </button>
+        </header>
+        <p>{state.periodLabel} 2026</p>
+        {state.mode === "Моя сеть" && state.side === "all" && <NetworkBreakdown state={state} />}
+        <CalculationDetails
+          name={other ? state.comparisonName : state.name}
+          result={state.summary}
+        />
+        {other && <CalculationDetails name={state.otherName} result={other} />}
+      </dialog>
     </section>
-  );
-}
-
-export function AtlasDetails({ state }: { state: AtlasState }) {
-  const other = state.mode === "Сравнение" ? state.comparison : null;
-  return (
-    <section
-      className="wrap atlas-details"
-      id="atlas-breakdown"
-      aria-label="Детали карты"
-      tabIndex={-1}
-    >
-      {state.mode === "Моя сеть" && state.side === "all" ? <NetworkBreakdown state={state} /> : null}
-      <CalculationDetails
-        name={state.mode === "Сравнение" ? state.comparisonName : state.name}
-        result={state.summary}
-      />
-      {other ? <CalculationDetails name={state.otherName} result={other} /> : null}
-    </section>
-  );
-}
-
-export default function Atlas({ state }: { state: AtlasState }) {
-  return (
-    <>
-      <AtlasStage state={state} />
-      <AtlasDetails state={state} />
-    </>
   );
 }

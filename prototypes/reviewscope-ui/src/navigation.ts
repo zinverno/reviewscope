@@ -98,12 +98,11 @@ export function useNavigation() {
       const apply = () => {
         const target = sceneScrollTarget(page);
         if (target !== null) window.scrollTo(0, target);
-        else document.getElementById(page)?.scrollIntoView();
       };
       apply();
-      requestAnimationFrame(apply);
+      const frame = requestAnimationFrame(apply);
       const timer = window.setTimeout(apply, 80);
-      return () => window.clearTimeout(timer);
+      return () => { cancelAnimationFrame(frame); window.clearTimeout(timer); };
     } else window.scrollTo(0, 0);
     if (!first.current) main?.focus({ preventScroll: true });
     first.current = false;

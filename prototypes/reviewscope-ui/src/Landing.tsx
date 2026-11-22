@@ -1,5 +1,5 @@
 import { useAtlasState } from "./atlasState";
-import { AtlasDetails, AtlasStage } from "./Atlas";
+import { AtlasStage } from "./Atlas";
 import PointField from "./PointField";
 import ReviewBoard from "./ReviewBoard";
 import StorySteps from "./StorySteps";
@@ -22,19 +22,18 @@ export default function Landing({ active }: Props) {
                 <strong className="wordmark">
                   review<span>scope</span>
                 </strong>
-                <span className="folio">Умная карта научных обзоров / 2026</span>
+                <span className="folio">Интерактивный прототип · Синтетические данные</span>
               </header>
               <div className="opening-grid">
                 <div className="opening-copy">
-                  <div className="eyebrow">Инструмент для авторов статей</div>
+                  <div className="eyebrow">Исследование отзывов</div>
                   <h1>
-                    Ваша работа
+                    За разными словами —
                     <br />
-                    заслуживает быть <em>замеченной</em>
+                    <em>общая проблема.</em>
                   </h1>
                   <p>
-                    Перестаньте гадать, кто может процитировать статью. Мы находим рецензентов по всей их научной истории и
-                    показываем, где ваша тема уже вызывает интерес.
+                    Находите повторяющиеся проблемы в отзывах. Проверяйте исходные фразы и сравнивайте изменения — в одной точке или по всей сети.
                   </p>
                 </div>
                 <ReviewBoard />
@@ -42,10 +41,9 @@ export default function Landing({ active }: Props) {
             </div>
           </section>
           <AtlasStage state={atlas} />
+          <StorySteps />
         </div>
       </div>
-      <AtlasDetails state={atlas} />
-      <StorySteps />
     </main>
   );
 }
