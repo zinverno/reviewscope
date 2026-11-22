@@ -152,7 +152,7 @@ export function measureHeadings(layer: HTMLElement, headings: HTMLElement[], ori
       const x = mix(start.x, end.x, position) + curve * pair.bendX;
       const y = mix(start.y, end.y, position) + curve * pair.bendY;
       const size = mix(start.size, end.size, position);
-      const change = smooth(clamp((position - 0.34 - (0.27 * (i % 7)) / 6) / 0.085));
+      const change = smooth(clamp((position - 0.31 - (0.25 * (i % 7)) / 6) / 0.16));
       function place(glyph: Glyph, opacity: number) {
         glyph.face.style.opacity = String(opacity);
         if (!opacity) return;

@@ -185,8 +185,7 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
       Math.abs(x - board.x - board.width / 2) < board.width / 4 &&
       Math.abs(y - board.y - board.height / 2) < board.height / 4);
     const rows = points => new Set(points.map(([, y]) => Math.round(y * 1000))).size;
-    assert.ok(core.length > 400 && rows(core) < 40, "regular central rows");
-    assert.ok(rows(initialCentres) > 4 * rows(core), "outer positions diverge from grid rows");
+    assert.ok(core.length > 300 && rows(core) > core.length * 0.9, "central particles also vary within their cells");
     assert.ok(Math.min(...initialCentres.map(([x]) => x)) > board.x - board.width * 0.22, "quiet title area");
     assert.equal(await page.getByRole("heading", { name: "За разными словами — общая проблема." }).count(), 1);
 
@@ -288,15 +287,16 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     await checkPerimeters();
     await page.setViewportSize({ width: 1000, height: 900 });
     await checkPerimeters();
-    const heights = new Set([(await page.locator(".step").first().boundingBox()).height]);
-    for (const name of [/Проверить смысл/, /Сравнить изменения/]) {
-      const button = page.getByRole("button", {name});
-      await button.click();
-      await page.getByRole("button", {name, expanded: true}).waitFor();
+    for (const card of await page.locator(".step").all()) {
+      const box = await card.boundingBox();
+      await card.hover({position: {x: 18, y: 12}});
+      assert.equal(await card.locator(".step-back").getAttribute("aria-hidden"), "false");
+      assert.deepEqual(await card.boundingBox(), box);
+      assert.equal(await card.locator("a, button").count(), 0);
       await checkPerimeters();
-      heights.add((await page.locator(".step").first().boundingBox()).height);
+      await page.mouse.move(0, 0);
+      assert.equal(await card.locator(".step-front").getAttribute("aria-hidden"), "false");
     }
-    assert.ok(heights.size > 1, "opening different details changes the measured perimeter");
     await toProgress(1.2);
     assert.equal(await checkCoast(), 0);
     assert.equal(await page.evaluate(() => window.land.length), count);
@@ -362,16 +362,47 @@ test("map markers select the evidence, with a network total and both comparison 
   }
 });
 
+test("method faces support keyboard dismissal, native links and two distinct taps", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  try {
+    await page.goto(origin + "#how");
+    const [first, second, third] = await page.locator("a.step").all();
+    assert.equal(await page.locator('.step-front[aria-hidden="false"]').count(), 3);
+    await first.focus();
+    await page.keyboard.press("Tab");
+    assert.equal(await second.evaluate(el => el === document.activeElement), true);
+    assert.equal(await second.locator(".step-back").getAttribute("aria-hidden"), "false");
+    await page.keyboard.press("Escape");
+    assert.equal(await second.locator(".step-back").getAttribute("aria-hidden"), "true");
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Enter");
+    await page.waitForURL("**/#research?review=01");
+    await page.goBack();
+    await second.scrollIntoViewIfNeeded();
+    const box = await second.boundingBox();
+    await second.tap({position: {x: box.width - 16, y: 12}});
+    assert.equal(new URL(page.url()).hash, "#how");
+    assert.equal(await second.locator(".step-back").getAttribute("aria-hidden"), "false");
+    assert.deepEqual(await second.boundingBox(), box);
+    await second.tap();
+    await page.waitForURL("**/#research?review=02");
+    await page.goBack();
+    await third.click();
+    await page.waitForURL("**/#changes");
+  } finally {
+    await page.close();
+  }
+});
+
 test("history restores the landing scene and research context per entry", async () => {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await page.goto(origin + "#how");
-    await page.getByRole("button", { name: /Сравнить изменения/ }).click();
-    await page.getByRole("link", { name: "Открыть изменения" }).scrollIntoViewIfNeeded();
+    await page.getByRole("link", { name: "Сравнить изменения" }).scrollIntoViewIfNeeded();
     const before = await page.evaluate(() => scrollY);
-    await page.getByRole("link", { name: "Открыть изменения" }).click();
+    await page.getByRole("link", { name: "Сравнить изменения" }).click();
     await page.goBack();
-    await page.getByRole("link", { name: "Открыть изменения" }).waitFor();
+    await page.getByRole("link", { name: "Сравнить изменения" }).waitFor();
     const returned = await page.evaluate(() => scrollY);
     assert.ok(Math.abs(before - returned) < 12, `left at ${before}, returned to ${returned}`);
     await page.goForward();

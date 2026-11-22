@@ -8,7 +8,7 @@ import {
   landDots,
   placeParticles,
 } from "./pointTexture";
-import { desktopStops, ramp } from "./story";
+import { desktopStops, ramp, travelProgress } from "./story";
 
 function boxWithin(element: HTMLElement, root: HTMLElement) {
   let x = 0,
@@ -95,11 +95,15 @@ export default function PointField({ active }: { active: boolean }) {
       const scale = Math.min((width * 0.94 - 12) / landWidth, (height * 0.94 - 12) / landHeight);
       stage.style.setProperty("--map-width", `${mapFrame.width * scale}px`);
       const grid = boxWithin(board, stage);
+      // Give the board more air on the right, leaving room for the sprite halo at both edges.
+      const left = Math.min(22 + grid.width * 0.025, Math.max(0, grid.x - 8));
+      const right = Math.min(22 + grid.width * 0.105, Math.max(0, width - grid.x - grid.width - 8));
+      const vertical = 24 + grid.height * 0.04;
       arrangeHero(dots, {
-        x: grid.x - 22,
-        y: grid.y - 24,
-        width: grid.width + 44,
-        height: grid.height + 48,
+        x: grid.x - left,
+        y: grid.y - vertical,
+        width: grid.width + left + right,
+        height: grid.height + 2 * vertical,
       });
       const plane = map.getBoundingClientRect(),
         origin = stage.getBoundingClientRect();
@@ -160,14 +164,18 @@ export default function PointField({ active }: { active: boolean }) {
       lastTime = time;
       const offset = window.scrollY - storyTop;
       const p = offset / height;
-      const first = fit ? ramp(p, ...desktopStops.first) : ramp(offset, flowStart, flowMap);
-      const second = fit ? ramp(p, ...desktopStops.second) : ramp(offset, flowLeave, flowMethod);
+      const first = fit
+        ? travelProgress(p, ...desktopStops.first)
+        : travelProgress(offset, flowStart, flowMap);
+      const second = fit
+        ? travelProgress(p, ...desktopStops.second)
+        : travelProgress(offset, flowLeave, flowMethod);
       const top = fit ? 0 : Math.max(0, offset);
       if (p !== lastProgress) {
         moveHeadings?.(first, second);
-        const heroOut = ramp(first, 0.08, 0.72);
-        const atlasIn = ramp(first, 0.5, 1) * (1 - ramp(second, 0, 0.22));
-        const methodIn = ramp(second, 0.52, 0.97);
+        const heroOut = ramp(first, 0.06, 0.77);
+        const atlasIn = ramp(first, 0.44, 1) * (1 - ramp(second, 0, 0.36));
+        const methodIn = ramp(second, 0.44, 0.97);
         stage.style.setProperty("--hero-out", String(heroOut));
         stage.style.setProperty("--atlas-in", String(atlasIn));
         stage.style.setProperty("--method-in", String(methodIn));

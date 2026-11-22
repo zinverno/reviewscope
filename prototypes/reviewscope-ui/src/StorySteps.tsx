@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { counts } from "./analysis";
 import { labels, reviews } from "./fixture";
 import { Highlight, Icon } from "./shared";
@@ -10,7 +10,19 @@ const explanations = [
   "Каждая запись с текстом учитывается один раз. В октябре одна запись без текста исключена. Откройте отзывы периода, чтобы проверить числитель и знаменатель.",
 ];
 export default function StorySteps() {
-  const [step, choose] = useState(0);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [focused, setFocused] = useState<number | null>(null);
+  const firstTouch = useRef(false);
+  useEffect(() => {
+    function dismiss(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setHovered(null);
+        setFocused(null);
+      }
+    }
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, []);
   const sep = counts("sep"),
     oct = counts("oct");
   return (
@@ -26,52 +38,76 @@ export default function StorySteps() {
           </h2>
         </div>
         <div className="steps-track">
-          {titles.map((title, i) => (
-            <article className="step glass" key={title} data-current={step === i}>
-              <button
-                type="button"
-                className="step-select"
-                aria-expanded={step === i}
-                aria-controls={`step-detail-${i}`}
-                onClick={() => choose(i)}
+          {titles.map((title, i) => {
+            const back = hovered === i || focused === i;
+            const id = `step-back-${i}`;
+            return (
+              <a
+                key={title}
+                className="step glass"
+                href={i < 2 ? `#research?review=0${i + 1}` : "#changes"}
+                aria-labelledby={`step-title-${i}`}
+                aria-describedby={back ? id : undefined}
+                onPointerEnter={(e) => {
+                  if (e.pointerType !== "touch") setHovered(i);
+                }}
+                onPointerLeave={(e) => {
+                  if (e.pointerType !== "touch") setHovered(null);
+                }}
+                onPointerDown={(e) => {
+                  firstTouch.current = e.pointerType === "touch" && !back;
+                }}
+                onPointerCancel={() => {
+                  firstTouch.current = false;
+                }}
+                onFocus={() => setFocused(i)}
+                onBlur={() => setFocused(null)}
+                onClick={(e) => {
+                  if (firstTouch.current && e.detail > 0) {
+                    e.preventDefault();
+                    e.currentTarget.focus({ preventScroll: true });
+                    setFocused(i);
+                  }
+                  firstTouch.current = false;
+                }}
               >
-                <span className="step-no">0{i + 1}</span>
-                <strong>{title}</strong>
-                <span aria-hidden="true">↘</span>
-              </button>
-              {i < 2 ? (
-                <div className="phrase-pair">
-                  {reviews.slice(i, i + 2).map((r) => (
-                    <p key={r.review_id}>
-                      <small>
-                        #{r.review_id} · {labels[r.stance]}
-                      </small>{" "}
-                      «<Highlight review={r} />»
-                    </p>
-                  ))}
+                <span className="visually-hidden" id={`step-title-${i}`}>{title}</span>
+                <div className="slip-face step-front" aria-hidden={back}>
+                  <span className="step-no">0{i + 1}</span>
+                  <strong>{title}</strong>
                 </div>
-              ) : (
-                <div className="step-result">
-                  <strong>
-                    −{(sep.percent ?? 0) - (oct.percent ?? 0)} <small>п. п.</small>
-                  </strong>
-                  <p>
-                    Сентябрь · {sep.hits}/{sep.total} = {sep.percent}%<br />
-                    Октябрь · {oct.hits}/{oct.total} = {oct.percent}%
-                  </p>
+                <div className="slip-face step-back" id={id} aria-hidden={!back}>
+                  {i < 2 ? (
+                    <div className="phrase-pair">
+                      {reviews.slice(i, i + 2).map((r) => (
+                        <p key={r.review_id}>
+                          <small>
+                            #{r.review_id} · {labels[r.stance]}
+                          </small>{" "}
+                          «<Highlight review={r} />»
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="step-result">
+                      <strong>
+                        −{(sep.percent ?? 0) - (oct.percent ?? 0)} <small>п. п.</small>
+                      </strong>
+                      <p>
+                        Сентябрь · {sep.hits}/{sep.total} = {sep.percent}%<br />
+                        Октябрь · {oct.hits}/{oct.total} = {oct.percent}%
+                      </p>
+                    </div>
+                  )}
+                  <p className="step-detail">{explanations[i]}</p>
+                  <span className="inline-link">
+                    {i < 2 ? "Исследовать отзывы" : "Открыть изменения"}{" "}
+                    <Icon name="arrow" size={15} />
+                  </span>
                 </div>
-              )}
-              <div hidden={step !== i} id={`step-detail-${i}`} className="step-detail">
-                <p>{explanations[i]}</p>
-                {i < 2 && <a className="inline-link" href={`#research?review=0${i + 1}`}>Исследовать отзывы <Icon name="arrow" size={15} /></a>}
-                {i === 2 && (
-                  <a className="inline-link" href="#changes">
-                    Открыть изменения <Icon name="arrow" size={15} />
-                  </a>
-                )}
-              </div>
-            </article>
-          ))}
+              </a>
+            );
+          })}
         </div>
       </div>
     </section>

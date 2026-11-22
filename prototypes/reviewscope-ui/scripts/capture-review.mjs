@@ -122,6 +122,7 @@ try {
     for (const hash of ["home", "features"]) {
       await before.goto(baseline.resolvedUrls.local[0] + "#" + hash, { waitUntil: "networkidle" });
       await shot(before, "before-" + hash);
+      if (hash === "home") report.baselineHero = await bounds(before);
     }
     report.baselineSilhouettes = [await bounds(before)];
     await before.setViewportSize({width: 1366, height: 680});
@@ -134,6 +135,7 @@ try {
   await record("01-story-down-and-back", async (page) => {
     await page.mouse.move(24, 560);
     await shot(page, "hero");
+    report.hero = await bounds(page);
     for (const [p, name] of [
       [0.375, "transition-12-25"],
       [0.6, "transition-12-mid"],
@@ -152,7 +154,10 @@ try {
       }
       if (name === "atlas") report.silhouettes.push(await bounds(page));
     }
-    await wait(750);
+    await page.getByRole("link", {name: "Проверить смысл"}).hover();
+    await wait(650);
+    await page.mouse.move(24, 560);
+    await wait(450);
     for (const p of [2.22, 2.29, 1.95, 1.57, 1.65, 1.27, 0.99, 1.07, 0.6, 0.22, 0.29, 0])
       await wheelToProgress(page, p);
   });
@@ -215,7 +220,9 @@ try {
     }
     if (width < 400) {
       await page.goto(url + "#how", {waitUntil: "networkidle"});
-      await page.getByRole("button", {name: /Проверить смысл/}).tap();
+      const card = page.getByRole("link", {name: "Проверить смысл"});
+      await card.tap();
+      await card.evaluate(el => Promise.all(el.getAnimations({subtree:true}).map(a => a.finished)));
       await shot(page, "method-mobile-" + width);
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -224,9 +231,26 @@ try {
 
   const steps = await browser.newPage({viewport: {width: 1000, height: 900}});
   await steps.goto(url + "#how", {waitUntil: "networkidle"});
-  await shot(steps, "method-step-1");
-  await steps.getByRole("button", {name: /Проверить смысл/}).click();
-  await shot(steps, "method-step-2");
+  const card = steps.getByRole("link", {name: "Проверить смысл"});
+  const frame = await card.boundingBox();
+  await shot(steps, "method-front");
+  // Sample the genuine CSS transition for this still. The continuous wheel recording runs at 1×.
+  await card.evaluate(el => el.addEventListener("transitionstart", () => {
+    for (const animation of el.getAnimations({subtree: true})) {
+      animation.pause();
+      animation.currentTime = 75;
+    }
+  }, {once:true}));
+  await card.hover();
+  await steps.waitForFunction(() => document.querySelector(".step-back[aria-hidden=false]")
+    ?.getAnimations().some(a => a.playState === "paused"));
+  await shot(steps, "method-changing");
+  await card.evaluate(el => Promise.all(el.getAnimations({subtree:true}).map(a => {
+    a.play();
+    return a.finished;
+  })));
+  assert.deepEqual(await card.boundingBox(), frame);
+  await shot(steps, "method-back");
   await steps.close();
   for (const before of report.baselineSilhouettes ?? []) {
     const after = report.silhouettes.find(s => s.viewport.join() === before.viewport.join());
@@ -240,7 +264,7 @@ try {
   await writeFile(
     join(dir, "verification.md"),
     [
-      "# ReviewScope v8 · NEEDS_OWNER_UX_APPROVAL",
+      "# ReviewScope v9 · NEEDS_OWNER_UX_APPROVAL",
       "",
       `Production build \`${commit}\`. Chromium ${report.browser}, Linux. Continuous wheel recording and interactions at 1920×1000, DPR 1. Playwright mouse.wheel, pauses and six short reversals during the round trip.`,
       "",
@@ -250,7 +274,7 @@ try {
       "",
       "Bounds measured on particle pixels with alpha ≥ 7/255, including the visible halo. Selected company alpha was sampled over 6.8 seconds before the dim screenshot.",
       "",
-      "before-home.png and hero.png use the same viewport and zoom. The two sets of quarter frames share their endpoints (hero, atlas, method). method-step-1/2 show the actual panel resize at 1000×900.",
+      "before-home.png and hero.png use the same viewport and zoom. The two sets of quarter frames share their endpoints (hero, atlas, method). method-front/changing/back show the same frame at 1000×900. The middle still samples the real CSS transition at 75 ms.",
       "",
       "Local visual inspection of the matching build and device limits are recorded in the Draft PR handoff.",
       "",

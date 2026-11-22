@@ -102,9 +102,14 @@ export function arrangeHero(dots: Dot[], box: Box) {
       const fringe = 1 - interior;
       const seed = dot.phase;
       const coverage = clamp(interior + fringe * (0.65 * Math.sin(seed * 3) - 0.2));
+      // Independent signed offsets within each cell, fixed to the particle across visits.
+      let bits = Math.imul(dot.id + 1, 0x9e3779b1);
+      bits = Math.imul(bits ^ (bits >>> 16), 0x85ebca6b);
+      bits ^= bits >>> 13;
+      const jitter = step * mix(0.31, 0.6, fringe);
       dot.hero = {
-        x: box.x + box.width / 2 + dx + fringe * step * 0.6 * Math.sin(seed * 7),
-        y: box.y + box.height / 2 + dy + fringe * step * 0.6 * Math.cos(seed * 11),
+        x: box.x + box.width / 2 + dx + jitter * ((bits & 0xffff) / 32767.5 - 1),
+        y: box.y + box.height / 2 + dy + jitter * ((bits >>> 16) / 32767.5 - 1),
         alpha: 0.54 * interior * coverage,
       };
     });
@@ -201,12 +206,15 @@ export function fieldRenderer(ctx: CanvasRenderingContext2D, dots: Dot[]) {
     const from = second > 0 ? "atlas" : "hero";
     const to = second > 0 ? "method" : "atlas";
     const t = second > 0 ? second : first;
-    const accent = smooth(clamp((first - 0.68) / 0.32)) * (1 - smooth(clamp(second / 0.18)));
+    const accent = smooth(clamp((first - 0.68) / 0.32)) * (1 - smooth(clamp(second / 0.26)));
     const radius = mix(mix(5.6, mapRadius, first), 5, second);
+    const separation = second * (1 - second);
+    const edgeTravel = t + 0.64 * separation;
+    const fadingTravel = t - 0.08 * separation;
     for (const dot of dots) {
       const a = dot[from],
         b = dot[to];
-      const travel = t + (dot.method.alpha ? 0.8 : -0.12) * second * (1 - second);
+      const travel = dot.method.alpha ? edgeTravel : fadingTravel;
       const x = mix(a.x, b.x, travel),
         y = mix(a.y, b.y, travel);
       if (y < top - 22 || y > bottom + 22) continue;
