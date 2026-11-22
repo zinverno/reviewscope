@@ -288,10 +288,15 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     await checkPerimeters();
     await page.setViewportSize({ width: 1000, height: 900 });
     await checkPerimeters();
-    const initialHeight = (await page.locator(".step").first().boundingBox()).height;
-    await page.getByRole("button", {name: /Проверить смысл/}).click();
-    assert.notEqual((await page.locator(".step").first().boundingBox()).height, initialHeight);
-    await checkPerimeters();
+    const heights = new Set([(await page.locator(".step").first().boundingBox()).height]);
+    for (const name of [/Проверить смысл/, /Сравнить изменения/]) {
+      const button = page.getByRole("button", {name});
+      await button.click();
+      await page.getByRole("button", {name, expanded: true}).waitFor();
+      await checkPerimeters();
+      heights.add((await page.locator(".step").first().boundingBox()).height);
+    }
+    assert.ok(heights.size > 1, "opening different details changes the measured perimeter");
     await toProgress(1.2);
     assert.equal(await checkCoast(), 0);
     assert.equal(await page.evaluate(() => window.land.length), count);
