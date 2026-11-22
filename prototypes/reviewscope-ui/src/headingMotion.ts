@@ -154,9 +154,10 @@ export function measureHeadings(layer: HTMLElement, headings: HTMLElement[], ori
       const size = mix(start.size, end.size, position);
       const change = smooth(clamp((position - 0.34 - (0.27 * (i % 7)) / 6) / 0.085));
       function place(glyph: Glyph, opacity: number) {
+        glyph.face.style.opacity = String(opacity);
+        if (!opacity) return;
         const scale = size / glyph.size;
         glyph.face.style.transform = `translate(${x}px, ${y - glyph.insetY * scale}px) scale(${scale})`;
-        glyph.face.style.opacity = String(opacity);
       }
       if (from) place(from, 1 - change);
       if (to) place(to, change);

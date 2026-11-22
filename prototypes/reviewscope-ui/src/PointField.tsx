@@ -219,7 +219,8 @@ export default function PointField({ active }: { active: boolean }) {
       frame = lastTime = 0;
       request();
     }
-    const observer = new ResizeObserver(scheduleMeasure);
+    // ResizeObserver already runs before paint. Keep new panels and their outlines in the same frame.
+    const observer = new ResizeObserver(measure);
     for (const el of [stage, opening, board, atlas, map, method, ...cards, ...headings])
       observer.observe(el);
     const changes = new MutationObserver(selection);

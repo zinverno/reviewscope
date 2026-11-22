@@ -14,8 +14,11 @@ const url = server.resolvedUrls.local[0];
 const viewport = { width: 1920, height: 1000 };
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
-const shot = (page, name, options) =>
-  page.screenshot({ path: join(dir, name + ".png"), ...options });
+async function shot(page, name) {
+  // Capture after the browser has presented the latest input and delivered resize observations.
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await page.screenshot({ path: join(dir, name + ".png") });
+}
 let browser, baseline;
 
 async function record(name, play) {
