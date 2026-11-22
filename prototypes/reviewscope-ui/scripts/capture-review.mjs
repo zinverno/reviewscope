@@ -21,7 +21,7 @@ async function shot(page, name) {
 }
 let browser, baseline;
 
-async function record(name, play) {
+async function record(name, play, hash = "") {
   const context = await browser.newContext({
     locale: "ru-RU",
     viewport,
@@ -32,7 +32,7 @@ async function record(name, play) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   try {
-    await page.goto(url, { waitUntil: "networkidle" });
+    await page.goto(url + hash, { waitUntil: "networkidle" });
     await play(page);
     assert.deepEqual(errors, []);
   } finally {
@@ -161,6 +161,16 @@ try {
     for (const p of [2.22, 2.29, 1.95, 1.57, 1.65, 1.27, 0.99, 1.07, 0.6, 0.22, 0.29, 0])
       await wheelToProgress(page, p);
   });
+  for (const [hash, phase] of [["home", "HERO_HOLD"], ["features", "ATLAS_HOLD"]]) {
+    await record("idle-" + hash, async (page) => {
+      await page.waitForSelector(`.story-stage[data-phase="${phase}"]`);
+      const start = await progress(page);
+      await shot(page, "idle-" + hash + "-start");
+      await wait(8200);
+      await shot(page, "idle-" + hash + "-end");
+      assert.equal(await progress(page), start);
+    }, "#" + hash);
+  }
   await record("02-interactions", async (page) => {
     const link = page.getByRole("link", { name: "Открыть отзыв #02" });
     await link.hover();
@@ -251,6 +261,14 @@ try {
   })));
   assert.deepEqual(await card.boundingBox(), frame);
   await shot(steps, "method-back");
+  for (const i of [0, 2]) {
+    const other = steps.locator(".step").nth(i);
+    const box = await other.boundingBox();
+    await other.hover();
+    await other.evaluate(el => Promise.all(el.getAnimations({subtree:true}).map(a => a.finished)));
+    assert.deepEqual(await other.boundingBox(), box);
+    await shot(steps, "method-back-" + (i + 1));
+  }
   await steps.close();
   for (const before of report.baselineSilhouettes ?? []) {
     const after = report.silhouettes.find(s => s.viewport.join() === before.viewport.join());
@@ -264,7 +282,7 @@ try {
   await writeFile(
     join(dir, "verification.md"),
     [
-      "# ReviewScope v9 · NEEDS_OWNER_UX_APPROVAL",
+      "# ReviewScope v10 · NEEDS_OWNER_UX_APPROVAL",
       "",
       `Production build \`${commit}\`. Chromium ${report.browser}, Linux. Continuous wheel recording and interactions at 1920×1000, DPR 1. Playwright mouse.wheel, pauses and six short reversals during the round trip.`,
       "",
@@ -275,6 +293,8 @@ try {
       "Bounds measured on particle pixels with alpha ≥ 7/255, including the visible halo. Selected company alpha was sampled over 6.8 seconds before the dim screenshot.",
       "",
       "before-home.png and hero.png use the same viewport and zoom. The two sets of quarter frames share their endpoints (hero, atlas, method). method-front/changing/back show the same frame at 1000×900. The middle still samples the real CSS transition at 75 ms.",
+      "",
+      "idle-home.webm and idle-features.webm each hold a single scene without scrolling for at least eight seconds. method-back-1.png, method-back.png and method-back-3.png show each open card.",
       "",
       "Local visual inspection of the matching build and device limits are recorded in the Draft PR handoff.",
       "",

@@ -180,6 +180,13 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     assert.ok(grid.length > 50);
     const centres = () => page.evaluate(() => window.centres);
     const initialCentres = await centres();
+    await page.waitForTimeout(800);
+    const idle = await centres();
+    assert.equal(idle.length, initialCentres.length);
+    const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const idleShifts = idle.map((point, i) => distance(point, initialCentres[i]));
+    assert.ok(idleShifts.filter(d => d > 0.05).length > idle.length / 2);
+    assert.ok(Math.max(...idleShifts) < 6, "idle motion remains within three pixels of the base");
     const board = await page.locator(".board-canvas").boundingBox();
     const core = initialCentres.filter(([x, y]) =>
       Math.abs(x - board.x - board.width / 2) < board.width / 4 &&
@@ -215,7 +222,10 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
 
     await verifyReversal(0.6);
     await toProgress(0.1);
-    assert.deepEqual(await centres(), initialCentres);
+    const returned = await centres();
+    assert.equal(returned.length, initialCentres.length);
+    const shifts = returned.map((point, i) => distance(point, initialCentres[i]));
+    assert.ok(shifts.some(d => d > 0.02) && Math.max(...shifts) <= 6, "bounded hero drift on return");
     await toProgress(0.5);
     assert.equal(await scene.getAttribute("data-phase"), "MORPH");
     const middle = await field.evaluate(pixels),
@@ -233,6 +243,7 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     const silhouette = await field.evaluate(pixels);
     const coastX = silhouette.map(([x]) => x);
     assert.ok(Math.max(...coastX) - Math.min(...coastX) > 1440 * 0.85);
+    const atlasCentres = await centres();
     const count = await page.evaluate(() => window.land.length);
     assert.ok(count > 100);
     assert.equal(await checkCoast(), 0);
@@ -240,9 +251,11 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     await toProgress(1.47);
     assert.equal(await scene.getAttribute("data-phase"), "ATLAS_HOLD");
     assert.ok(sameBox(title, await page.locator("#atlas-title").boundingBox()));
+    assert.deepEqual(await centres(), atlasCentres);
     assert.equal(await checkCoast(), 0);
     await toProgress(1.2);
     assert.ok(sameBox(title, await page.locator("#atlas-title").boundingBox()));
+    assert.deepEqual(await centres(), atlasCentres);
     assert.equal(await checkCoast(), 0);
 
     await toProgress(0.5);
@@ -289,6 +302,10 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     await checkPerimeters();
     for (const card of await page.locator(".step").all()) {
       const box = await card.boundingBox();
+      const front = await card.locator(".step-front").boundingBox();
+      const titleBox = await card.locator(".step-front strong").boundingBox();
+      assert.ok(Math.abs((titleBox.x + titleBox.width / 2) - (box.x + box.width / 2)) < 1);
+      assert.ok(Math.abs((front.y + front.height / 2) - (box.y + box.height / 2)) < 1);
       await card.hover({position: {x: 18, y: 12}});
       assert.equal(await card.locator(".step-back").getAttribute("aria-hidden"), "false");
       assert.deepEqual(await card.boundingBox(), box);

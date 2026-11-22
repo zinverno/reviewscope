@@ -635,7 +635,16 @@ html:has(.atlas-details[open]) { overflow: hidden; scrollbar-gutter: stable; }
 }
 .step-front {
   display: grid;
+  justify-items: center;
+  text-align: center;
   gap: 10px;
+}
+.step-back {
+  justify-self: center;
+  width: min(100%, 38ch);
+}
+.step-back:has(.step-result) {
+  text-align: center;
 }
 .step-front strong {
   font-size: clamp(24px, 2.2vw, 38px);

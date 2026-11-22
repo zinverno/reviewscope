@@ -65,6 +65,7 @@ export default function PointField({ active }: { active: boolean }) {
     let frame = 0,
       measureFrame = 0,
       lastTime = 0,
+      lastPaint = -Infinity,
       clock = 0;
     let width = 0,
       height = 0,
@@ -79,6 +80,7 @@ export default function PointField({ active }: { active: boolean }) {
     let lastProgress = NaN;
     const highlight = new Map<number, boolean>();
     function selection() {
+      lastPaint = -Infinity;
       highlight.clear();
       for (const id of atlas.dataset.places?.split(",") ?? []) {
         const particle = placeParticles().get(id as PlaceId);
@@ -96,9 +98,9 @@ export default function PointField({ active }: { active: boolean }) {
       stage.style.setProperty("--map-width", `${mapFrame.width * scale}px`);
       const grid = boxWithin(board, stage);
       // Give the board more air on the right, leaving room for the sprite halo at both edges.
-      const left = Math.min(22 + grid.width * 0.025, Math.max(0, grid.x - 8));
-      const right = Math.min(22 + grid.width * 0.105, Math.max(0, width - grid.x - grid.width - 8));
-      const vertical = 24 + grid.height * 0.04;
+      const left = Math.min(30 + grid.width * 0.04, Math.max(0, grid.x - 8));
+      const right = Math.min(36 + grid.width * 0.20, Math.max(0, width - grid.x - grid.width - 8));
+      const vertical = 27 + grid.height * 0.082;
       arrangeHero(dots, {
         x: grid.x - left,
         y: grid.y - vertical,
@@ -164,6 +166,12 @@ export default function PointField({ active }: { active: boolean }) {
       lastTime = time;
       const offset = window.scrollY - storyTop;
       const p = offset / height;
+      // Idle drift and glow are slow. Wheel input and layout changes still paint on the next frame.
+      if (!reduced.matches && p === lastProgress && time - lastPaint < 31) {
+        request();
+        return;
+      }
+      lastPaint = time;
       const first = fit
         ? travelProgress(p, ...desktopStops.first)
         : travelProgress(offset, flowStart, flowMap);
@@ -206,7 +214,7 @@ export default function PointField({ active }: { active: boolean }) {
           [1, 0],
           [1, 1],
         ])
-          draw(a, b, 0, highlight, mapRadius, top, top + height);
+          draw(a, b, null, highlight, mapRadius, top, top + height);
       } else {
         draw(first, second, clock, highlight, mapRadius, top, top + height);
         request();

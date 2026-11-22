@@ -83,6 +83,14 @@ export function particleCenter(place: PlaceId) {
 
 type Box = { x: number; y: number; width: number; height: number };
 
+// Mix a stable seed into two signed components, for both cell offsets and drift samples.
+function hashPair(seed: number) {
+  let bits = Math.imul(seed + 1, 0x9e3779b1);
+  bits = Math.imul(bits ^ (bits >>> 16), 0x85ebca6b);
+  bits ^= bits >>> 13;
+  return [(bits & 0xffff) / 32767.5 - 1, (bits >>> 16) / 32767.5 - 1];
+}
+
 export function arrangeHero(dots: Dot[], box: Box) {
   const columns = Math.max(1, Math.round(Math.sqrt((dots.length * box.width) / box.height)));
   const rows = Math.ceil(dots.length / columns);
@@ -95,22 +103,18 @@ export function arrangeHero(dots: Dot[], box: Box) {
       const dy = (row - (rows - 1) / 2) * step;
       const nx = (dx * 2) / box.width,
         ny = (dy * 2) / box.height;
-      const angle = Math.atan2(ny, nx);
-      const boundary = 0.99 + 0.043 * Math.sin(3 * angle + 0.6) + 0.028 * Math.cos(5 * angle);
-      const distance = boundary - (nx ** 4 + ny ** 4) ** 0.25;
-      const interior = smooth(clamp((distance * Math.min(box.width, box.height)) / (10 * step)));
-      const fringe = 1 - interior;
-      const seed = dot.phase;
-      const coverage = clamp(interior + fringe * (0.65 * Math.sin(seed * 3) - 0.2));
-      // Independent signed offsets within each cell, fixed to the particle across visits.
-      let bits = Math.imul(dot.id + 1, 0x9e3779b1);
-      bits = Math.imul(bits ^ (bits >>> 16), 0x85ebca6b);
-      bits ^= bits >>> 13;
-      const jitter = step * mix(0.31, 0.6, fringe);
+      const [jx, jy] = hashPair(dot.id);
+      const fringe = smooth(clamp((Math.hypot(nx, ny) - 0.73) / 0.27));
+      const jitter = step * mix(0.36, 0.65, fringe);
+      // Bend neighbouring rows together, with a wider lower shoulder and a broken, fading rim.
+      const bendX = 0.13 * Math.sin(4.4 * ny - 0.2) + 0.07 * nx * Math.sin(5 * ny + 1.2);
+      const bendY = 0.11 * Math.sin(3.8 * nx + ny) - 0.08 * nx + 0.05 * Math.cos(6 * nx - ny);
+      const coverage = clamp((1 - fringe) * (1 + fringe * (jx + jy)));
+      // Leave room for the bent edge, its halo, and the small wandering offset.
       dot.hero = {
-        x: box.x + box.width / 2 + dx + jitter * ((bits & 0xffff) / 32767.5 - 1),
-        y: box.y + box.height / 2 + dy + jitter * ((bits >>> 16) / 32767.5 - 1),
-        alpha: 0.54 * interior * coverage,
+        x: box.x + (0.5 + 0.45 * (nx + bendX)) * box.width + jitter * jx,
+        y: box.y + (0.5 + 0.45 * (ny + bendY)) * box.height + jitter * jy,
+        alpha: 0.54 * coverage,
       };
     });
   }
@@ -194,10 +198,11 @@ export function fieldRenderer(ctx: CanvasRenderingContext2D, dots: Dot[]) {
   const neutral = sprite("213,228,240", false);
   const red = sprite("255,76,67", true);
   const blue = sprite("94,184,255", true);
+  const noise = Array.from({ length: 1024 }, (_, i) => hashPair(i));
   return (
     first: number,
     second: number,
-    time: number,
+    time: number | null,
     highlight: Map<number, boolean>,
     mapRadius: number,
     top: number,
@@ -211,18 +216,31 @@ export function fieldRenderer(ctx: CanvasRenderingContext2D, dots: Dot[]) {
     const separation = second * (1 - second);
     const edgeTravel = t + 0.64 * separation;
     const fadingTravel = t - 0.08 * separation;
+    const elapsed = time ?? 0;
+    const drift = time === null ? 0 : 2.1 * (1 - smooth(clamp(first / 0.44)));
+    const noiseTime = elapsed / 2700;
+    const pulseRange = 0.47 + 0.37 * first * (1 - second);
     for (const dot of dots) {
       const a = dot[from],
         b = dot[to];
       const travel = dot.method.alpha ? edgeTravel : fadingTravel;
-      const x = mix(a.x, b.x, travel),
+      let x = mix(a.x, b.x, travel),
         y = mix(a.y, b.y, travel);
+      if (drift && a.alpha > 0) {
+        const position = noiseTime + dot.phase;
+        const knot = Math.floor(position);
+        const weight = smooth(position - knot);
+        const index = (dot.id * 331 + knot) & 1023;
+        const start = noise[index], end = noise[(index + 1) & 1023];
+        x += drift * mix(start[0], end[0], weight);
+        y += drift * mix(start[1], end[1], weight);
+      }
       if (y < top - 22 || y > bottom + 22) continue;
-      const light = (1 + Math.sin(time * (0.00142 + (dot.id % 9) * 0.000045) + dot.phase)) / 2;
+      const light = (1 + Math.sin(elapsed * (0.00142 + (dot.id % 9) * 0.000045) + dot.phase)) / 2;
       const selected = highlight.get(dot.id);
       const lit = selected !== undefined && accent > 0;
       const r = lit ? mix(radius, 20, accent) : radius;
-      const alpha = mix(a.alpha, b.alpha, t) * (0.53 + 0.47 * light);
+      const alpha = mix(a.alpha, b.alpha, t) * (0.53 + pulseRange * light);
       if (alpha <= 0) continue;
       ctx.globalAlpha = lit ? mix(alpha, 0.85 + 0.15 * light, accent) : alpha;
       ctx.drawImage(lit ? (selected ? red : blue) : neutral, x - r, y - r, r * 2, r * 2);
