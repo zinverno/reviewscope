@@ -28,7 +28,8 @@ import pandas as pd
 import pytest
 
 from reviewscope.analysis.duplicates import DuplicateDetector, DuplicateGroup
-from reviewscope.config import CONFIG
+from reviewscope.embeddings.base import embedding_key
+from reviewscope.embeddings.sentence_transformer import SentenceTransformerProvider
 from reviewscope.models.review import NormalizedReview
 from reviewscope.storage import DuckDBStore
 from reviewscope.ui import common
@@ -142,13 +143,13 @@ def _chain_embeddings(n: int, gap_deg: float, dim: int = 384) -> np.ndarray:
 
 
 def _build_db(path: Path, reviews: list[NormalizedReview], embeddings=None) -> str:
-    model = CONFIG.embedding.model_name
+    model = SentenceTransformerProvider().contract.encoding_id
     with DuckDBStore(db_path=path, read_only=False) as store:
         store.ingest(reviews)
         if embeddings is not None:
             store.store_cached_embeddings(
                 [
-                    (r.review_id, r.fingerprint(), model, embeddings[i].tolist())
+                    (*embedding_key(r.review_id, r.text_or_empty(), model), embeddings[i].tolist())
                     for i, r in enumerate(reviews)
                 ]
             )

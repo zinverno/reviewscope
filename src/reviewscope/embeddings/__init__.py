@@ -5,8 +5,8 @@ checks ``embeddings_cache`` before calling the provider; after encoding, newly
 computed vectors are written back to the same DuckDB table.
 """
 
-from reviewscope.embeddings.base import EmbeddingProvider
+from reviewscope.embeddings.base import EmbeddingProvider, EncodingContract
 from reviewscope.embeddings.cache import EmbeddingCache
 from reviewscope.embeddings.sentence_transformer import SentenceTransformerProvider
 
-__all__ = ["EmbeddingCache", "EmbeddingProvider", "SentenceTransformerProvider"]
+__all__ = ["EmbeddingCache", "EmbeddingProvider", "EncodingContract", "SentenceTransformerProvider"]

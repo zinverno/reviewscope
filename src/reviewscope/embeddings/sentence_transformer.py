@@ -1,69 +1,87 @@
-"""Sentence-transformer embedding provider (SPEC.md §3).
-
-Uses ``paraphrase-multilingual-MiniLM-L12-v2`` by default, suitable for both
-Russian and English. The provider is stateless between calls; the model is
-loaded once and cached on the instance.
-"""
+"""Lazy, revision-pinned SentenceTransformer provider."""
 
 from __future__ import annotations
+
+import re
+from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import numpy as np
 
 from reviewscope.config import CONFIG
-from reviewscope.embeddings.base import EmbeddingProvider
+from reviewscope.embeddings.base import EmbeddingProvider, EncodingContract
+
+_PACKAGES = ("sentence-transformers", "transformers", "tokenizers", "torch")
+# Declared read target for hosts without the optional backend distributions.
+REFERENCE_RUNTIME = "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0"
+
+
+@lru_cache(maxsize=1)
+def installed_runtime() -> str | None:
+    try:
+        return ",".join(f"{package}={version(package)}" for package in _PACKAGES)
+    except PackageNotFoundError:
+        return None
 
 
 class SentenceTransformerProvider(EmbeddingProvider):
-    """Multilingual sentence-transformer embedding provider."""
-
-    def __init__(self, model_name: str | None = None) -> None:
-        self._model_name = model_name or CONFIG.embedding.model_name
+    def __init__(
+        self, model_name: str | None = None, *, revision: str | None = None,
+        runtime: str | None = None,
+    ) -> None:
+        config = CONFIG.embedding
+        name = model_name or config.model_name
+        if revision is None and name == config.model_name:
+            revision = config.revision
+        if not revision or not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("embedding model needs an immutable Hub commit SHA")
+        self._contract = EncodingContract(
+            model=name,
+            revision=revision,
+            encoder="sentence-transformers.encode/torch-cpu-fp32/sentence_embedding/no-prompt",
+            max_seq_length=config.max_length,
+            dim=config.dim,
+            normalize_embeddings=False,
+            runtime=runtime or installed_runtime() or REFERENCE_RUNTIME,
+            batch_size=config.batch_size,
+        )
         self._model = None
 
     @property
-    def name(self) -> str:
-        return self._model_name
+    def contract(self) -> EncodingContract:
+        return self._contract
 
-    @property
-    def dim(self) -> int:
-        return CONFIG.embedding.dim
-
-    def _load(self):  # noqa: ANN202
+    def _load(self):
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer
             except ImportError as exc:  # pragma: no cover - depends on env
                 raise RuntimeError(
-                    "The embedding model is not installed in this environment. "
-                    "Precomputed embeddings are read from the dataset cache; a "
-                    "cache miss requires the 'embeddings' extra "
-                    '(pip install -e ".[embeddings]" plus the CPU torch wheel). '
-                    "See docs/DEPLOYMENT.md."
+                    "A cache miss requires the 'embeddings' extra. See docs/DEPLOYMENT.md."
                 ) from exc
-            self._model = SentenceTransformer(self._model_name)
+            if Path(self.name).exists():
+                raise ValueError("a local model path cannot attest the pinned Hub revision")
+            if installed_runtime() != self.contract.runtime:
+                raise ValueError("installed embedding runtime differs from the declared contract")
+            model = SentenceTransformer(self.name, revision=self.contract.revision, device="cpu")
+            if model.get_sentence_embedding_dimension() != self.dim:
+                raise ValueError(f"model dimension differs from declared {self.dim}")
+            limit = min(model.max_seq_length, model.tokenizer.model_max_length)
+            if self.contract.max_seq_length > limit:
+                raise ValueError(f"declared sequence length exceeds model limit {limit}")
+            model.max_seq_length = self.contract.max_seq_length
+            self._model = model.float()
         return self._model
 
-    def encode(self, texts: list[str]) -> np.ndarray:
-        """Encode a list of texts into a (n, dim) float32 embedding matrix.
-
-        Empty or whitespace-only texts are encoded to zero vectors so that
-        the output shape remains predictable and downstream consumers never
-        encounter ``None`` values.
-        """
-        if not texts:
-            return np.zeros((0, self.dim), dtype=np.float32)
-        # torch is imported only here: reading precomputed embeddings from the
-        # cache must work in environments without the heavy ``embeddings``
-        # extra installed (see docs/DEPLOYMENT.md).
-        import torch
-
-        model = self._load()
-        with torch.inference_mode():
-            embeddings = model.encode(
-                texts,
-                batch_size=CONFIG.embedding.batch_size,
-                show_progress_bar=False,
-                convert_to_numpy=True,
-                normalize_embeddings=False,
-            )
-        return np.asarray(embeddings, dtype=np.float32)
+    def _encode_nonblank(self, texts: list[str]) -> np.ndarray:
+        return self._load().encode(
+            texts,
+            prompt="",
+            output_value="sentence_embedding",
+            precision="float32",
+            batch_size=self.contract.batch_size,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=self.contract.normalize_embeddings,
+        )

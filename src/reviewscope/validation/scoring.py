@@ -34,7 +34,7 @@ import numpy as np
 from reviewscope.analysis.duplicates import DuplicateDetector, DuplicateGroup
 from reviewscope.analysis.specificity import specificity_score
 from reviewscope.analysis.templated import TemplatedTextScorer
-from reviewscope.config import CONFIG
+from reviewscope.embeddings import SentenceTransformerProvider
 from reviewscope.models.review import NormalizedReview
 from reviewscope.storage import DuckDBStore
 
@@ -254,7 +254,7 @@ def compute_reviewscope_outputs(
     """
     from reviewscope.embeddings.cache import EmbeddingCache as _Cache
 
-    embedding_model_name = CONFIG.embedding.model_name
+    embedding_model_name = SentenceTransformerProvider().contract.encoding_id
     store: DuckDBStore | None = None
     try:
         if store_path is None:

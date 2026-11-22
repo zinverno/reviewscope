@@ -73,7 +73,7 @@ When enabled, the app forces `RS_DISCOVERY_DISK_CACHE=0` and never renders a dat
 
 - Reads only from the bundled synthetic DuckDB (`read_only=True`). Missing files raise `FileNotFoundError` and are never created.
 - `store_cached_embeddings()` is a no-op in read-only mode (returns 0) — no write attempts.
-- Preflight checks that all reviews have persisted embedding keys (`cached_embedding_keys()`) and fails with deployment instructions if incomplete.
+- Preflight checks every requested vector against the [embedding contract](development/embedding-contract.md) and stops on a missing or invalid row.
 - Discovery disk cache is disabled (process-enforced). Measured: 0 disk writes in demo runs.
 - `app_labeling.py` exits with an explanatory error when `public_demo_enabled()` is True.
 - All review text and reviewer identifiers are escaped via a shared helper before `st.markdown` (defends against Markdown injection while preserving readability).

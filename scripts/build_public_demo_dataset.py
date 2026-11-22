@@ -38,9 +38,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np  # noqa: E402
 
-from reviewscope.config import CONFIG  # noqa: E402
+from reviewscope.embeddings.cache import EmbeddingCache  # noqa: E402
+from reviewscope.embeddings.frozen_demo import FROZEN_ID  # noqa: E402
 from reviewscope.ingestion.csv_adapter import CSVAdapter  # noqa: E402
-from reviewscope.public_demo import missing_embedding_keys  # noqa: E402
 from reviewscope.storage import DuckDBStore  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -95,13 +95,15 @@ def inspect(db_path: Path) -> dict:
         return {"error": f"artifact not found: {db_path}"}
     with DuckDBStore(db_path=db_path, read_only=True) as store:
         reviews = store.fetch_reviews()
-        missing = missing_embedding_keys(store, reviews)
+        cache = EmbeddingCache(store)
+        missing = cache.missing_keys(reviews)
         return {
             "reviews": store.review_count(),
             "places": len(store.list_places()),
             "reviewers": store.distinct_reviewer_count(),
             "embedding_rows": store.cached_embedding_count(),
-            "embedding_model": CONFIG.embedding.model_name,
+            "embedding_model": cache.provider_name,
+            "encoding_id": cache.encoding_id,
             "missing_embeddings": len(missing),
             "content_sha256": content_digest(store),
         }
@@ -141,8 +143,6 @@ def build(output: Path = DEFAULT_OUTPUT, *, generate: bool = True) -> dict:
     try:
         written = store.ingest(reviews)
         # Step 3: precompute embeddings (needs the `embeddings` extra).
-        from reviewscope.embeddings.cache import EmbeddingCache
-
         EmbeddingCache(store).embed_reviews(reviews)
     finally:
         store.close()
@@ -191,11 +191,13 @@ def verify(output: Path = DEFAULT_OUTPUT) -> list[str]:
     info = inspect(output)
     if "error" in info:
         return [str(info["error"])]
-    for field in ("reviews", "places", "reviewers", "embedding_model"):
+    for field in ("reviews", "places", "reviewers", "embedding_model", "embedding_rows"):
         if info[field] != manifest.get(field):
             problems.append(
                 f"{field}: artifact has {info[field]!r}, manifest says {manifest.get(field)!r}"
             )
+    if info["encoding_id"] != manifest.get("encoding_id", FROZEN_ID):
+        problems.append("encoding identity differs from manifest")
     if info["missing_embeddings"]:
         problems.append(f"{info['missing_embeddings']} embeddings missing")
     if info["content_sha256"] != manifest.get("content_sha256"):

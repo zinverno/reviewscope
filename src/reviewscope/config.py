@@ -26,8 +26,9 @@ class EmbeddingConfig:
     """
 
     model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    revision: str = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
     batch_size: int = 64
-    max_length: int = 512
+    max_length: int = 128
     dim: int = 384
 
 
