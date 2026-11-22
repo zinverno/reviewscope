@@ -39,7 +39,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
         uses: actions/checkout@v4
         with:
-          ref: 079eeee1ca90240647b4176b30510c8efe587117
+          ref: bfbeed13717d7760205340c56453f1851ac70ffc
           path: .ux-before
           persist-credentials: false
       - name: Build the comparison snapshot
@@ -53,7 +53,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/reviewscope-pr03-ux-prototype'
         uses: actions/upload-artifact@v4
         with:
-          name: reviewscope-pr03-ux-v7
+          name: reviewscope-pr03-ux-v8
           path: ${{ runner.temp }}/reviewscope-pr03-media
           retention-days: 14
           if-no-files-found: error

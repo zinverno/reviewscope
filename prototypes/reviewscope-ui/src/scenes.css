@@ -72,6 +72,22 @@
   transform-origin: 75% 42%;
   transform: translateY(calc(var(--hero-out, 0) * -50px)) scale(calc(1 - var(--hero-out, 0) * .14));
 }
+.story-stage[data-measuring-heading] .opening { transform: none; }
+.story-stage[data-moving-heading] :is(.opening h1, #atlas-title, #method-title) { opacity: 0; }
+.heading-motion {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.heading-motion span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  white-space: pre;
+  opacity: 0;
+}
 .opening-wrap {
   height: 100%;
   display: grid;

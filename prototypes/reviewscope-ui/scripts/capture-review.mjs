@@ -11,7 +11,7 @@ const dir = process.argv[2] ?? (await mkdtemp(join(tmpdir(), "reviewscope-ux-"))
 if (process.argv[2]) await mkdir(dir, { recursive: true });
 const server = await preview({ preview: { host: "127.0.0.1", port: 0 }, logLevel: "error" });
 const url = server.resolvedUrls.local[0];
-const viewport = { width: 1920, height: 1080 };
+const viewport = { width: 1920, height: 1000 };
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 const shot = (page, name, options) =>
@@ -120,6 +120,11 @@ try {
       await before.goto(baseline.resolvedUrls.local[0] + "#" + hash, { waitUntil: "networkidle" });
       await shot(before, "before-" + hash);
     }
+    report.baselineSilhouettes = [await bounds(before)];
+    await before.setViewportSize({width: 1366, height: 680});
+    await before.reload({waitUntil: "networkidle"});
+    report.baselineSilhouettes.push(await bounds(before));
+    await shot(before, "before-atlas-1366");
     await before.close();
     report.baselineScroll = await profileScroll(browser, baseline.resolvedUrls.local[0]);
   }
@@ -186,7 +191,7 @@ try {
   });
 
   for (const [width, height] of [
-    [1920, 1000],
+    [1920, 1080],
     [1440, 900],
     [1366, 768],
     [1366, 680],
@@ -197,6 +202,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 400 });
     await page.goto(url + "#features", { waitUntil: "networkidle" });
     if (height >= 680 && width >= 900) report.silhouettes.push(await bounds(page));
+    if (width === 1366 && height === 680) await shot(page, "atlas-1366");
     if (width === 390) {
       await page.getByRole("button", { name: "Моя сеть", exact: true }).tap();
       await shot(page, "mobile");
@@ -204,10 +210,25 @@ try {
       await shot(page, "mobile-proof");
       await page.getByRole("button", { name: "Закрыть" }).tap();
     }
+    if (width < 400) {
+      await page.goto(url + "#how", {waitUntil: "networkidle"});
+      await page.getByRole("button", {name: /Проверить смысл/}).tap();
+      await shot(page, "method-mobile-" + width);
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.close();
   }
 
+  const steps = await browser.newPage({viewport: {width: 1000, height: 900}});
+  await steps.goto(url + "#how", {waitUntil: "networkidle"});
+  await shot(steps, "method-step-1");
+  await steps.getByRole("button", {name: /Проверить смысл/}).click();
+  await shot(steps, "method-step-2");
+  await steps.close();
+  for (const before of report.baselineSilhouettes ?? []) {
+    const after = report.silhouettes.find(s => s.viewport.join() === before.viewport.join());
+    assert.ok(Math.abs(before.width - after.width) <= 2, JSON.stringify({before, after}));
+  }
   report.scroll = await profileScroll(browser, url);
   await writeFile(join(dir, "frame-profile.json"), JSON.stringify(report, null, 2) + "\n");
   const sizes = report.silhouettes.map(
@@ -216,15 +237,19 @@ try {
   await writeFile(
     join(dir, "verification.md"),
     [
-      "# ReviewScope v7 · NEEDS_OWNER_UX_APPROVAL",
+      "# ReviewScope v8 · NEEDS_OWNER_UX_APPROVAL",
       "",
-      `Production build \`${commit}\`. Chromium ${report.browser}, Linux. Continuous wheel recording and interactions at 1920×1080, DPR 1.`,
+      `Production build \`${commit}\`. Chromium ${report.browser}, Linux. Continuous wheel recording and interactions at 1920×1000, DPR 1. Playwright mouse.wheel, pauses and six short reversals during the round trip.`,
       "",
       "| Viewport | DPR | Left, top, right, bottom (CSS px) | Silhouette width |",
       "|---|---|---|---|",
       ...sizes,
       "",
       "Bounds measured on particle pixels with alpha ≥ 7/255, including the visible halo. Selected company alpha was sampled over 6.8 seconds before the dim screenshot.",
+      "",
+      "before-home.png and hero.png use the same viewport and zoom. The two sets of quarter frames share their endpoints (hero, atlas, method). method-step-1/2 show the actual panel resize at 1000×900.",
+      "",
+      "Local visual inspection of the matching build and device limits are recorded in the Draft PR handoff.",
       "",
       "See frame-profile.json for wheel rAF intervals. These timings do not measure compositor presentation on the owner's laptop.",
       "",

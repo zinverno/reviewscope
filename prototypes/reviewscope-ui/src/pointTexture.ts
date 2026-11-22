@@ -16,8 +16,6 @@ export type Dot = {
   hero: Target;
   atlas: Target;
   method: Target;
-  groupX: number;
-  groupY: number;
 };
 
 export function sampleLand(ctx: CanvasRenderingContext2D): Dot[] {
@@ -34,8 +32,6 @@ export function sampleLand(ctx: CanvasRenderingContext2D): Dot[] {
     hero: { x: 0, y: 0, alpha: 0 },
     atlas: { x: 0, y: 0, alpha: 0.64 },
     method: { x: 0, y: 0, alpha: 0 },
-    groupX: 0,
-    groupY: 0,
   }));
 }
 
@@ -87,7 +83,7 @@ export function particleCenter(place: PlaceId) {
 
 type Box = { x: number; y: number; width: number; height: number };
 
-export function arrangeGrid(dots: Dot[], target: "hero" | "method", box: Box) {
+export function arrangeHero(dots: Dot[], box: Box) {
   const columns = Math.max(1, Math.round(Math.sqrt((dots.length * box.width) / box.height)));
   const rows = Math.ceil(dots.length / columns);
   const step = Math.min(box.width / columns, box.height / rows);
@@ -97,18 +93,73 @@ export function arrangeGrid(dots: Dot[], target: "hero" | "method", box: Box) {
     band.forEach((dot, col) => {
       const dx = (col - (band.length - 1) / 2) * step;
       const dy = (row - (rows - 1) / 2) * step;
-      const edge = Math.max(Math.abs((dx * 2) / box.width), Math.abs((dy * 2) / box.height));
-      if (target === "method") {
-        dot.groupX = box.x + box.width / 2;
-        dot.groupY = box.y + box.height / 2;
-      }
-      dot[target] = {
-        x: box.x + box.width / 2 + dx,
-        y: box.y + box.height / 2 + dy,
-        alpha: (target === "hero" ? 0.54 : 0.36) * smooth(clamp((1 - edge) * 4)),
+      const nx = (dx * 2) / box.width,
+        ny = (dy * 2) / box.height;
+      const angle = Math.atan2(ny, nx);
+      const boundary = 0.99 + 0.043 * Math.sin(3 * angle + 0.6) + 0.028 * Math.cos(5 * angle);
+      const distance = boundary - (nx ** 4 + ny ** 4) ** 0.25;
+      const interior = smooth(clamp((distance * Math.min(box.width, box.height)) / (10 * step)));
+      const fringe = 1 - interior;
+      const seed = dot.phase;
+      const coverage = clamp(interior + fringe * (0.65 * Math.sin(seed * 3) - 0.2));
+      dot.hero = {
+        x: box.x + box.width / 2 + dx + fringe * step * 0.6 * Math.sin(seed * 7),
+        y: box.y + box.height / 2 + dy + fringe * step * 0.6 * Math.cos(seed * 11),
+        alpha: 0.54 * interior * coverage,
       };
     });
   }
+}
+
+// Walk the four straight sides and their tangent quarter circles at constant spacing.
+export function arrangeContour(group: Dot[], box: Box, radius: number) {
+  const { x, y, width, height } = box;
+  const r = Math.min(radius, width / 2, height / 2);
+  const horizontal = width - 2 * r,
+    vertical = height - 2 * r;
+  const arc = (Math.PI * r) / 2;
+  const half = horizontal + vertical + 2 * arc;
+  const visible = Math.min(group.length, Math.round((2 * half) / 8));
+  const targets = group.map((_, i) => {
+    const along = (i * 2 * half) / group.length;
+    const d = along % half;
+    let px: number, py: number;
+    if (d < horizontal) {
+      px = r + d;
+      py = 0;
+    } else if (d < horizontal + arc) {
+      const angle = (d - horizontal) / r;
+      px = width - r + r * Math.sin(angle);
+      py = r - r * Math.cos(angle);
+    } else if (d < half - arc) {
+      px = width;
+      py = r + d - horizontal - arc;
+    } else {
+      const angle = (d - (half - arc)) / r;
+      px = width - r + r * Math.cos(angle);
+      py = height - r + r * Math.sin(angle);
+    }
+    if (along >= half) {
+      px = width - px;
+      py = height - py;
+    }
+    const lit =
+      Math.floor(((i + 1) * visible) / group.length) !== Math.floor((i * visible) / group.length);
+    return { x: x + px, y: y + py, alpha: lit ? 0.78 : 0 };
+  });
+
+  // Pair angular neighbours so a coast approaches the facing side of its panel.
+  const cx = group.reduce((sum, dot) => sum + dot.atlas.x, 0) / group.length;
+  const cy = group.reduce((sum, dot) => sum + dot.atlas.y, 0) / group.length;
+  const bearing = (point: Target, centerX: number, centerY: number) =>
+    Math.atan2(point.y - centerY, point.x - centerX);
+  group.sort((a, b) => bearing(a.atlas, cx, cy) - bearing(b.atlas, cx, cy));
+  targets.sort(
+    (a, b) => bearing(a, x + width / 2, y + height / 2) - bearing(b, x + width / 2, y + height / 2),
+  );
+  group.forEach((dot, i) => {
+    dot.method = targets[i];
+  });
 }
 
 // Reuse the light profile of a particle; only its centre and brightness change each frame.
@@ -152,18 +203,19 @@ export function fieldRenderer(ctx: CanvasRenderingContext2D, dots: Dot[]) {
     const t = second > 0 ? second : first;
     const accent = smooth(clamp((first - 0.68) / 0.32)) * (1 - smooth(clamp(second / 0.18)));
     const radius = mix(mix(5.6, mapRadius, first), 5, second);
-    const gather = 0.34 * Math.sin(Math.PI * second);
     for (const dot of dots) {
       const a = dot[from],
         b = dot[to];
-      const x = mix(mix(a.x, b.x, t), dot.groupX, gather);
-      const y = mix(mix(a.y, b.y, t), dot.groupY, gather);
+      const travel = t + (dot.method.alpha ? 0.8 : -0.12) * second * (1 - second);
+      const x = mix(a.x, b.x, travel),
+        y = mix(a.y, b.y, travel);
       if (y < top - 22 || y > bottom + 22) continue;
       const light = (1 + Math.sin(time * (0.00142 + (dot.id % 9) * 0.000045) + dot.phase)) / 2;
       const selected = highlight.get(dot.id);
       const lit = selected !== undefined && accent > 0;
       const r = lit ? mix(radius, 20, accent) : radius;
       const alpha = mix(a.alpha, b.alpha, t) * (0.53 + 0.47 * light);
+      if (alpha <= 0) continue;
       ctx.globalAlpha = lit ? mix(alpha, 0.85 + 0.15 * light, accent) : alpha;
       ctx.drawImage(lit ? (selected ? red : blue) : neutral, x - r, y - r, r * 2, r * 2);
     }

@@ -98,6 +98,15 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
       window.land = [];
       const ctx = CanvasRenderingContext2D.prototype,
         hit = ctx.isPointInPath;
+      const clear = ctx.clearRect, draw = ctx.drawImage;
+      ctx.clearRect = function (...args) {
+        if (this.canvas.matches(".point-field")) window.centres = [];
+        return clear.apply(this, args);
+      };
+      ctx.drawImage = function (image, x, y, w, h, ...rest) {
+        if (this.canvas.matches(".point-field")) window.centres.push([x + w / 2, y + h / 2]);
+        return draw.call(this, image, x, y, w, h, ...rest);
+      };
       ctx.isPointInPath = function (path, x, y, ...args) {
         const inside = hit.call(this, path, x, y, ...args);
         if (inside) window.land.push([x, y]);
@@ -169,17 +178,45 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     assert.ok(sameBox(hero, await page.locator(".opening-grid").boundingBox()));
     const grid = await field.evaluate(pixels);
     assert.ok(grid.length > 50);
-    const xs = new Set(grid.map(([x]) => x)),
-      ys = new Set(grid.map(([, y]) => y));
-    assert.ok(xs.size * ys.size < grid.length * 12, "hero centres form rows and columns");
+    const centres = () => page.evaluate(() => window.centres);
+    const initialCentres = await centres();
     const board = await page.locator(".board-canvas").boundingBox();
-    assert.ok(Math.min(...xs) > board.x - board.width * 0.22, "quiet title area");
+    const core = initialCentres.filter(([x, y]) =>
+      Math.abs(x - board.x - board.width / 2) < board.width / 4 &&
+      Math.abs(y - board.y - board.height / 2) < board.height / 4);
+    const rows = points => new Set(points.map(([, y]) => Math.round(y * 1000))).size;
+    assert.ok(core.length > 400 && rows(core) < 40, "regular central rows");
+    assert.ok(rows(initialCentres) > 4 * rows(core), "outer positions diverge from grid rows");
+    assert.ok(Math.min(...initialCentres.map(([x]) => x)) > board.x - board.width * 0.22, "quiet title area");
+    assert.equal(await page.getByRole("heading", { name: "За разными словами — общая проблема." }).count(), 1);
 
+    const moving = () => page.locator(".heading-motion span").evaluateAll(faces =>
+      faces.filter(f => Number(getComputedStyle(f).opacity) > 0.5)
+        .map(f => [f.textContent, f.style.transform]));
+    async function verifyReversal(p) {
+      await toProgress(p);
+      const letters = await moving(), particles = await centres();
+      assert.ok(letters.length >= 20);
+      assert.equal(await page.locator(".heading-motion").getAttribute("aria-hidden"), "true");
+      assert.equal(await page.locator(".heading-motion").evaluate(el => getComputedStyle(el).pointerEvents), "none");
+      assert.equal(await page.locator(".story-stage :is(h1,h2) .heading-motion, .heading-motion [tabindex]").count(), 0);
+      await page.waitForTimeout(180);
+      assert.deepEqual(await moving(), letters);
+      assert.deepEqual(await centres(), particles);
+      await toProgress(p + 0.08);
+      assert.notDeepEqual(await moving(), letters);
+      await toProgress(p);
+      assert.deepEqual(await moving(), letters);
+      assert.deepEqual(await centres(), particles);
+    }
     for (const card of await page.locator(".review-slip").all()) {
       const box = await card.boundingBox();
       assert.ok(grid.filter(([x, y]) => x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height).length > 35);
     }
 
+    await verifyReversal(0.6);
+    await toProgress(0.1);
+    assert.deepEqual(await centres(), initialCentres);
     await toProgress(0.5);
     assert.equal(await scene.getAttribute("data-phase"), "MORPH");
     const middle = await field.evaluate(pixels),
@@ -215,20 +252,46 @@ test("scroll phases hold hero/atlas geometry and coast alignment stays stable", 
     assert.equal(backTransform, middleTransform);
     assert.notDeepEqual(back, grid);
 
-    await toProgress(1.95);
+    await verifyReversal(1.95);
     const gathering = await field.evaluate(pixels);
     await page.goto(origin + "#how");
     await page.waitForFunction(() => !document.getElementById("how").inert && document.getElementById("features").inert);
     assert.equal(await page.locator(".atlas-details:visible").count(), 0);
     const method = await field.evaluate(pixels);
     assert.notDeepEqual(gathering, method);
-    for (const card of await page.locator(".step").all()) {
-      const box = await card.boundingBox();
-      assert.ok(box.y >= 0 && box.y + box.height <= 900);
-      assert.ok(method.filter(([x,y]) => x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height).length > 40);
+    assert.equal(await page.getByRole("heading", {name: "От фразы — к проверяемому изменению."}).count(), 1);
+    assert.deepEqual(await moving(), []);
+    async function checkPerimeters() {
+      await page.waitForFunction(() => {
+        const remaining = new Set(window.centres);
+        const valid = [...document.querySelectorAll(".step")].every(card => {
+          const box = card.getBoundingClientRect(), style = getComputedStyle(card);
+          const inset = parseFloat(style.borderTopWidth) / 2;
+          const radius = parseFloat(style.borderTopLeftRadius) - inset;
+          const halfX = box.width / 2 - inset, halfY = box.height / 2 - inset;
+          let count = 0, corners = 0;
+          for (const point of remaining) {
+            const dx = Math.abs(point[0] - box.x - box.width / 2) - (halfX - radius);
+            const dy = Math.abs(point[1] - box.y - box.height / 2) - (halfY - radius);
+            const distance = Math.hypot(Math.max(0, dx), Math.max(0, dy)) + Math.min(0, Math.max(dx, dy)) - radius;
+            if (Math.abs(distance) > 0.1) continue;
+            remaining.delete(point);
+            count++;
+            if (dx > 0 && dy > 0) corners++;
+          }
+          const perimeter = 4 * (halfX + halfY - 2 * radius) + 2 * Math.PI * radius;
+          return count === Math.round(perimeter / 8) && corners >= 8;
+        });
+        return valid && remaining.size === 0;
+      }, undefined, {timeout: 3000});
     }
-
+    await checkPerimeters();
     await page.setViewportSize({ width: 1000, height: 900 });
+    await checkPerimeters();
+    const initialHeight = (await page.locator(".step").first().boundingBox()).height;
+    await page.getByRole("button", {name: /Проверить смысл/}).click();
+    assert.notEqual((await page.locator(".step").first().boundingBox()).height, initialHeight);
+    await checkPerimeters();
     await toProgress(1.2);
     assert.equal(await checkCoast(), 0);
     assert.equal(await page.evaluate(() => window.land.length), count);
@@ -438,6 +501,7 @@ test("reduced motion uses the short flow layout with readable scenes and no morp
         innerWidth,
       };
     });
+    assert.equal(await page.locator(".heading-motion span").count(), 0);
     assert.ok(geometry.storyHeight < geometry.stageHeight * 1.5, JSON.stringify(geometry));
     assert.ok(geometry.scrollWidth <= geometry.innerWidth, JSON.stringify(geometry));
     assert.equal(await page.locator(".opening h1").isVisible(), true);
@@ -508,6 +572,7 @@ test("narrow phones keep readable content reachable without horizontal overflow"
   try {
     await page.goto(origin);
     await page.waitForFunction(() => document.querySelector(".landing")?.dataset.layout === "flow");
+    assert.equal(await page.locator(".heading-motion span").count(), 0);
     const overflow = () =>
       page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok((await overflow()) <= 0, `first screen overflow is ${await overflow()}px`);
