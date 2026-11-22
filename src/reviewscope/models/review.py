@@ -66,11 +66,7 @@ class NormalizedReview(BaseModel):
         return self.text or ""
 
     def fingerprint(self) -> str:
-        """Stable content hash, used by the embedding cache.
-
-        The hash covers the normalized text and model-independent metadata so
-        that unchanged texts are never re-embedded (SPEC.md §32).
-        """
+        """Historical case- and edge-space-insensitive text fingerprint."""
         normalized = self.text_or_empty().strip().lower()
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 

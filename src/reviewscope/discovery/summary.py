@@ -961,7 +961,9 @@ def dataset_identity(db_path: str, store: DuckDBStore | None = None) -> tuple:
     embedding model (topic clustering and semantic duplicate detection depends on
     it). Non-file stores (in-memory DuckDB) fall back to connection identity.
     """
-    model = CONFIG.embedding.model_name
+    from reviewscope.embeddings import SentenceTransformerProvider
+
+    model = SentenceTransformerProvider().contract.encoding_id
     try:
         path = Path(db_path).expanduser().resolve()
         stat = path.stat()

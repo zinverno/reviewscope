@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+from itertools import batched
 from pathlib import Path
 from typing import Any
 
@@ -295,21 +296,18 @@ class DuckDBStore:
     ) -> dict[tuple[str, str, str], np.ndarray]:
         """Return cached embeddings for ``(review_id, text_hash, model_name)`` keys."""
         result: dict[tuple[str, str, str], np.ndarray] = {}
-        if not keys:
-            return result
-        clauses = " OR ".join(
-            "(review_id = ? AND text_hash = ? AND model_name = ?)" for _ in keys
-        )
-        params: list[str] = [part for key in keys for part in key]
-        rows = self._con.execute(
-            "SELECT review_id, text_hash, model_name, embedding "
-            f"FROM embeddings_cache WHERE {clauses}",
-            params,
-        ).fetchall()
-        for review_id, text_hash, model_name, embedding in rows:
-            vector = self._to_vector(embedding)
-            if vector is not None:
-                result[(review_id, text_hash, model_name)] = vector
+        for batch in batched(keys, 256):
+            placeholders = ", ".join(["(?, ?, ?)"] * len(batch))
+            rows = self._con.execute(
+                "SELECT review_id, text_hash, model_name, embedding FROM embeddings_cache "
+                f"JOIN (VALUES {placeholders}) AS k(review_id, text_hash, model_name) "
+                "USING (review_id, text_hash, model_name)",
+                [part for key in batch for part in key],
+            ).fetchall()
+            for review_id, text_hash, model_name, embedding in rows:
+                vector = self._to_vector(embedding)
+                if vector is not None:
+                    result[(review_id, text_hash, model_name)] = vector
         return result
 
     def store_cached_embeddings(self, rows: list[tuple[str, str, str, Iterable[float]]]) -> int:

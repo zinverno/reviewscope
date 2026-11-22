@@ -10,13 +10,18 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import os
+import shutil
+import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from reviewscope.config import CONFIG
+from reviewscope.embeddings.base import embedding_key
+from reviewscope.embeddings.sentence_transformer import SentenceTransformerProvider
 from reviewscope.models.review import NormalizedReview
 from reviewscope.public_demo import (
     ENV_DB_PATH,
@@ -42,7 +47,7 @@ from reviewscope.discovery.summary import (  # noqa: E402
     dataset_cache_info,
 )
 
-EMBEDDING_MODEL = CONFIG.embedding.model_name
+ENCODING_ID = SentenceTransformerProvider().contract.encoding_id
 EMBEDDING_DIM = CONFIG.embedding.dim
 
 
@@ -103,7 +108,7 @@ def _build_demo_artifact(path: Path, reviews: list[NormalizedReview]) -> str:
         for i, review in enumerate(reviews):
             vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
             vec[i % EMBEDDING_DIM] = 1.0
-            rows.append((review.review_id, review.fingerprint(), EMBEDDING_MODEL, vec.tolist()))
+            rows.append((*embedding_key(review.review_id, review.text_or_empty(), ENCODING_ID), vec.tolist()))
         store.store_cached_embeddings(rows)
     return str(path)
 
@@ -176,6 +181,69 @@ class TestPathsAndConfig:
 
 @pytest.mark.skipif(not ARTIFACT.exists(), reason="packaged demo artifact missing")
 class TestPackagedArtifact:
+    def test_all_frozen_vectors_without_optional_imports(self):
+        script = """
+import sys
+class BlockBackend:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'torch', 'sentence_transformers', 'transformers'}:
+            raise AssertionError(f'unexpected backend import {fullname}')
+sys.meta_path.insert(0, BlockBackend())
+import numpy as np
+from reviewscope.embeddings.cache import EmbeddingCache
+from reviewscope.embeddings.frozen_demo import FROZEN_ID
+from reviewscope.storage import DuckDBStore
+from reviewscope.public_demo import missing_embedding_keys
+with DuckDBStore(sys.argv[1], read_only=True) as store:
+    reviews = store.fetch_reviews()
+    cache = EmbeddingCache(store)
+    assert cache.encoding_id == FROZEN_ID and not missing_embedding_keys(store, reviews)
+    vectors = cache.embed_reviews(reviews)
+    assert vectors.shape == (1058, 384) and vectors.dtype == np.float32
+    historical = store.get_cached_embeddings([
+        (r.review_id, r.fingerprint(), cache.provider_name) for r in reviews
+    ])
+    for r, vec in zip(reviews, vectors, strict=True):
+        np.testing.assert_array_equal(vec, historical[(r.review_id, r.fingerprint(), cache.provider_name)])
+    changed = reviews[0].model_copy(update={'text': ' ' + reviews[0].text})
+    assert changed.fingerprint() == reviews[0].fingerprint()
+    assert cache.cache_hit_ratio([changed]) == 0
+    try:
+        cache.embed_reviews([changed])
+    except ValueError as exc:
+        assert 'precomputed embeddings' in str(exc)
+    else:
+        raise AssertionError('modified text admitted to frozen snapshot')
+"""
+        before = _sha256(ARTIFACT)
+        subprocess.run([sys.executable, "-c", script, str(ARTIFACT)], check=True,
+                       env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")})
+        assert _sha256(ARTIFACT) == before
+
+    def test_explicit_or_changed_model_cannot_claim_frozen_vectors(self, monkeypatch):
+        from reviewscope.embeddings import EmbeddingCache
+
+        with DuckDBStore(ARTIFACT, read_only=True) as store:
+            reviews = store.fetch_reviews()
+            explicit = EmbeddingCache(store, SentenceTransformerProvider())
+            assert explicit.cache_hit_ratio(reviews) == 0
+            changed = replace(CONFIG, embedding=replace(CONFIG.embedding, revision="a" * 40))
+            monkeypatch.setattr("reviewscope.embeddings.sentence_transformer.CONFIG", changed)
+            assert EmbeddingCache(store).cache_hit_ratio(reviews) == 0
+
+    @pytest.mark.parametrize("change", [
+        "UPDATE reviews SET text = ' ' || text WHERE review_id = (SELECT min(review_id) FROM reviews)",
+        "UPDATE embeddings_cache SET embedding = list_reverse(embedding) WHERE review_id = (SELECT min(review_id) FROM reviews)",
+    ])
+    def test_modified_legacy_snapshot_is_ineligible(self, tmp_path, change):
+        copy = tmp_path / "altered.duckdb"
+        shutil.copyfile(ARTIFACT, copy)
+        with DuckDBStore(copy) as store:
+            store.connection().execute(change)
+        with DuckDBStore(copy, read_only=True) as store:
+            reviews = store.fetch_reviews()
+            assert len(missing_embedding_keys(store, reviews)) == len(reviews)
+
     def test_manifest_matches_artifact(self) -> None:
         assert build_script.verify(ARTIFACT) == []
 
@@ -211,7 +279,7 @@ class TestReadOnlyStore:
         before = _sha256(path)
         with DuckDBStore(db_path=path, read_only=True) as store:
             assert store.store_cached_embeddings(
-                [("x", "y", EMBEDDING_MODEL, [0.0] * 4)]
+                [("x", "y", ENCODING_ID, [0.0] * 4)]
             ) == 0
             with pytest.raises(AssertionError):
                 store.ingest([_review(2)])

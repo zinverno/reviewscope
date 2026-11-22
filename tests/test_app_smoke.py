@@ -19,6 +19,8 @@ import numpy as np
 import pytest
 
 from reviewscope.config import CONFIG
+from reviewscope.embeddings.base import embedding_key
+from reviewscope.embeddings.sentence_transformer import SentenceTransformerProvider
 from reviewscope.models.review import NormalizedReview
 from reviewscope.storage.duckdb_store import DuckDBStore
 
@@ -30,7 +32,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from reviewscope.ui import common  # noqa: E402
 
-EMBEDDING_MODEL = CONFIG.embedding.model_name
+ENCODING_ID = SentenceTransformerProvider().contract.encoding_id
 EMBEDDING_DIM = CONFIG.embedding.dim
 
 _PLACE = "test_place"
@@ -48,7 +50,7 @@ def _build_db(path: Path, reviews: list[NormalizedReview]) -> str:
         for i, r in enumerate(reviews):
             vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
             vec[i % EMBEDDING_DIM] = 1.0
-            rows.append((r.review_id, r.fingerprint(), EMBEDDING_MODEL, vec.tolist()))
+            rows.append((*embedding_key(r.review_id, r.text_or_empty(), ENCODING_ID), vec.tolist()))
         store.store_cached_embeddings(rows)
     return str(path)
 

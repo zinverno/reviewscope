@@ -115,11 +115,6 @@ def missing_embedding_keys(store, reviews: list) -> list[tuple[str, str, str]]:
     so the model (and PyTorch) never has to load, and an incomplete artifact
     must fail loudly instead of degrading the analysis silently.
     """
-    from reviewscope.config import CONFIG
+    from reviewscope.embeddings.cache import EmbeddingCache
 
-    model_name = CONFIG.embedding.model_name
-    keys = [(r.review_id, r.fingerprint(), model_name) for r in reviews]
-    if not keys:
-        return []
-    cached = store.cached_embedding_keys()
-    return [k for k in keys if k not in cached]
+    return EmbeddingCache(store).missing_keys(reviews)
