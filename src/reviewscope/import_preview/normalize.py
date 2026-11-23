@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from .contract import MAX_COLUMNS, MAX_CONFIG, CanonicalRow, EventTime, PreviewError
 from .reader import JsonNumber, check_json_fields, load_json
@@ -125,6 +125,8 @@ def configuration(fmt: str, mapping_bytes: bytes, passport_bytes: bytes):
         if key in p and not nonblank(p[key]):
             raise PreviewError("invalid_passport")
     zone_name = p.get("timezone")
+    if zone_name and (zone_name == "localtime" or zone_name not in available_timezones()):
+        raise PreviewError("invalid_passport")
     try:
         zone = ZoneInfo(zone_name) if zone_name else None
     except (ValueError, ZoneInfoNotFoundError):
