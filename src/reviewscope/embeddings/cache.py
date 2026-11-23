@@ -27,8 +27,12 @@ from reviewscope.storage.duckdb_store import DuckDBStore
 
 
 class EmbeddingCache:
-    def __init__(self, store: DuckDBStore, provider: EmbeddingProvider | None = None) -> None:
+    def __init__(
+        self, store: DuckDBStore, provider: EmbeddingProvider | None = None, *,
+        precomputed_only: bool = False,
+    ) -> None:
         self._store = store
+        self._precomputed_only = precomputed_only
         self._provider = provider if provider is not None else SentenceTransformerProvider()
         self._session: dict[EmbeddingKey, np.ndarray] = {}
         self._frozen = False
@@ -80,7 +84,7 @@ class EmbeddingCache:
         keys = self._keys(reviews)
         hits, pending = self._lookup(keys, reviews)
         if pending:
-            if self._frozen or (self._store.read_only and public_demo_enabled()):
+            if self._precomputed_only or self._frozen or (self._store.read_only and public_demo_enabled()):
                 raise ValueError(f"{len(pending)} missing or invalid precomputed embeddings")
             texts = list(pending.values())
             vectors = checked_batch(self.provider.encode(texts), len(texts), self.provider.dim)
