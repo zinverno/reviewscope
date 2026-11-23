@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  operational:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[operational,dev]"
+      - name: Migrate, backfill and restore on disposable PostgreSQL
+        run: bash operational/test-postgres.sh
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30

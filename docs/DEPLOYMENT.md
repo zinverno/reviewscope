@@ -6,6 +6,8 @@ ReviewScope ships as a public read-only demo for Streamlit Community Cloud and a
 
 The separate HTTP API binds to loopback and has no authentication. Its startup commands, dataset preflight and restrictions are in the [local API contract](development/api-contract.md).
 
+Operators using the optional PostgreSQL schema must back up the database and the immutable objects it references together. [Migration and recovery procedure](development/operational-schema.md)
+
 ### Key constraints
 
 - Public demo runs **without** `sentence-transformers`/PyTorch (embeddings are precomputed).

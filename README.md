@@ -43,6 +43,8 @@ Development plan (RU) · [Baseline](docs/development/baseline.md) · [Product co
 
 The [local HTTP JSON API v1](docs/development/api-contract.md) exposes places, paginated reviews and explainable analysis over one read-only snapshot. Run `python -m reviewscope.api` after installing the `api` extra.
 
+The optional [PostgreSQL operational schema](docs/development/operational-schema.md) records review versions, snapshot manifests, runs and artifacts. Its migrations and synthetic backfill run separately from Streamlit and the local API.
+
 ```text
 reviewscope/
 ├── app.py                          ← Streamlit entry point

@@ -4,6 +4,8 @@
 
 Границы React, FastAPI, аналитического ядра и Streamlit зафиксированы в [ADR локального прототипа](adr-api-boundary.md).
 
+Операторская схема PR-07 отдельно хранит стабильный `analysis_run.id` и манифест DuckDB. У HTTP v1 сохраняются локальный read-only режим и эфемерный идентификатор выполнения. [Операционная схема и миграции](operational-schema.md)
+
 ## Запуск из checkout
 
 Из корня репозитория, Python 3.12 или новее. Extra `api` добавляет FastAPI и Uvicorn. Базовый пакет уже использует Pydantic 2. Синхронные обработчики вызывают Python-ядро напрямую, а FastAPI строит OpenAPI по возвращаемым моделям. Lifespan связывает preflight и закрытие DuckDB с одним запуском сервиса. [Документация FastAPI](https://fastapi.tiangolo.com/advanced/events/)
