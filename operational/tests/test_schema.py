@@ -39,15 +39,21 @@ def receipt(conn, w, s, *, digest="a"):
                         (w, s, digest * 64)).fetchone()[0]
 
 
+def bind_place(conn, w, project, s, place="p1"):
+    loc, = conn.execute("INSERT INTO location(workspace_id,project_id) VALUES (%s,%s) RETURNING id",
+                        (w, project)).fetchone()
+    conn.execute("INSERT INTO source_location VALUES (%s,%s,%s,%s,%s)", (w, project, s, place, loc))
+
+
 def identity(conn, w, s, external):
-    return conn.execute("""INSERT INTO review_identity(workspace_id,source_id,external_review_id)
-                           VALUES (%s,%s,%s) RETURNING id""", (w, s, external)).fetchone()[0]
+    return conn.execute("""INSERT INTO review_identity(workspace_id,source_id,external_review_id,external_place_id)
+                           VALUES (%s,%s,%s,'p1') RETURNING id""", (w, s, external)).fetchone()[0]
 
 
 def version(conn, w, s, rid, batch, number=1, text=None, day=None):
     return conn.execute("""INSERT INTO review_version(workspace_id,source_id,identity_id,batch_id,version_no,
-                           normalization_version,text_content,published_date)
-                           VALUES (%s,%s,%s,%s,%s,'v1',%s,%s) RETURNING id,content_sha256""",
+                           normalization_version,text_content,published_date,external_place_id)
+                           VALUES (%s,%s,%s,%s,%s,'v1',%s,%s,'p1') RETURNING id,content_sha256""",
                         (w, s, rid, batch, number, text, day)).fetchone()
 
 
@@ -71,9 +77,11 @@ def artifact(conn, w, rid, checksum="b", size=42):
 
 def test_revision_scope_nulls_and_history(db):
     w, project, s = scope(db)
-    other_w, _, other_s = scope(db)
+    other_w, other_project, other_s = scope(db)
     _, _, s2 = scope(db, workspace=w, project=project)
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003_workspace_access",)
+    for binding in ((w, project, s), (w, project, s2), (other_w, other_project, other_s)):
+        bind_place(db, *binding)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0004_delivery_history",)
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         scope(db, workspace=other_w, project=project)
     actor, = db.execute("INSERT INTO principal(login,state) VALUES ('fixture','active') RETURNING id").fetchone()
@@ -153,11 +161,12 @@ def test_revision_scope_nulls_and_history(db):
     assert db.execute(history).fetchall() == before
     rejected = subprocess.run([*ALEMBIC, "downgrade", "base"], capture_output=True)
     assert rejected.returncode != 0
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003_workspace_access",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0004_delivery_history",)
 
 
 def test_concurrent_identity(db):
-    w, _, s = scope(db)
+    w, project, s = scope(db)
+    bind_place(db, w, project, s)
     start = Barrier(2)
 
     def insert():
@@ -182,6 +191,7 @@ def test_location_mapping_receipts_and_partial_coverage(db):
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         db.execute("INSERT INTO source_location VALUES (%s,%s,%s,'p1',%s)", (w2, project2, s2, location))
     db.execute("INSERT INTO source_location VALUES (%s,%s,%s,'p1',%s)", (w, project, s, location))
+    bind_place(db, w2, project2, s2)
     assert identity(db, w2, s2, "r1") != identity(db, w, s, "r1")
     rid = identity(db, w, s, None)
     first = receipt(db, w, s)
@@ -201,6 +211,8 @@ def test_location_mapping_receipts_and_partial_coverage(db):
     # Another delivery may carry identical bytes with different declared coverage.
     distinct_receipt, = db.execute(batch_sql.replace("'partial'", "'unknown'"),
                                    (w, s, 'c' * 64, 'accepted', None, None, None)).fetchone()
+    assert db.execute("SELECT confirmed_duplicate_count FROM import_batch WHERE id=%s", (partial,)).fetchone() == (0,)
+    assert db.execute("SELECT confirmed_duplicate_count FROM import_batch WHERE id=%s", (distinct_receipt,)).fetchone() == (None,)
     assert partial != distinct_receipt
     with pytest.raises(psycopg.errors.CheckViolation):
         seal(db, w, s, partial, [uuid4()])
