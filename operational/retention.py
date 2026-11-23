@@ -137,11 +137,10 @@ def root_binding(conn, w, root):
     return object_identity(root)
 
 
-def revoke(conn, event, root):
-    r, w, k, t, key = event
-    ident = object_identity(root)
+def revoke(conn, event, identity):
+    r = event[0]
     conn.execute("SELECT revoke_retention(%s,%s,%s,%s,%s)", event)
-    conn.execute("UPDATE retention_request SET device=%s,inode=%s WHERE id=%s", (*ident, r))
+    conn.execute("UPDATE retention_request SET device=%s,inode=%s WHERE id=%s", (*identity, r))
 
 
 def confirm(conn, rid, preview_sha, root):
@@ -156,12 +155,12 @@ def confirm(conn, rid, preview_sha, root):
         if event in events:
             if q["state"] in {"requested", "blocked"}:
                 require(events[-1] == event, "restore_required")
-                root_binding(conn, q["workspace_id"], root)
+                identity = root_binding(conn, q["workspace_id"], root)
                 require(
                     one(conn, "SELECT approve_retention(%s,%s)", (rid, preview_sha)),
                     "preview_changed",
                 )
-                revoke(conn, event, root)
+                revoke(conn, event, identity)
                 conn.execute(
                     "UPDATE retention_control SET checkpoint=%s,live_binding=%s::jsonb",
                     (data["sha256"], json.dumps(data["body"]["binding"])),
@@ -172,11 +171,11 @@ def confirm(conn, rid, preview_sha, root):
         if one(conn, "SELECT retention_held(%s,%s,%s)", scope(q)):
             conn.execute("UPDATE retention_request SET state='blocked' WHERE id=%s", (rid,))
             return "blocked"
-        root_binding(conn, q["workspace_id"], root)
+        identity = root_binding(conn, q["workspace_id"], root)
         require(one(conn, "SELECT approve_retention(%s,%s)", (rid, preview_sha)), "preview_changed")
         events.append(event)
         save(conn, data["body"])
-        revoke(conn, event, root)
+        revoke(conn, event, identity)
         return "purging"
 
 
@@ -377,7 +376,7 @@ def recover(admin, expected, roots, access_sha):
     require(admin.autocommit, "offline_connection_required")
     with exclusive(admin):
         data = read_witness()
-        _, binding = stamp(admin)
+        checkpoint, binding = stamp(admin)
         require(
             data["sha256"] == expected
             and binding["installation"] == data["body"]["binding"]["installation"],
@@ -415,18 +414,24 @@ def recover(admin, expected, roots, access_sha):
             | {w for (w,) in admin.execute("SELECT DISTINCT workspace_id FROM retention_refs")}
         )
         require(required == set(roots), "restore_roots_incomplete")
+        identities = {w: object_identity(path) for w, path in roots.items()}
         recovery_id = digest(
-            [binding, sorted((str(w), object_identity(p)) for w, p in roots.items())]
+            [binding, sorted((str(w), str(path), identities[w]) for w, path in roots.items())]
         )
+        # Replay may remove workspace rows. Pin the checked destinations before replay,
+        # and install them only in the transaction that reopens service.
+        pending = "pending-v2:" + recovery_id
         prior = one(admin, "SELECT recovery_binding FROM retention_control")
-        for w, path in roots.items():
-            object_identity(path)
-            if binding != data["body"]["binding"] and w in stored and prior != recovery_id:
-                require(str(path) != stored[w], "independent_objects_required")
-            admin.execute(
-                "UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(path), w)
-            )
-        admin.execute("UPDATE retention_control SET recovery_binding=%s", (recovery_id,))
+        if checkpoint is None:
+            require(prior == pending, "unverified_recovery_roots")
+        else:
+            for w, path in roots.items():
+                original = Path(stored[w]) if w in stored else None
+                if binding != data["body"]["binding"] and original is not None:
+                    require(path != original, "independent_objects_required")
+                    if original.exists():
+                        require(not path.samefile(original), "independent_objects_required")
+        admin.execute("UPDATE retention_control SET recovery_binding=%s", (pending,))
         for r, w, k, t, key in events:
             admin.execute(
                 """INSERT INTO retention_request(id,workspace_id,kind,target,request_key,action)
@@ -440,8 +445,12 @@ def recover(admin, expected, roots, access_sha):
         limited_operator(op)
         with exclusive(op):
             require(read_witness()["sha256"] == expected, "ledger_changed")
+            require(
+                one(op, "SELECT recovery_binding FROM retention_control") == pending,
+                "unverified_recovery_roots",
+            )
             for event in events:
-                revoke(op, event, roots[UUID(event[1])])
+                revoke(op, event, identities[UUID(event[1])])
     with exclusive(admin):
         from operational.delivery_objects import object_directory
         from operational.import_delivery import FORMAT, verify_snapshot
@@ -453,7 +462,7 @@ def recover(admin, expected, roots, access_sha):
                 "SELECT DISTINCT digest FROM retention_refs WHERE workspace_id=%s", (w,)
             ).fetchall()
             if refs:
-                with objects(root, w, object_identity(root)) as fd:
+                with objects(root, w, identities[w]) as fd:
                     for (name,) in refs:
                         require(
                             isinstance(name, str) and re.fullmatch(r"[0-9a-f]{64}", name),
@@ -466,7 +475,18 @@ def recover(admin, expected, roots, access_sha):
             ):
                 verify_snapshot(admin, (w, source), batch, object_directory(root, w, create=False))
         verify_catalog(admin)
-        admin.execute("UPDATE retention_control SET enrolled=true")
+        require(
+            one(admin, "SELECT recovery_binding FROM retention_control") == pending,
+            "unverified_recovery_roots",
+        )
+        for w, path in roots.items():
+            require(object_identity(path) == identities[w], "unverified_recovery_roots")
+            admin.execute(
+                "UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(path), w)
+            )
+        admin.execute(
+            "UPDATE retention_control SET enrolled=true,recovery_binding=%s", (recovery_id,)
+        )
         data["body"]["binding"] = binding
         return save(admin, data["body"])
 
