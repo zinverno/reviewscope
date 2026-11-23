@@ -2,11 +2,17 @@
 
 import hashlib
 import json
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 
 from reviewscope.analysis.engine import AnalysisEngine
-from reviewscope.analysis.keywords import keywords_by_rating
+from reviewscope.analysis.keywords import (
+    emerging_keywords,
+    extract_keywords,
+    keywords_by_rating,
+    keywords_by_sentiment,
+)
 from reviewscope.discovery.summary import build_dataset_summary
 from reviewscope.embeddings.cache import EmbeddingCache
 from reviewscope.embeddings.frozen_demo import FROZEN_ID
@@ -26,6 +32,7 @@ def public_engine():
     with DuckDBStore(DEMO, read_only=True) as store:
         store.connection().execute("SET enable_external_access=false")
         store.connection().execute("SET TimeZone='UTC'")
+        store.connection().execute("SET threads=1")
         cache = EmbeddingCache(store, precomputed_only=True)
         if cache.encoding_id != FROZEN_ID or cache.missing_keys(store.fetch_reviews()):
             raise ValueError("unverified_demo_vectors")
@@ -40,6 +47,12 @@ def result_id(data):
     ).hexdigest()
 
 
+def ranked_terms(weighted, limit):
+    # NumPy may order identical TF-IDF values differently on different CPUs.
+    # Choose from the full scored vocabulary before applying the published cutoff.
+    return sorted(weighted, key=lambda term: (-term[1], term[0]))[:limit]
+
+
 def build():
     with public_engine() as (store, engine):
         discover = build_dataset_summary(store, engine)
@@ -48,6 +61,9 @@ def build():
         places = []
         for row in discover.places.sort_values("place_id").itertuples():
             place = engine.analyze(row.place_id)
+            reviews = place.reviews
+            sentiment = keywords_by_sentiment(reviews, top_n=sys.maxsize)
+            by_rating = keywords_by_rating(reviews, top_n=sys.maxsize)
             places.append(
                 {
                     "id": place.place_id,
@@ -57,11 +73,13 @@ def build():
                     "raw_rating": row.raw_rating,
                     "one_star_share": row.one_star_share,
                     "five_star_share": row.five_star_share,
-                    "positive": place.positive_keywords,
-                    "negative": place.negative_keywords,
-                    "keywords": place.keywords,
-                    "emerging": place.emerging,
-                    "by_rating": keywords_by_rating(place.reviews),
+                    "positive": ranked_terms(sentiment["positive"], 10),
+                    "negative": ranked_terms(sentiment["negative"], 10),
+                    "keywords": ranked_terms(extract_keywords(reviews, top_n=sys.maxsize), 15),
+                    "emerging": ranked_terms(emerging_keywords(reviews, top_n=sys.maxsize), 10),
+                    "by_rating": {
+                        star: ranked_terms(terms, 8) for star, terms in by_rating.items()
+                    },
                     "topics": [
                         {
                             "id": t.cluster_id,
@@ -76,7 +94,8 @@ def build():
         "contract": "public-demo-overview-v1",
         "snapshot": DEMO_SHA,
         "encoding": FROZEN_ID,
-        "producer": "AnalysisEngine / build_dataset_summary / keywords_by_rating",
+        "producer": "AnalysisEngine / build_dataset_summary / reviewscope.analysis.keywords",
+        "term_order": "original weight descending, then Unicode term ascending",
         "places": places,
     }
     return {"run": result_id(data), **data}
