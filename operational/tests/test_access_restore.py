@@ -7,9 +7,11 @@ import psycopg
 from fastapi.testclient import TestClient
 from psycopg import sql
 
+from operational.retention import access_seal, recover
 from operational.tests.conftest import new_db
 from operational.tests.test_access import COOKIE, ORIGIN, ROOT, dataset, login
 from reviewscope.access.http import create_app
+from reviewscope.access.ledger import read_witness
 from reviewscope.access.operator import provision
 
 
@@ -43,7 +45,8 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
         check=True,
     )
     monkeypatch.setenv("PGDATABASE", name)
-    with psycopg.connect("") as restored:
+    with psycopg.connect("", autocommit=True) as restored:
+        recover(restored, read_witness()["sha256"], {}, access_seal(db))
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )

@@ -40,3 +40,7 @@
 ## Roadmap PR-11 · Фоновые заявки
 
 Ревизия 0005 добавляет идемпотентный запуск, статус и отмену в локальном API 8001, отдельный worker и атомарную публикацию числовой сводки. Исторические снимки и краткие GET остаются доступными. **NEEDS_WORKER_CONTRACT_REVIEW · BLOCKED_REAL_SOURCE · BLOCKED_CLIENT_PILOT**. [Контракт и границы расчёта](worker-contract.md) · [Запуск и восстановление](worker-operations.md)
+
+## PR-12 — сроки, экспорт и удаление
+
+**NEEDS_RETENTION_CONTRACT_REVIEW**. Локальные owner-операции и изолированное восстановление описаны в [ADR](adr-retention.md), [процедуре оператора](retention-operations.md), [карточке политики](retention-policy-template.md), [контракте выдачи](retention-export.md) и [отчёте проверки](retention-verification.md). Вход в PR-13 требует отдельного решения владельца после разбора границ сроков и backup и принятия PR-12. BLOCKED_REAL_SOURCE и BLOCKED_CLIENT_PILOT сохраняются.

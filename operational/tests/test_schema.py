@@ -64,7 +64,7 @@ def seal(conn, w, s, batch, ids, *, digest=None):
 
 
 def run(conn, w, snap):
-    if conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0005_background_jobs":
+    if conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {"0005_background_jobs", "0006_retention"}:
         return conn.execute("""INSERT INTO analysis_run(workspace_id,snapshot_id,job_kind,engine_version,model_version,definition_version)
             VALUES (%s,%s,'legacy_manual_v1','engine-1','frozen-demo','definition-1') RETURNING id""",(w,snap)).fetchone()[0]
     return conn.execute("""INSERT INTO analysis_run(workspace_id,snapshot_id,engine_version,model_version,definition_version)
@@ -84,7 +84,7 @@ def test_revision_scope_nulls_and_history(db):
     _, _, s2 = scope(db, workspace=w, project=project)
     for binding in ((w, project, s), (w, project, s2), (other_w, other_project, other_s)):
         bind_place(db, *binding)
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005_background_jobs",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006_retention",)
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         scope(db, workspace=other_w, project=project)
     actor, = db.execute("INSERT INTO principal(login,state) VALUES ('fixture','active') RETURNING id").fetchone()
@@ -164,7 +164,7 @@ def test_revision_scope_nulls_and_history(db):
     assert db.execute(history).fetchall() == before
     rejected = subprocess.run([*ALEMBIC, "downgrade", "base"], capture_output=True)
     assert rejected.returncode != 0
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005_background_jobs",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006_retention",)
 
 
 def test_concurrent_identity(db):

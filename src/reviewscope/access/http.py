@@ -57,6 +57,37 @@ class Login(Strict):
     password: SecretStr = Field(min_length=1, max_length=256)
 
 
+class RetentionRequest(Strict):
+    kind: Literal["source", "project", "workspace"]
+    target: UUID
+    action: Literal["export", "erase"]
+    idempotency_key: UUID
+
+
+class SourcePolicy(Strict):
+    data_class: Literal[
+        "raw",
+        "configuration",
+        "positions",
+        "versions",
+        "snapshot",
+        "temporary",
+        "derivatives",
+        "report_export",
+        "diagnostics",
+        "backup",
+    ]
+    authority_ref: UUID
+    anchor: Literal["received", "registered", "created"]
+    days: int = Field(ge=1, le=36500)
+    review_days: int = Field(ge=1, le=3650)
+    hold_ref: UUID | None
+
+
+class Sweep(Strict):
+    idempotency_key: UUID
+
+
 class Membership(Strict):
     role: Literal["owner", "analyst", "viewer"]
     state: Literal["active", "inactive"]
@@ -403,6 +434,99 @@ def create_app():
         with authenticated(request) as (cur, principal):
             store.authorize(cur, principal, workspace, "read")
             return store.job_status(cur, workspace, snapshot=snapshot_id)
+
+    retention_path = ROOT + "/workspaces/{workspace}/retention"
+
+    @app.post(retention_path, openapi_extra=write_contract)
+    def retention_request(
+        workspace: UUID, data: RetentionRequest, request: Request, _: Annotated[Strict, Query()]
+    ):
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "retention")
+            cur.execute(
+                "SELECT request_retention(%s,%s,%s,%s,%s) AS result",
+                (workspace, data.kind, data.target, data.action, data.idempotency_key),
+            )
+            value = cur.fetchone()["result"]
+            if value is None:
+                raise HTTPException(404)
+            if value.get("conflict"):
+                raise HTTPException(409)
+            return value
+
+    @app.get(retention_path + "/{request_id}", openapi_extra=read_contract)
+    def retention_status(
+        workspace: UUID, request_id: UUID, request: Request, _: Annotated[Strict, Query()]
+    ):
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "retention")
+            cur.execute("SELECT retention_status(%s,%s) AS result", (workspace, request_id))
+            value = cur.fetchone()["result"]
+            if value is None:
+                raise HTTPException(404)
+            return value
+
+    @app.get(
+        ROOT + "/workspaces/{workspace}/sources/{source_id}/retention", openapi_extra=read_contract
+    )
+    def terms(workspace: UUID, source_id: UUID, request: Request, page: Annotated[Page, Query()]):
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "read")
+            store.metadata(cur, "sources", workspace, source_id, 0)
+            cur.execute(
+                "SELECT * FROM retention_terms(%s,%s) AS term LIMIT 50 OFFSET %s",
+                (workspace, source_id, page.offset),
+            )
+            return [row["term"] for row in cur.fetchall()]
+
+    policy_path = ROOT + "/workspaces/{workspace}/sources/{source_id}/retention"
+
+    @app.put(policy_path, status_code=204, openapi_extra=write_contract)
+    def approve_policy(
+        workspace: UUID,
+        source_id: UUID,
+        data: SourcePolicy,
+        request: Request,
+        _: Annotated[Strict, Query()],
+    ):
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "retention")
+            cur.execute(
+                "SELECT approve_policy(%s,%s,%s,%s,%s,%s,%s,%s) AS ok",
+                (
+                    workspace,
+                    source_id,
+                    data.data_class,
+                    data.authority_ref,
+                    data.anchor,
+                    data.days,
+                    data.review_days,
+                    data.hold_ref,
+                ),
+            )
+            if not cur.fetchone()["ok"]:
+                raise HTTPException(404)
+
+    @app.post(policy_path + "/sweep", openapi_extra=write_contract)
+    def expiry_preview(
+        workspace: UUID,
+        source_id: UUID,
+        data: Sweep,
+        request: Request,
+        _: Annotated[Strict, Query()],
+    ):
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "retention")
+            cur.execute(
+                "SELECT retention_sweep(%s,%s,%s) AS result",
+                (workspace, source_id, data.idempotency_key),
+            )
+            result = cur.fetchone()["result"]
+            if result is None:
+                raise HTTPException(404)
+            if result.get("conflict"):
+                raise HTTPException(409)
+            return result
 
     @app.patch(ROOT + "/workspaces/{workspace}/members/{subject}", status_code=204)
     def change(

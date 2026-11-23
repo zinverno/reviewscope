@@ -9,6 +9,8 @@ from uuid import uuid4
 import psycopg
 import pytest
 
+from operational.retention import initialize
+
 ALEMBIC = [sys.executable, "-m", "alembic", "-c", "operational/alembic.ini"]
 
 
@@ -29,10 +31,18 @@ def new_db():
     return name
 
 
+@pytest.fixture(autouse=True)
+def ledger_directory(tmp_path, monkeypatch):
+    directory = tmp_path / "independent-ledger"
+    directory.mkdir(mode=0o700)
+    monkeypatch.setenv("RS_RETENTION_LEDGER", str(directory / "authority.json"))
+
+
 @pytest.fixture
 def db(monkeypatch):
     name = new_db()
     monkeypatch.setenv("PGDATABASE", name)
     subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
     with psycopg.connect("", autocommit=True) as conn:
+        initialize(conn)
         yield conn

@@ -22,6 +22,7 @@ from operational.delivery_objects import (
     publish,
     verify_file,
 )
+from reviewscope.access.ledger import LedgerError, publishing
 from reviewscope.import_preview import preview
 from reviewscope.import_preview.contract import MAX_BYTES, MAX_CONFIG, VERSION, PreviewError
 from reviewscope.import_preview.normalize import event_time
@@ -87,7 +88,7 @@ def authorize(conn, args):
         WHERE a.workspace_id=%s AND a.source_id=%s AND current_user=session_user
           AND a.operator_login=session_user AND current_user<>'rs_runtime'
           AND w.state='active' AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
-          AND (SELECT version_num FROM alembic_version) IN ('0004_delivery_history','0005_background_jobs')
+          AND (SELECT version_num FROM alembic_version) = '0006_retention'
         FOR UPDATE OF s FOR SHARE OF a,w,m,p
     """,
         (args.workspace, args.source),
@@ -252,11 +253,14 @@ def snapshot_bytes(conn, scope, ids, filters):
                    to_char(v.event_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS event_utc,
                    to_char(v.published_date,'YYYY-MM-DD') AS published_date,
                    to_char(v.published_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_utc
-            FROM review_version v JOIN review_identity i
-            ON (i.workspace_id,i.source_id,i.id)=(v.workspace_id,v.source_id,v.identity_id)
-            WHERE (v.workspace_id,v.source_id)=(%s,%s) AND v.id=ANY(%s) ORDER BY v.id
+            FROM (SELECT DISTINCT unnest(%s::uuid[]) AS id) selected
+            JOIN LATERAL (SELECT * FROM review_version
+                WHERE (workspace_id,source_id,id)=(%s,%s,selected.id) LIMIT 1) v ON true
+            JOIN LATERAL (SELECT * FROM review_identity
+                WHERE (workspace_id,source_id,id)=(v.workspace_id,v.source_id,v.identity_id) LIMIT 1) i ON true
+            ORDER BY v.id
         """,
-            (*scope, ids),
+            (ids, *scope),
         )
         for row in cur:
             yield encoded(row) + b"\n"
@@ -426,13 +430,14 @@ def main(argv=None):
         ):
             raise DeliveryError("local_socket_required")
         with psycopg.connect(host=socket, options="-c search_path=pg_catalog,public") as conn:
-            report = register(conn, args)
+            with conn.cursor() as cur, publishing(cur):
+                report = register(conn, args)
         print(json.dumps(report, sort_keys=True))
         return 0
     except (DeliveryError, PreviewError, OSError, ValueError, psycopg.Error) as exc:
         code = (
             str(exc)
-            if isinstance(exc, DeliveryError)
+            if isinstance(exc, (DeliveryError, LedgerError))
             else exc.code
             if isinstance(exc, PreviewError)
             else "delivery_refused"

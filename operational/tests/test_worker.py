@@ -20,10 +20,12 @@ from psycopg import sql
 
 from operational import worker
 from operational.delivery_objects import encoded
+from operational.retention import access_seal, recover
 from operational.tests.conftest import new_db
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, dataset, key, login
 from operational.tests.test_deliveries import call, command, csv, json_input
 from reviewscope.access.http import create_app
+from reviewscope.access.ledger import read_witness
 from reviewscope.access.operator import provision
 from reviewscope.access.security import session_proof
 
@@ -252,7 +254,8 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
         check=True,
     )
     monkeypatch.setenv("PGDATABASE", name)
-    with psycopg.connect("") as restored:
+    with psycopg.connect("", autocommit=True) as restored:
+        recover(restored, read_witness()["sha256"], {w:restored_root}, access_seal(db))
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )

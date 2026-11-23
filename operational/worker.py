@@ -23,6 +23,7 @@ from operational.delivery_objects import (
     verify_file,
 )
 from operational.import_delivery import FORMAT, coverage_passport
+from reviewscope.access.ledger import gate, publishing
 from reviewscope.import_preview.contract import MAX_BYTES, MAX_CONFIG, MAX_ROWS, MESSAGES, VERSION
 from reviewscope.import_preview.normalize import configuration, stars
 
@@ -66,9 +67,11 @@ def connect():
             AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
-            AND (SELECT version_num FROM alembic_version)='0005_background_jobs'
+            AND (SELECT version_num FROM alembic_version)='0006_retention'
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
+        with conn.transaction(), conn.cursor() as cur:
+            gate(cur)
         return conn
     except BaseException:
         conn.close()
@@ -308,11 +311,14 @@ def process(conn, job, stopping):
         directory = object_directory(Path(info["root"]), claim[0], create=False)
         value = summarize(conn, claim, info, directory, pulse)
         data = encoded(value) + b"\n"
-        digest = publish(directory, (data,))
-        verify_file(directory, digest, len(data))
-        outcome = step(
-            "WORKER_STOPPED" if stopping.is_set() else None, digest, len(data), info["manifest"]
-        )
+        with conn.transaction(), conn.cursor() as cur, publishing(cur):
+            if not conn.execute("SELECT job_input(%s,%s,%s) IS NOT NULL", claim).fetchone()[0]:
+                raise Finished(step())
+            digest = publish(directory, (data,))
+            verify_file(directory, digest, len(data))
+            outcome = step(
+                "WORKER_STOPPED" if stopping.is_set() else None, digest, len(data), info["manifest"]
+            )
     except Finished as exc:
         outcome = exc.args[0]
     except JobError as exc:
@@ -344,7 +350,9 @@ def main():
     try:
         with connect() as conn:
             while not stopping.is_set():
-                job = conn.execute("SELECT * FROM claim_job()").fetchone()
+                with conn.transaction(), conn.cursor() as cur:
+                    gate(cur)
+                    job = conn.execute("SELECT * FROM claim_job()").fetchone()
                 if job:
                     process(conn, job, stopping)
                 if args.once:
