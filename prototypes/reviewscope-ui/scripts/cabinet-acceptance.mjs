@@ -11,6 +11,7 @@ if (media) await mkdir(media, { recursive: true, mode: 0o700 });
 let stage = "launch";
 const observed = [];
 async function test(type) {
+	stage = type.name() + " launch";
 	const browser = await type.launch();
 	try {
 		const context = await browser.newContext({
@@ -174,8 +175,9 @@ async function test(type) {
 				.getByRole("heading", { name: "Диагностика поставки" })
 				.waitFor();
 		}
-		stage = "responsive";
+		stage = type.name() + " responsive";
 		for (const width of [1920, 1366, 390, 320]) {
+			stage = type.name() + " viewport " + width;
 			await page.setViewportSize({
 				width,
 				height: width === 1920 ? 1000 : 768,
@@ -186,12 +188,14 @@ async function test(type) {
 				),
 			);
 			await page.keyboard.press("Tab");
+			stage = type.name() + " screenshot " + width;
 			if (media)
 				await page.screenshot({
 					path: join(media, type.name() + "-" + width + ".png"),
 					fullPage: true,
 				});
 		}
+		stage = type.name() + " finish recording";
 		await review.close();
 	} finally {
 		await browser.close();
@@ -202,11 +206,20 @@ try {
 	await test(firefox);
 } catch (error) {
 	// Playwright call logs can include form values and absolute upload paths.
+	const category = /permission denied|EACCES/i.test(error.message)
+		? "permission"
+		: /executable doesn't exist|executable not found/i.test(error.message)
+			? "missing executable"
+			: /sandbox|user namespace|EPERM/i.test(error.message)
+				? "sandbox"
+				: /target.*closed|process.*exit/i.test(error.message)
+					? "process closed"
+					: error.name;
 	console.error(
 		"cabinet acceptance failed at " +
 			stage +
 			" (" +
-			error.name +
+			category +
 			") " +
 			JSON.stringify(observed.slice(-20)),
 	);

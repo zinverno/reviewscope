@@ -299,6 +299,9 @@ with tempfile.TemporaryFile() as stage:
                     "RS_TEST_BROWSER_OUT",
                 )
             }
+            browser_home = tmp_path / "browser-home"
+            browser_home.mkdir(mode=0o700)
+            env["HOME"] = str(browser_home)
             inputs = dict(
                 account="cabinet-owner",
                 password=pw,

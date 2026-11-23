@@ -51,7 +51,7 @@ def apply(message, parts):
         user="rs_upload",
         host=host,
         connect_timeout=3,
-        options="-c search_path=pg_catalog,public -c statement_timeout=90000",
+        options="-c search_path=pg_catalog,public -c statement_timeout=90000 -c jit=off",
     ) as conn:
         with conn.cursor() as cur, publishing(cur) as witness:
             (ready,) = conn.execute(
@@ -60,8 +60,9 @@ def apply(message, parts):
             if not ready:
                 raise UploadError("importer_unavailable")
             conn.execute(
-                "SELECT set_config('rs.upload_id',%s,true),set_config('rs.upload_proof',%s,true)",
-                (str(d), message["ticket"]),
+                "SELECT set_config('rs.upload_id',%s,true),set_config('rs.upload_proof',%s,true),"
+                "set_config('rs.upload_workspace',%s,true)",
+                (str(d), message["ticket"], str(w)),
             )
             row = conn.execute(
                 "SELECT * FROM browser_claim(%s,%s,%s,%s,%s)",

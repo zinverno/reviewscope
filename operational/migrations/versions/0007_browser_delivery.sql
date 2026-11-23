@@ -153,6 +153,46 @@ SET search_path=pg_catalog,public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION retention_plan(uuid,text,uuid) FROM PUBLIC;
 
+-- Validate a whole insertion against each sealed manifest once, including direct single-row inserts.
+DROP TRIGGER sealed_member ON snapshot_member;
+CREATE OR REPLACE FUNCTION check_member() RETURNS trigger LANGUAGE plpgsql
+ SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF EXISTS (
+  WITH parents AS MATERIALIZED (SELECT DISTINCT workspace_id,source_id,snapshot_id FROM added_members),
+  allowed AS MATERIALIZED (
+   SELECT p.*,unnest(s.version_ids) AS version_id FROM parents p JOIN snapshot s
+   ON (s.workspace_id,s.source_id,s.id)=(p.workspace_id,p.source_id,p.snapshot_id)
+  )
+  SELECT workspace_id,source_id,snapshot_id,version_id FROM added_members
+  EXCEPT SELECT workspace_id,source_id,snapshot_id,version_id FROM allowed
+ ) THEN RAISE EXCEPTION 'member outside sealed manifest' USING ERRCODE='23514'; END IF;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER sealed_member AFTER INSERT ON snapshot_member REFERENCING NEW TABLE AS added_members
+ FOR EACH STATEMENT EXECUTE FUNCTION check_member();
+
+-- Check every new position, including duplicates whose accepted row is in this insertion.
+DROP TRIGGER valid_position ON import_row;
+CREATE OR REPLACE FUNCTION guard_import_position() RETURNS trigger LANGUAGE plpgsql
+ SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF EXISTS (SELECT FROM added_positions q
+  LEFT JOIN import_batch b ON (b.workspace_id,b.source_id,b.id)=(q.workspace_id,q.source_id,q.batch_id)
+    AND b.delivery IS NOT NULL AND q.position<=b.input_count
+  LEFT JOIN review_identity i ON (i.workspace_id,i.source_id,i.id)=(q.workspace_id,q.source_id,q.identity_id)
+  LEFT JOIN import_row a ON q.status='confirmed_duplicate' AND a.status='accepted'
+    AND (a.workspace_id,a.source_id,a.batch_id,a.position,a.version_id)=
+        (q.workspace_id,q.source_id,q.batch_id,q.related_position,q.version_id)
+  WHERE b.id IS NULL OR (i.id IS NOT NULL AND i.external_review_id IS NULL
+    AND (i.observation_batch_id,i.observation_position) IS DISTINCT FROM (q.batch_id,q.position))
+    OR (q.status='confirmed_duplicate' AND a.position IS NULL)
+ ) THEN RAISE EXCEPTION 'invalid receipt position' USING ERRCODE='23514'; END IF;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER valid_position AFTER INSERT ON import_row REFERENCING NEW TABLE AS added_positions
+ FOR EACH STATEMENT EXECUTE FUNCTION guard_import_position();
+
 -- Only the separate importer login gets scoped INSERT. No login for HTTP can become this role.
 DO $$ BEGIN
  IF NOT EXISTS (SELECT FROM pg_roles r WHERE rolname='rs_upload' AND rolcanlogin
@@ -225,13 +265,25 @@ GRANT USAGE ON SCHEMA public TO rs_upload;
 GRANT SELECT(version_num) ON alembic_version TO rs_upload;
 GRANT EXECUTE ON FUNCTION retention_stamp(),browser_claim(uuid,uuid,uuid,text,text),browser_scope(uuid,uuid,text),
  browser_complete(uuid,uuid,uuid,uuid) TO rs_upload;
-CREATE POLICY upload_locations ON source_location FOR SELECT TO rs_upload USING(browser_scope(workspace_id,source_id,external_place_id));
+-- The same session, ticket, deadline and membership proof can be checked once per SQL statement.
+CREATE FUNCTION browser_places() RETURNS TABLE(w uuid,s uuid,place text)
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH allowed AS MATERIALIZED (
+ SELECT d.workspace_id,d.source_id,d.locations FROM browser_delivery d WHERE (d.workspace_id,d.id)=(
+ nullif(current_setting('rs.upload_workspace',true),'')::uuid,nullif(current_setting('rs.upload_id',true),'')::uuid)
+ AND browser_actor(d.workspace_id,d.source_id) IS NOT NULL)
+ SELECT a.workspace_id,a.source_id,l.external_place_id::text FROM allowed a JOIN source_location l
+ ON (l.workspace_id,l.source_id)=(a.workspace_id,a.source_id) AND l.location_id=ANY(a.locations)
+$$;
+REVOKE ALL ON FUNCTION browser_places() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION browser_places() TO rs_upload;
+CREATE POLICY upload_locations ON source_location FOR SELECT TO rs_upload USING((workspace_id,source_id,external_place_id) IN (SELECT w,s,place FROM browser_places()));
 GRANT SELECT(workspace_id,source_id,external_place_id) ON source_location TO rs_upload;
-CREATE POLICY upload_identity_read ON review_identity FOR SELECT TO rs_upload USING(browser_scope(workspace_id,source_id,external_place_id));
-CREATE POLICY upload_identity_append ON review_identity FOR INSERT TO rs_upload WITH CHECK(browser_scope(workspace_id,source_id,external_place_id)
+CREATE POLICY upload_identity_read ON review_identity FOR SELECT TO rs_upload USING((workspace_id,source_id,external_place_id) IN (SELECT w,s,place FROM browser_places()));
+CREATE POLICY upload_identity_append ON review_identity FOR INSERT TO rs_upload WITH CHECK((workspace_id,source_id,external_place_id) IN (SELECT w,s,place FROM browser_places())
  AND (observation_batch_id IS NULL OR observation_batch_id=current_setting('rs.upload_id')::uuid));
-CREATE POLICY upload_version_read ON review_version FOR SELECT TO rs_upload USING(browser_scope(workspace_id,source_id,external_place_id));
-CREATE POLICY upload_version_append ON review_version FOR INSERT TO rs_upload WITH CHECK(browser_scope(workspace_id,source_id,external_place_id)
+CREATE POLICY upload_version_read ON review_version FOR SELECT TO rs_upload USING((workspace_id,source_id,external_place_id) IN (SELECT w,s,place FROM browser_places()));
+CREATE POLICY upload_version_append ON review_version FOR INSERT TO rs_upload WITH CHECK((workspace_id,source_id,external_place_id) IN (SELECT w,s,place FROM browser_places())
  AND batch_id=current_setting('rs.upload_id')::uuid);
 CREATE FUNCTION browser_batch_matches(w uuid,s uuid,d uuid,h text,receipt jsonb) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
  SET search_path=pg_catalog,public,pg_temp AS $$ SELECT EXISTS(SELECT FROM browser_delivery x
@@ -243,10 +295,10 @@ CREATE POLICY upload_batch ON import_batch FOR ALL TO rs_upload
  WITH CHECK(browser_scope(workspace_id,source_id) AND id=current_setting('rs.upload_id',true)::uuid
  AND registered_by=browser_actor(workspace_id,source_id) AND browser_batch_matches(workspace_id,source_id,id,file_sha256,delivery));
 
-CREATE POLICY upload_position ON import_row FOR ALL TO rs_upload USING(browser_scope(workspace_id,source_id) AND batch_id=current_setting('rs.upload_id',true)::uuid);
+CREATE POLICY upload_position ON import_row FOR ALL TO rs_upload USING((workspace_id,source_id) IN (SELECT w,s FROM browser_places()) AND batch_id=current_setting('rs.upload_id',true)::uuid);
 CREATE POLICY upload_snapshot ON snapshot FOR ALL TO rs_upload USING(browser_scope(workspace_id,source_id) AND batch_id=current_setting('rs.upload_id',true)::uuid);
-CREATE POLICY upload_member ON snapshot_member FOR ALL TO rs_upload USING(browser_scope(workspace_id,source_id) AND EXISTS
- (SELECT FROM snapshot x WHERE (x.workspace_id,x.source_id,x.id)=(snapshot_member.workspace_id,snapshot_member.source_id,snapshot_member.snapshot_id)));
+CREATE POLICY upload_member ON snapshot_member FOR ALL TO rs_upload USING((workspace_id,source_id,snapshot_id) IN
+ (SELECT x.workspace_id,x.source_id,x.id FROM snapshot x));
 GRANT SELECT,INSERT ON import_batch,review_identity,review_version,import_row,snapshot,snapshot_member TO rs_upload;
 CREATE FUNCTION browser_role_safe() RETURNS boolean LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT rolcanlogin AND NOT (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication)
