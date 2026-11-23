@@ -3,8 +3,10 @@
 import hashlib
 import json
 import os
+import re
 import stat
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -48,7 +50,10 @@ def object_directory(root: Path, workspace, *, create):
     return directory
 
 
-def verify_file(directory, digest):
+@contextmanager
+def open_object(directory, digest):
+    if not isinstance(digest, str) or not re.fullmatch("[a-f0-9]{64}", digest):
+        raise DeliveryError("invalid_digest")
     path = directory / digest
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -56,8 +61,17 @@ def verify_file(directory, digest):
             not stat.S_ISREG(info.st_mode)
             or info.st_uid != os.getuid()
             or info.st_mode & 0o077
-            or hashlib.file_digest(stream, "sha256").hexdigest() != digest
         ):
+            raise DeliveryError("object_verification_failed")
+
+        yield stream
+
+
+def verify_file(directory, digest, expected_size=None):
+    with open_object(directory, digest) as stream:
+        if expected_size is not None and os.fstat(stream.fileno()).st_size != expected_size:
+            raise DeliveryError("object_verification_failed")
+        if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
             raise DeliveryError("object_verification_failed")
 
 
@@ -80,6 +94,6 @@ def publish(directory, chunks, expected=None):
             os.link(staged.name, directory / actual)
         except FileExistsError:
             pass
-        verify_file(directory, actual)
+        verify_file(directory, actual, os.fstat(staged.fileno()).st_size)
         sync_directory(directory)
     return actual

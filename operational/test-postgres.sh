@@ -25,7 +25,8 @@ trap cleanup EXIT
     -o "-k '$scratch' -c listen_addresses='' -c log_min_error_statement=panic -c log_min_messages=panic" -w start >/dev/null
 "$bindir/psql" -XAtc 'SELECT version()'
 "$bindir/psql" -X -v ON_ERROR_STOP=1 -c 'CREATE ROLE rs_migration LOGIN CREATEDB' \
-    -c 'CREATE ROLE rs_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION'
+    -c 'CREATE ROLE rs_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION' \
+    -c 'CREATE ROLE rs_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION'
 export PGUSER=rs_migration
 export RS_TEST_PG_SOCKET="$scratch"
 "$python_bin" -m pytest -o addopts= -q operational/tests "$@"

@@ -17,7 +17,7 @@ from psycopg import sql
 
 from operational.backfill_demo import DEMO_SHA, import_demo
 from operational.tests.conftest import ALEMBIC, new_db
-from operational.tests.test_schema import bind_place, receipt, scope
+from operational.tests.test_schema import bind_place, receipt, run, scope
 from reviewscope.import_preview import preview
 from reviewscope.public_demo import DEFAULT_DEMO_DB, repo_root
 
@@ -476,11 +476,21 @@ def test_historical_backfill_survives_upgrade(monkeypatch, tmp_path):
         obj.parent.mkdir(parents=True)
         shutil.copyfile(repo_root() / DEFAULT_DEMO_DB, obj)
         receipt = import_demo(w, s, apply=True, object_root=tmp_path)
+        rid = run(db, w, receipt["snapshot_id"])
+        db.execute("UPDATE analysis_run SET status='running' WHERE id=%s", (rid,))
+        legacy = b'{"historical":true}'
+        digest = hashlib.sha256(legacy).hexdigest()
+        aid, key = db.execute("""INSERT INTO artifact(workspace_id,run_id,kind,checksum,size_bytes)
+            VALUES (%s,%s,'json',%s,%s) RETURNING id,object_key""",(w,rid,digest,len(legacy))).fetchone()
+        (tmp_path / key).write_bytes(legacy)
+        db.execute("UPDATE analysis_run SET status='succeeded',finished_at=now(),output_artifact_id=%s WHERE id=%s",(aid,rid))
         queries = (
             "SELECT id,external_review_id FROM review_identity ORDER BY 1",
             "SELECT id,identity_id,content_sha256,batch_id FROM review_version ORDER BY 1",
             "SELECT * FROM snapshot",
             "SELECT * FROM snapshot_member ORDER BY version_id",
+            "SELECT workspace_id,id,snapshot_id,engine_version,model_version,definition_version,created_at,finished_at,status,output_artifact_id FROM analysis_run",
+            "SELECT * FROM artifact",
         )
         before = [db.execute(q).fetchall() for q in queries]
         db.execute(
@@ -488,7 +498,7 @@ def test_historical_backfill_survives_upgrade(monkeypatch, tmp_path):
                       VALUES (%s,%s,'legacy',%s,'accepted')""",
             (w, s, "0" * 64),
         )
-        for rev in ("0002_principals", "0003_workspace_access", "0004_delivery_history", "head"):
+        for rev in ("0002_principals", "0003_workspace_access", "0004_delivery_history", "0005_background_jobs", "head"):
             subprocess.run([*ALEMBIC, "upgrade", rev], check=True)
         assert before == [db.execute(q).fetchall() for q in queries]
         assert db.execute(
@@ -498,6 +508,7 @@ def test_historical_backfill_survives_upgrade(monkeypatch, tmp_path):
             import_demo(w, s, apply=True, object_root=tmp_path)["snapshot_id"]
             == receipt["snapshot_id"]
         )
+        assert hashlib.sha256((tmp_path / key).read_bytes()).hexdigest() == digest
         assert len(before[0]) == len(before[1]) == len(before[3]) == 1058
 
 
@@ -639,3 +650,13 @@ sys.exit(status)
     print(
         f"PR-10 apply: {MAX_BYTES} bytes, {MAX_ROWS} positions, {perf_counter() - start:.2f}s, {int(rss)} KiB peak CLI RSS"
     )
+
+    # Exercise the worker on exactly the 4 MiB source already verified above.
+    from operational.tests.test_worker import cli
+    snapshot = json.loads(report)["snapshot_id"]
+    db.execute("""INSERT INTO analysis_run(workspace_id,snapshot_id,job_kind,engine_version,model_version,
+        definition_version,requested_by,request_key,stage,ready_at)
+        SELECT workspace_id,%s,'snapshot_integrity_and_summary_v1','1','unused','summary-1',
+            registered_by,gen_random_uuid(),'queued',now() FROM import_batch""", (snapshot,))
+    assert cli("10k-4MiB") == "succeeded"
+    assert db.execute("SELECT attempt,processed,total FROM analysis_run").fetchone() == (1,MAX_ROWS,MAX_ROWS)

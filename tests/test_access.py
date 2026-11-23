@@ -117,3 +117,44 @@ with TestClient(create_app(),base_url='https://127.0.0.1:8001') as http:
         env={**os.environ, "RS_ACCESS_HTTP_LOOPBACK": "0"},
         check=True,
     )
+
+
+def test_worker_openapi_and_legacy_wire(monkeypatch):
+    monkeypatch.delenv("RS_ACCESS_HTTP_LOOPBACK", raising=False)
+    with TestClient(create_app(), base_url="https://127.0.0.1:8001") as http:
+        schema = http.get("/openapi.json").json()
+    routes = schema["paths"]
+    base = ROOT + "/workspaces/{workspace}/runs"
+    assert set(routes[base]) == {"post", "get"}
+    models = schema["components"]["schemas"]
+    assert set(models["Run"]["required"]) == {"id", "snapshot_id", "status"}
+    assert set(models["JobRequest"]["required"]) == {
+        "snapshot_id",
+        "idempotency_key",
+        "job_kind",
+        "engine_version",
+    }
+    assert set(models["JobStatus"]["properties"]["status"]["enum"]) == {
+        "queued",
+        "running",
+        "failed",
+        "succeeded",
+        "cancelled",
+    }
+    for path, method in [
+        (base, "post"),
+        (base + "/{run_id}/cancel", "post"),
+        (base + "/{run_id}/status", "get"),
+        (ROOT + "/workspaces/{workspace}/snapshots/{snapshot_id}/latest-summary", "get"),
+    ]:
+        op = routes[path][method]
+        params = {(p["in"], p["name"]) for p in op["parameters"] if p["required"]}
+        assert ("cookie", "__Host-rs_session") in params
+        if method == "post":
+            assert {("header", "Origin"), ("header", "X-RS-CSRF")} <= params
+        assert op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+            "/JobStatus"
+        )
+        assert op["responses"]["404"]["content"]["application/json"]["schema"]["$ref"].endswith(
+            "/JobErrorResponse"
+        )

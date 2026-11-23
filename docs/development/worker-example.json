@@ -1,0 +1,149 @@
+{
+  "probe": "TLS-8001-A",
+  "queued": {
+    "artifact_id": null,
+    "attempt": 0,
+    "cancel_requested": false,
+    "definition_version": "summary-1",
+    "engine_version": "1",
+    "finished_at": null,
+    "id": "2afc9cfd-db97-4034-9bd2-692835c2651e",
+    "job_kind": "snapshot_integrity_and_summary_v1",
+    "model_version": "unused",
+    "processed": 0,
+    "reason": null,
+    "sha256": null,
+    "size_bytes": null,
+    "snapshot_id": "03fea58d-45e8-4ba6-b7f1-558b744afdf4",
+    "stage": "queued",
+    "status": "queued",
+    "total": null
+  },
+  "request": {
+    "engine_version": "1",
+    "idempotency_key": "94c58160-3ec7-414e-8013-2c6c206d4e81",
+    "job_kind": "snapshot_integrity_and_summary_v1",
+    "snapshot_id": "03fea58d-45e8-4ba6-b7f1-558b744afdf4"
+  },
+  "result": {
+    "batch_id": "c7796514-6955-4688-afe2-f042aba0f4d5",
+    "confirmed_duplicates": {
+      "denominator": 3,
+      "numerator": 0
+    },
+    "coverage": "unknown",
+    "coverage_mode": null,
+    "covered_from": null,
+    "covered_until": null,
+    "definition_version": "summary-1",
+    "delivery_exclusions": {},
+    "eligibility": {
+      "comparable_date": {
+        "denominator": 3,
+        "numerator": 3
+      },
+      "known_rating": {
+        "denominator": 3,
+        "numerator": 3
+      },
+      "unknown_author": {
+        "denominator": 3,
+        "numerator": 3
+      },
+      "usable_text": {
+        "denominator": 3,
+        "numerator": 3
+      }
+    },
+    "engine_version": "1",
+    "event_basis": "published",
+    "job_kind": "snapshot_integrity_and_summary_v1",
+    "limitations": [
+      "DECLARED_COVERAGE_ONLY",
+      "AUTHOR_METRICS_UNSUPPORTED",
+      "ANALYSIS_NOT_AVAILABLE",
+      "NO_PERIOD_COMPARISON"
+    ],
+    "manifest_sha256": "4a2b1a4e2edb16aca41a07315bebc876d3f930e0e48808adec35acadf03b8f60",
+    "metric_exclusions": {
+      "missing_reviewer": {
+        "denominator": 3,
+        "numerator": 3
+      },
+      "missing_text": {
+        "denominator": 3,
+        "numerator": 0
+      }
+    },
+    "model_version": "unused",
+    "observations": {
+      "denominator": 3,
+      "numerator": 3
+    },
+    "parameters": {
+      "selection": "accepted_in_delivery"
+    },
+    "preview_fingerprint": "2a62ce4e397ae0e966d5b86fc20d6133d0f4b979735585c3719b8c9fd793b9ca",
+    "quarantined": {
+      "denominator": 3,
+      "numerator": 0
+    },
+    "rating_distribution": {
+      "1": {
+        "denominator": 3,
+        "numerator": 0
+      },
+      "2": {
+        "denominator": 3,
+        "numerator": 0
+      },
+      "3": {
+        "denominator": 3,
+        "numerator": 2
+      },
+      "4": {
+        "denominator": 3,
+        "numerator": 0
+      },
+      "5": {
+        "denominator": 3,
+        "numerator": 1
+      }
+    },
+    "rating_scale": [
+      1,
+      5
+    ],
+    "run_id": "2afc9cfd-db97-4034-9bd2-692835c2651e",
+    "schema": "snapshot-summary-1",
+    "snapshot_id": "03fea58d-45e8-4ba6-b7f1-558b744afdf4",
+    "snapshot_sha256": "a0149ff4d4166e7a5f7add822a8ee3b9501f40750a94b2e9db0c10480b4bd5cf",
+    "source_id": "bf8c1ee7-2b17-4d51-a4f0-6fe99676dd1c",
+    "source_sha256": {
+      "coverage": "29c3613e22b0ae8d29fe8aba7e8b2734a5251bf680f5cf411662da31101d6332",
+      "file": "d66a465c718b59908fe1d98a7033bce232b8929d9412fbb697f253125f8b12f7",
+      "mapping": "c129573fdd89c7e2469969b371baa4e5ff34ada155596f2cee0927bfc8403a6a",
+      "passport": "254e701b3d660594bb8a431f4221691e11c6266a5379da1046c380af901aae1b"
+    },
+    "workspace_id": "1c273b7d-c7f1-462a-a821-ca228d9275cf"
+  },
+  "status": {
+    "artifact_id": "5b166c36-ed90-45f4-953d-edbe188c2204",
+    "attempt": 1,
+    "cancel_requested": false,
+    "definition_version": "summary-1",
+    "engine_version": "1",
+    "finished_at": "2026-11-23T11:56:20.321910+03:00",
+    "id": "2afc9cfd-db97-4034-9bd2-692835c2651e",
+    "job_kind": "snapshot_integrity_and_summary_v1",
+    "model_version": "unused",
+    "processed": 3,
+    "reason": null,
+    "sha256": "f8977cfad0f4d801a40349d2b37ffde669f96b26a4ebb6850e58a51ba863a19c",
+    "size_bytes": 2001,
+    "snapshot_id": "03fea58d-45e8-4ba6-b7f1-558b744afdf4",
+    "stage": "publish",
+    "status": "succeeded",
+    "total": 3
+  }
+}

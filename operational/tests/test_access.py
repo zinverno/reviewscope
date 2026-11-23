@@ -287,7 +287,8 @@ def test_legacy_upgrade_and_preservation(monkeypatch, key):
             "SELECT to_jsonb(v) - 'event_at' - 'event_date' FROM review_version v",
             "SELECT * FROM snapshot",
             "SELECT * FROM snapshot_member",
-            "SELECT * FROM analysis_run",
+            "SELECT workspace_id,id,snapshot_id,engine_version,model_version,definition_version,"
+            "created_at,finished_at,status,output_artifact_id FROM analysis_run",
             "SELECT * FROM workspace_membership",
         )
         before = [db.execute(q).fetchall() for q in queries]
