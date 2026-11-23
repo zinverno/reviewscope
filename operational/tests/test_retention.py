@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import secrets
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from operational import worker
 from operational.retention import access_seal, recover
-from operational.tests.conftest import new_db
+from operational.tests.conftest import freeze_objects, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, key, login
 from operational.tests.test_deliveries import call, command, csv
 from operational.tests.test_schema import bind_place, scope
@@ -223,7 +222,45 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
             archive = tmp_path / "before.dump"
             subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
             copied = tmp_path / "independent"
-            shutil.copytree(root, copied)
+            frozen = freeze_objects(root, tmp_path, [w, b])
+            # A surviving source gains real objects after the backup.
+            later = [str(s2) if arg == str(s) else arg for arg in base]
+            call(later + csv("b") + ["--apply"])
+            # This whole workspace is created and erased after the recovery point.
+            later_w, later_project, later_source = scope(db, source_key="synthetic")
+            db.execute(
+                "UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(root), later_w)
+            )
+            db.execute(
+                "INSERT INTO workspace_membership SELECT %s,id,'owner','active' FROM principal WHERE login='owner'",
+                (later_w,),
+            )
+            db.execute(
+                "INSERT INTO workspace_membership VALUES (%s,%s,'analyst','active')",
+                (later_w, actor),
+            )
+            db.execute(
+                "INSERT INTO delivery_authorization VALUES(%s,%s,current_user,%s)",
+                (later_w, later_source, actor),
+            )
+            for place in ("p1", "p2"):
+                bind_place(db, later_w, later_project, later_source, place)
+            later_args = [
+                str(later_w) if a == str(w) else str(later_source) if a == str(s) else a
+                for a in base
+            ]
+            call(later_args + source_inputs + ["--apply"])
+            late_req = ask(owner, later_w, "workspace", later_w, "erase")
+            operator(
+                "confirm",
+                "--request",
+                late_req["id"],
+                "--preview-sha256",
+                late_req["preview_sha"],
+                "--root",
+                root,
+            )
+            assert operator("purge", "--request", late_req["id"], "--root", root) == "completed"
             erase = ask(owner, w, "source", s, "erase")
             assert erase["report"]["shared"]
             approval = (
@@ -265,6 +302,27 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
         old = owner.cookies[COOKIE]
         live_access = access_seal(db)
         proof = read_witness()["sha256"]
+
+        def storage_evidence(directory):
+            return sorted(
+                (
+                    p.parent.parent.name,
+                    p.name,
+                    hashlib.sha256(p.read_bytes()).hexdigest(),
+                    p.stat().st_dev,
+                    p.stat().st_ino,
+                )
+                for p in directory.glob("*/sha256/*")
+            )
+
+        before_move = storage_evidence(root)
+        assert set(files(w)) - set(files(w, frozen[0]))
+        moved = root.rename(tmp_path / "relocated")
+        db.execute(
+            "UPDATE workspace SET delivery_object_root=%s WHERE id IN (%s,%s)", (str(moved), w, b)
+        )
+        assert before_move == storage_evidence(moved)
+        assert (proof, live_access) == (read_witness()["sha256"], access_seal(db))
         with fresh_restore_cluster(monkeypatch, archive) as (env, target):
             with psycopg.connect("", autocommit=True) as restored:
                 from psycopg import sql
@@ -288,12 +346,55 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
                         assert limited.execute(
                             "SELECT job_input(%s,%s,%s)", lease[:3]
                         ).fetchone() == (None,)
+                    state_query = """SELECT checkpoint,recovery_binding,
+                        (SELECT count(*) FROM access_session WHERE revoked_at IS NULL),
+                        (SELECT count(*) FROM retention_request),
+                        (SELECT count(*) FROM analysis_run WHERE status='running') FROM retention_control"""
+                    before_db = restored.execute(state_query).fetchone()
+                    with pytest.raises(ValueError, match="restore_receipt_required"):
+                        recover(restored, proof, {w: moved, b: moved}, live_access)
+                    with pytest.raises(FileExistsError):
+                        prepare_copy(restored, frozen, moved, proof, live_access)
+                    token = prepare_copy(
+                        restored, frozen, copied, proof, live_access, erased=[later_w]
+                    )
+                    assert not (
+                        {x[-2:] for x in before_move} & {x[-2:] for x in storage_evidence(copied)}
+                    )
+                    saved = copied.rename(tmp_path / "prepared-aside")
+                    moved.rename(copied)
+                    try:
+                        with pytest.raises(ValueError, match="restore_receipt_invalid"):
+                            recover(restored, proof, [token], live_access)
+                        assert before_db == restored.execute(state_query).fetchone()
+                        assert storage_evidence(copied) == before_move
+                    finally:
+                        copied.rename(moved)
+                        saved.rename(copied)
                     with pytest.raises(ValueError, match="ledger_unverified"):
-                        recover(restored, "0" * 64, {w: copied, b: copied}, live_access)
+                        recover(restored, "0" * 64, [token], live_access)
                     with pytest.raises(ValueError, match="access_review_required"):
-                        recover(restored, proof, {w: copied, b: copied}, "0" * 64)
+                        recover(restored, proof, [token], "0" * 64)
                     assert login(fresh, "owner", password).status_code == 503
-                    recover(restored, proof, {w: copied, b: copied}, live_access)
+                    from operational import retention
+
+                    real_revoke = retention.revoke
+
+                    def interrupted(conn, event, ids):
+                        real_revoke(conn, event, ids)
+                        raise OSError("synthetic replay interruption")
+
+                    with monkeypatch.context() as patch:
+                        patch.setattr(retention, "revoke", interrupted)
+                        with pytest.raises(OSError, match="synthetic replay interruption"):
+                            recover(restored, proof, [token], live_access)
+                    assert login(fresh, "owner", password).status_code == 503
+                    assert storage_evidence(moved) == before_move
+                    recover(restored, proof, [token], live_access)
+                    assert (
+                        operator("purge", "--request", late_req["id"], "--root", copied)
+                        == "completed"
+                    )
                     assert (
                         fresh.get(
                             ROOT + "/session", headers={"Cookie": COOKIE + "=" + old}
@@ -333,6 +434,21 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
                         == 3
                     )
                     assert files(b, copied) == other_files and files(w, copied) == {}
+        assert storage_evidence(moved) == before_move
+        print(
+            json.dumps(
+                {
+                    "relocated_objects": len(before_move),
+                    "unchanged": True,
+                    "inventory_sha256": frozen[2],
+                    "example_sha256": before_move[0][2],
+                    "device": before_move[0][3],
+                    "inode_before_and_after": before_move[0][4],
+                    "prepared_root_inode": copied.stat().st_ino,
+                    "live_root_inode": moved.stat().st_ino,
+                }
+            )
+        )
     assert marker not in caplog.text and password not in caplog.text and old not in caplog.text
 
 

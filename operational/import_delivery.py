@@ -22,7 +22,7 @@ from operational.delivery_objects import (
     publish,
     verify_file,
 )
-from reviewscope.access.ledger import LedgerError, publishing
+from reviewscope.access.ledger import LedgerError, certified_space, publishing
 from reviewscope.import_preview import preview
 from reviewscope.import_preview.contract import MAX_BYTES, MAX_CONFIG, VERSION, PreviewError
 from reviewscope.import_preview.normalize import event_time
@@ -77,7 +77,7 @@ def coverage_passport(data):
     return value
 
 
-def authorize(conn, args):
+def authorize(conn, args, witness):
     row = conn.execute(
         """
         SELECT coalesce(s.external_source_id,s.source_key),w.delivery_object_root,a.principal_id
@@ -95,6 +95,7 @@ def authorize(conn, args):
     ).fetchone()
     if row is None or str(args.object_root) != row[1]:
         raise DeliveryError("scope_denied")
+    certified_space(witness, args.workspace, args.object_root)
     private_directory(args.object_root)
     return row[0], row[2]
 
@@ -288,10 +289,10 @@ def verify_snapshot(conn, scope, batch, directory):
     return stored[0]
 
 
-def register(conn, args):
+def register(conn, args, witness):
     scope = (args.workspace, args.source)
     batch = args.delivery_id
-    source_key, principal = authorize(conn, args)
+    source_key, principal = authorize(conn, args, witness)
     data = read_local(args.input, MAX_BYTES)
     mapping = read_local(args.mapping, MAX_CONFIG)
     passport = read_local(args.passport, MAX_CONFIG)
@@ -430,8 +431,8 @@ def main(argv=None):
         ):
             raise DeliveryError("local_socket_required")
         with psycopg.connect(host=socket, options="-c search_path=pg_catalog,public") as conn:
-            with conn.cursor() as cur, publishing(cur):
-                report = register(conn, args)
+            with conn.cursor() as cur, publishing(cur) as witness:
+                report = register(conn, args, witness)
         print(json.dumps(report, sort_keys=True))
         return 0
     except (DeliveryError, PreviewError, OSError, ValueError, psycopg.Error) as exc:

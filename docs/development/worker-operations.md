@@ -43,6 +43,8 @@ FROM analysis_run WHERE request_key IS NOT NULL GROUP BY 1,2,3,4 ORDER BY 1,2,3,
 
 ## Только синтетическая проверка и восстановление
 
+Для БД с ревизией `0006_retention` действуют подготовка нового поколения и активация по квитанции. Команды привязки root в этом историческом разделе относятся к более ранней ревизии. [Действующая процедура восстановления](retention-operations.md#восстановление-из-независимой-копии)
+
 ```bash
 bash operational/test-postgres.sh -s
 python -m pytest tests/test_api.py tests/test_access.py

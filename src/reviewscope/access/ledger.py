@@ -9,6 +9,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
+from .restore import RestoreError, receipt, sha
+
+SCOPED = """workspace workspace_membership client_project location source source_location import_batch
+review_identity review_version snapshot snapshot_member analysis_run artifact membership_event import_row delivery_authorization
+retention_policy retention_request retention_event retention_object""".split()
+
 LIMIT = 4 * 1024 * 1024
 
 
@@ -39,22 +45,41 @@ def read_witness():
             os.open(ledger_path(), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb"
         ) as f:
             info = os.fstat(f.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_uid != os.getuid()
+                or info.st_mode & 0o077
+            ):
                 raise LedgerError()
             data = json.loads(f.read(LIMIT + 1)) if info.st_size <= LIMIT else None
         if (
             not isinstance(data, dict)
             or digest(data["body"]) != data["sha256"]
-            or data["body"]["version"] != 1
+            or data["body"]["version"] not in (1, 2)
         ):
             raise LedgerError()
         body = data["body"]
         if (
-            set(body) != {"version", "events", "binding"}
+            set(body)
+            != (
+                {"version", "events", "binding", "receipts"}
+                if body["version"] == 2
+                else {"version", "events", "binding"}
+            )
             or set(body["binding"]) != {"installation", "database", "boot", "oid"}
             or not isinstance(body["events"], list)
         ):
             raise LedgerError()
+        if body["version"] == 2:
+            keys = body["receipts"]
+            if (
+                not isinstance(keys, list)
+                or len(keys) > 256
+                or not all(sha(k) for k in keys)
+                or sorted(set(keys)) != keys
+            ):
+                raise LedgerError()
         seen = set()
         for event in body["events"]:
             request, workspace, kind, target, key = event
@@ -75,6 +100,29 @@ def read_witness():
         raise LedgerError() from None
 
 
+def active_receipts(data):
+    try:
+        body = data["body"]
+        if body["version"] != 2:
+            raise LedgerError()
+        docs = [receipt(ledger_path().parent, k) for k in body["receipts"]]
+        if any(doc["target"] != body["binding"] for doc in docs):
+            raise LedgerError()
+        return docs
+    except (OSError, RestoreError):
+        raise LedgerError() from None
+
+
+def certified_space(data, workspace, root):
+    docs = active_receipts(data)
+    if not docs:
+        return None
+    matches = [doc for doc in docs if str(workspace) in doc["spaces"] and str(root) == doc["root"]]
+    if len(matches) != 1:
+        raise LedgerError()
+    return matches[0]["spaces"][str(workspace)]
+
+
 def gate(cur):
     # Two statements matter at READ COMMITTED: acquire the lock before taking the witness snapshot.
     cur.execute("SELECT pg_advisory_xact_lock_shared(11713,12)")
@@ -84,6 +132,7 @@ def gate(cur):
     data = read_witness()
     if stamp.pop("checkpoint") != data["sha256"] or stamp != data["body"]["binding"]:
         raise LedgerError()
+    active_receipts(data)
     return data
 
 
@@ -94,7 +143,6 @@ def publishing(cur):
     fd = os.open(ledger_path().parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         fcntl.flock(fd, fcntl.LOCK_SH)
-        gate(cur)
-        yield
+        yield gate(cur)
     finally:
         os.close(fd)

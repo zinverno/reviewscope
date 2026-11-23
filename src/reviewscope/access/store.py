@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from .ledger import LedgerError, gate
+from .ledger import SCOPED, LedgerError, gate
 from .security import ROLES, permits
 
 METADATA = {
@@ -17,9 +17,7 @@ METADATA = {
     "snapshots": ("snapshot", "id,source_id,created_at"),
     "runs": ("analysis_run", "id,snapshot_id,status"),
 }
-SCOPED = """workspace workspace_membership client_project location source source_location import_batch
-review_identity review_version snapshot snapshot_member analysis_run artifact membership_event import_row delivery_authorization
-retention_policy retention_request retention_event retention_object""".split()
+
 
 
 def pool():

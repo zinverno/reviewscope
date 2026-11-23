@@ -23,7 +23,7 @@ from operational.delivery_objects import (
     verify_file,
 )
 from operational.import_delivery import FORMAT, coverage_passport
-from reviewscope.access.ledger import gate, publishing
+from reviewscope.access.ledger import certified_space, gate, publishing
 from reviewscope.import_preview.contract import MAX_BYTES, MAX_CONFIG, MAX_ROWS, MESSAGES, VERSION
 from reviewscope.import_preview.normalize import configuration, stars
 
@@ -308,10 +308,13 @@ def process(conn, job, stopping):
             raise JobError("INTEGRITY_ERROR")
         require(info["filters"].get("format") == FORMAT, "UNSUPPORTED_FORMAT")
         require(info["root"] is not None, "ACCESS_REVOKED")
+        with conn.transaction(), conn.cursor() as cur:
+            certified_space(gate(cur), claim[0], info["root"])
         directory = object_directory(Path(info["root"]), claim[0], create=False)
         value = summarize(conn, claim, info, directory, pulse)
         data = encoded(value) + b"\n"
-        with conn.transaction(), conn.cursor() as cur, publishing(cur):
+        with conn.transaction(), conn.cursor() as cur, publishing(cur) as witness:
+            certified_space(witness, claim[0], info["root"])
             if not conn.execute("SELECT job_input(%s,%s,%s) IS NOT NULL", claim).fetchone()[0]:
                 raise Finished(step())
             digest = publish(directory, (data,))

@@ -17,7 +17,7 @@ from psycopg import sql
 
 from operational.backfill_demo import DEMO_SHA, import_demo
 from operational.retention import access_seal, initialize, recover
-from operational.tests.conftest import ALEMBIC, new_db
+from operational.tests.conftest import ALEMBIC, freeze_objects, new_db, prepare_copy
 from operational.tests.test_schema import bind_place, receipt, run, scope
 from reviewscope.access.ledger import read_witness
 from reviewscope.import_preview import preview
@@ -178,7 +178,7 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
     subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
     new = new_db()
     copy = tmp_path / "independent"
-    shutil.copytree(root, copy)
+    frozen = freeze_objects(root, tmp_path, [w])
     subprocess.run(
         ["pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "-d", new, archive],
         check=True,
@@ -189,7 +189,9 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
         restored.commit()
         restored.autocommit = True
         restored.execute(sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(new)))
-        recover(restored, read_witness()["sha256"], {w:copy}, access_seal(db))
+        proof, access = read_witness()["sha256"], access_seal(db)
+        token = prepare_copy(restored, frozen, copy, proof, access)
+        recover(restored, proof, [token], access)
     restore_env = os.environ | {"PGDATABASE": new}
     for args, original in ((a, first), (b, second)):
         replay = [str(copy) if arg == str(root) else arg for arg in args]

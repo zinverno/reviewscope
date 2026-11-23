@@ -18,7 +18,19 @@ import psycopg
 from psycopg.rows import dict_row
 
 from operational.delivery_objects import DeliveryError, encoded, private_directory, sync_directory
-from reviewscope.access.ledger import LIMIT, LedgerError, digest, gate, ledger_path, read_witness
+from operational.restore_copy import activate_roots, prepare
+from reviewscope.access.ledger import (
+    LIMIT,
+    SCOPED,
+    LedgerError,
+    active_receipts,
+    certified_space,
+    digest,
+    gate,
+    ledger_path,
+    read_witness,
+)
+from reviewscope.access.restore import RestoreError, mount_id
 
 GRACE_SECONDS = 60
 
@@ -105,7 +117,9 @@ def initialize(conn):
             "already_enrolled",
         )
         conn.execute("UPDATE retention_control SET enrolled=true")
-        return save(conn, {"version": 1, "binding": binding, "events": []}, initial=True)
+        return save(
+            conn, {"version": 2, "binding": binding, "events": [], "receipts": []}, initial=True
+        )
 
 
 def request(conn, rid):
@@ -132,6 +146,7 @@ def object_identity(root):
 
 
 def root_binding(conn, w, root):
+    certified_space(read_witness(), w, root)
     registered = one(conn, "SELECT retention_root(%s)", (w,))
     require(registered == str(root), "object_root_unverified")
     return object_identity(root)
@@ -147,6 +162,7 @@ def confirm(conn, rid, preview_sha, root):
     with exclusive(conn):
         data = read_witness()
         head, binding = stamp(conn)
+        active_receipts(data)
         require(binding == data["body"]["binding"], "restore_required")
         q = request(conn, rid)
         require(q["action"] == "erase" and preview_sha == q["preview_sha"], "confirmation_mismatch")
@@ -180,7 +196,7 @@ def confirm(conn, rid, preview_sha, root):
 
 
 @contextmanager
-def objects(root, workspace, identity):
+def objects(root, workspace, identity, certified=None):
     # Walk every directory by file descriptor, including ancestors of the private root.
     private_directory(root)
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -195,6 +211,12 @@ def objects(root, workspace, identity):
                 require([st.st_dev, st.st_ino] == identity, "object_root_unverified")
             if part in (str(workspace), "sha256"):
                 info = os.fstat(fd)
+                if certified is not None:
+                    expected = certified[1 if part == "sha256" else 0]
+                    require(
+                        [info.st_dev, info.st_ino, mount_id(fd)] == expected,
+                        "object_root_unverified",
+                    )
                 require(
                     info.st_uid == os.getuid() and not info.st_mode & 0o077,
                     "private_store_required",
@@ -213,7 +235,12 @@ def check_file(fd, name, *, hashed):
     with os.fdopen(
         os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd), "rb"
     ) as stream:
-        require(os.path.samestat(info, os.fstat(stream.fileno())), "object_changed")
+        require(
+            os.path.samestat(info, os.fstat(stream.fileno()))
+            and info.st_nlink == 1
+            and mount_id(fd) == mount_id(stream.fileno()),
+            "object_changed",
+        )
         if hashed:
             require(hashlib.file_digest(stream, "sha256").hexdigest() == name, "checksum_mismatch")
     return info
@@ -223,8 +250,9 @@ def purge(conn, rid, root):
     # Commit verified unlink intent first. A missing object is acceptable only on resumption.
     with exclusive(conn):
         with conn.cursor() as cur:
-            gate(cur)
+            evidence = gate(cur)
         q = request(conn, rid)
+        certified = certified_space(evidence, q["workspace_id"], root)
         require(
             q["action"] == "erase"
             and q["state"] in {"purging", "failed", "verifying", "completed"},
@@ -237,7 +265,7 @@ def purge(conn, rid, root):
             "SELECT digest FROM retention_object WHERE request_id=%s AND NOT verified", (rid,)
         ).fetchall()
         if pending:
-            with objects(root, q["workspace_id"], [q["device"], q["inode"]]) as fd:
+            with objects(root, q["workspace_id"], [q["device"], q["inode"]], certified) as fd:
                 for (name,) in pending:
                     require(re.fullmatch(r"[0-9a-f]{64}", name), "invalid_digest")
                     try:
@@ -263,8 +291,9 @@ def purge(conn, rid, root):
         conn.execute("UPDATE retention_request SET state='verifying' WHERE id=%s", (rid,))
     with exclusive(conn):
         with conn.cursor() as cur:
-            gate(cur)
+            evidence = gate(cur)
         q = request(conn, rid)
+        certified = certified_space(evidence, q["workspace_id"], root)
         require(object_identity(root) == [q["device"], q["inode"]], "object_root_unverified")
         candidates = {
             row[0]: None
@@ -277,7 +306,7 @@ def purge(conn, rid, root):
         orphan_count = 0
         # An empty namespace is valid only for a scope with no registered files.
         if candidates or os.path.lexists(root / str(w)):
-            with objects(root, w, [q["device"], q["inode"]]) as fd:
+            with objects(root, w, [q["device"], q["inode"]], certified) as fd:
                 for name in os.listdir(fd):
                     hashed = re.fullmatch(r"[0-9a-f]{64}", name) is not None
                     require(hashed or re.fullmatch(r"tmp[a-z0-9_]{8}", name), "unexpected_object")
@@ -371,7 +400,32 @@ def verify_catalog(conn):
     require(not broken, "manifest_mismatch")
 
 
-def recover(admin, expected, roots, access_sha):
+def verify_restore_roles(admin):
+    allowed = admin.execute(
+        """SELECT count(*)=3 AND bool_and(NOT (rolsuper OR rolbypassrls OR rolcreatedb
+            OR rolcreaterole OR rolreplication) AND NOT EXISTS
+            (SELECT FROM pg_auth_members WHERE member=r.oid) AND NOT EXISTS
+            (SELECT FROM pg_class WHERE relowner=r.oid) AND NOT EXISTS
+            (SELECT FROM pg_namespace WHERE nspowner=r.oid) AND NOT EXISTS
+            (SELECT FROM pg_database WHERE datdba=r.oid)
+            AND NOT has_schema_privilege(r.oid,'public','CREATE')
+            AND NOT has_database_privilege(r.oid,current_database(),'CREATE,TEMP')
+            AND NOT EXISTS(SELECT FROM pg_class WHERE relnamespace='public'::regnamespace
+                AND relkind='r' AND has_table_privilege(r.oid,oid,'DELETE,TRUNCATE'))
+            AND (rolname='rs_retention' OR NOT EXISTS(SELECT FROM pg_class c
+                WHERE relnamespace='public'::regnamespace AND relkind='r'
+                AND has_any_column_privilege(r.oid,c.oid,'INSERT,UPDATE')))
+            AND (rolname='rs_retention' OR NOT (has_any_column_privilege(r.oid,'import_row','SELECT')
+                OR has_any_column_privilege(r.oid,'review_version','SELECT'))))
+            AND (SELECT bool_and(relrowsecurity) AND count(*)=cardinality(%s::text[])
+                FROM pg_class WHERE relnamespace='public'::regnamespace AND relname=ANY(%s))
+            FROM pg_roles r WHERE rolname IN ('rs_runtime','rs_worker','rs_retention')""",
+        (SCOPED, SCOPED),
+    ).fetchone()[0]
+    require(allowed, "restore_roles_unverified")
+
+
+def recover(admin, expected, receipts, access_sha):
     """Offline activation. Operator attests the head from the independent live authority."""
     require(admin.autocommit, "offline_connection_required")
     with exclusive(admin):
@@ -382,6 +436,21 @@ def recover(admin, expected, roots, access_sha):
             and binding["installation"] == data["body"]["binding"]["installation"],
             "ledger_unverified",
         )
+        prior = one(admin, "SELECT recovery_binding FROM retention_control")
+        require(isinstance(receipts, (list, tuple)) and receipts, "restore_receipt_required")
+        already_sealed = (
+            data["body"].get("receipts") == sorted(receipts) and binding == data["body"]["binding"]
+        )
+        verify_restore_roles(admin)
+        if already_sealed and checkpoint == expected:
+            require(access_sha == access_seal(admin), "access_review_required")
+            active_receipts(data)
+            return expected
+        require(
+            binding != data["body"]["binding"] or already_sealed and checkpoint is None,
+            "restore_target_unverified",
+        )
+        roots = activate_roots(receipts, binding, data, access_sha, resume_seal=already_sealed)
         # An older PostgreSQL image can never authorize a fresh empty ledger.
         # Reject a genuine but old witness if this database has later completed prohibitions.
         events = data["body"]["events"]
@@ -416,12 +485,15 @@ def recover(admin, expected, roots, access_sha):
         require(required == set(roots), "restore_roots_incomplete")
         identities = {w: object_identity(path) for w, path in roots.items()}
         recovery_id = digest(
-            [binding, sorted((str(w), str(path), identities[w]) for w, path in roots.items())]
+            [
+                binding,
+                sorted(receipts),
+                sorted((str(w), str(path), identities[w]) for w, path in roots.items()),
+            ]
         )
         # Replay may remove workspace rows. Pin the checked destinations before replay,
         # and install them only in the transaction that reopens service.
-        pending = "pending-v2:" + recovery_id
-        prior = one(admin, "SELECT recovery_binding FROM retention_control")
+        pending = "pending-receipt-v1:" + recovery_id
         if checkpoint is None:
             require(prior == pending, "unverified_recovery_roots")
         else:
@@ -431,6 +503,10 @@ def recover(admin, expected, roots, access_sha):
                     require(path != original, "independent_objects_required")
                     if original.exists():
                         require(not path.samefile(original), "independent_objects_required")
+        for w, name in admin.execute("SELECT DISTINCT workspace_id,digest FROM retention_refs"):
+            require(isinstance(name, str) and re.fullmatch("[0-9a-f]{64}", name), "invalid_digest")
+            with objects(roots[w], w, identities[w]) as fd:
+                check_file(fd, name, hashed=True)
         admin.execute("UPDATE retention_control SET recovery_binding=%s", (pending,))
         for r, w, k, t, key in events:
             admin.execute(
@@ -475,6 +551,8 @@ def recover(admin, expected, roots, access_sha):
             ):
                 verify_snapshot(admin, (w, source), batch, object_directory(root, w, create=False))
         verify_catalog(admin)
+        verify_restore_roles(admin)
+        activate_roots(receipts, binding, data, access_sha, resume_seal=already_sealed)
         require(
             one(admin, "SELECT recovery_binding FROM retention_control") == pending,
             "unverified_recovery_roots",
@@ -487,7 +565,7 @@ def recover(admin, expected, roots, access_sha):
         admin.execute(
             "UPDATE retention_control SET enrolled=true,recovery_binding=%s", (recovery_id,)
         )
-        data["body"]["binding"] = binding
+        data["body"].update(version=2, binding=binding, receipts=sorted(receipts))
         return save(admin, data["body"])
 
 
@@ -504,9 +582,13 @@ def main(argv=None):
     recovery = sub.add_parser("recover")
     recovery.add_argument("--latest-sha256", required=True)
     recovery.add_argument("--access-sha256", required=True)
-    recovery.add_argument(
-        "--binding", action="append", default=[], metavar="WORKSPACE=PRIVATE_COPY"
-    )
+    recovery.add_argument("--receipt", action="append", required=True)
+    copy = sub.add_parser("prepare-restore")
+    copy.add_argument("--erased-workspace", action="append", type=UUID, default=[])
+    for arg in ("source", "destination", "inventory"):
+        copy.add_argument("--" + arg, type=Path, required=True)
+    for arg in ("inventory-sha256", "latest-sha256", "access-sha256"):
+        copy.add_argument("--" + arg, required=True)
     for cmd in ("confirm", "purge", "export"):
         child = sub.add_parser(cmd)
         child.add_argument("--request", type=UUID, required=True)
@@ -526,7 +608,11 @@ def main(argv=None):
             and not os.getenv("PGSERVICE"),
             "local_socket_required",
         )
-        role = {} if args.command in {"initialize", "recover"} else {"user": "rs_retention"}
+        role = (
+            {}
+            if args.command in {"initialize", "recover", "prepare-restore"}
+            else {"user": "rs_retention"}
+        )
         with psycopg.connect(
             **role, host=host, autocommit=True, options="-c search_path=pg_catalog,public"
         ) as conn:
@@ -535,8 +621,18 @@ def main(argv=None):
             if args.command == "initialize":
                 result = initialize(conn)
             elif args.command == "recover":
-                roots = {UUID(w): Path(p) for w, p in (spec.split("=", 1) for spec in args.binding)}
-                result = recover(conn, args.latest_sha256, roots, args.access_sha256)
+                result = recover(conn, args.latest_sha256, args.receipt, args.access_sha256)
+            elif args.command == "prepare-restore":
+                result = prepare(
+                    conn,
+                    args.source,
+                    args.destination,
+                    args.inventory,
+                    args.inventory_sha256,
+                    args.latest_sha256,
+                    args.access_sha256,
+                    args.erased_workspace,
+                )
             elif args.command == "access-seal":
                 with conn.transaction(), conn.cursor() as cur:
                     gate(cur)
@@ -567,12 +663,12 @@ def main(argv=None):
             }
         print(json.dumps({"result": result, "metrics": metrics}))
         return 0
-    except (OSError, ValueError, KeyError, psycopg.Error) as exc:
+    except (OSError, ValueError, KeyError, TypeError, RecursionError, psycopg.Error) as exc:
         print(
             json.dumps(
                 {
                     "error": str(exc)
-                    if isinstance(exc, (DeliveryError, LedgerError))
+                    if isinstance(exc, (DeliveryError, LedgerError, RestoreError))
                     else "operation_refused"
                 }
             ),

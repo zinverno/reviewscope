@@ -1,6 +1,9 @@
 """Guard every operational test before creating any database."""
 
+import hashlib
+import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,3 +49,27 @@ def db(monkeypatch):
     with psycopg.connect("", autocommit=True) as conn:
         initialize(conn)
         yield conn
+
+
+def freeze_objects(root, area, workspaces):
+    """The backup operator freezes its inventory before any live changes or restore."""
+    spaces = {str(w): {} for w in workspaces}
+    for obj in root.glob("*/sha256/*"):
+        content = obj.read_bytes()
+        key = hashlib.sha256(content).hexdigest()
+        assert key == obj.name
+        spaces[obj.parent.parent.name][key] = len(content)
+    raw = json.dumps({"version": 1, "backup_id": str(uuid4()), "workspaces": spaces}).encode()
+    manifest = area / "backup-inventory"
+    manifest.write_bytes(raw)
+    manifest.chmod(0o600)
+    source = area / "frozen-store"
+    shutil.copytree(root, source)
+    return source, manifest, hashlib.sha256(raw).hexdigest()
+
+
+def prepare_copy(target, frozen, dest, witness, access, **kwargs):
+    from operational.restore_copy import prepare
+
+    source, manifest, digest = frozen
+    return prepare(target, source, dest, manifest, digest, witness, access, **kwargs)

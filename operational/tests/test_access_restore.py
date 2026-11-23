@@ -1,7 +1,6 @@
 """Restore privileges, principal IDs and history along with PR-07 object references."""
 
 import secrets
-import shutil
 import subprocess
 
 import psycopg
@@ -9,7 +8,7 @@ from fastapi.testclient import TestClient
 from psycopg import sql
 
 from operational.retention import access_seal, recover
-from operational.tests.conftest import new_db
+from operational.tests.conftest import freeze_objects, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, ORIGIN, ROOT, login
 from operational.tests.test_deliveries import call, command, csv
 from operational.tests.test_schema import scope
@@ -29,7 +28,7 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
     call(base + csv("a") + ["--apply"])
     other, _, foreign = scope(db)
     restored_root = tmp_path / "copied-objects"
-    shutil.copytree(root, restored_root)
+    frozen = freeze_objects(root, tmp_path, [w])
     password = secrets.token_urlsafe(32)
     actor = provision(db, "restored", password, key, workspace=w)
     with TestClient(create_app(), base_url=ORIGIN) as http:
@@ -55,7 +54,9 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
-        recover(restored, read_witness()["sha256"], {w: restored_root}, access_seal(db))
+        proof, access = read_witness()["sha256"], access_seal(db)
+        token = prepare_copy(restored, frozen, restored_root, proof, access)
+        recover(restored, proof, [token], access)
         restored.execute(
             "UPDATE access_session SET revoked_at=clock_timestamp() WHERE revoked_at IS NULL"
         )

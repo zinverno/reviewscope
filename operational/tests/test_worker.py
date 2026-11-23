@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import secrets
-import shutil
 import signal
 import subprocess
 import sys
@@ -21,7 +20,7 @@ from psycopg import sql
 from operational import worker
 from operational.delivery_objects import encoded
 from operational.retention import access_seal, recover
-from operational.tests.conftest import new_db
+from operational.tests.conftest import freeze_objects, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, dataset, key, login
 from operational.tests.test_deliveries import call, command, csv, json_input
 from reviewscope.access.http import create_app
@@ -247,7 +246,7 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
     dump = tmp_path / "jobs.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", dump], check=True)
     restored_root = tmp_path / "copy"
-    shutil.copytree(root, restored_root)
+    frozen = freeze_objects(root, tmp_path, [w])
     name = new_db()
     subprocess.run(
         ["pg_restore", "--no-owner", "--single-transaction", "--exit-on-error", "-d", name, dump],
@@ -258,7 +257,9 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
-        recover(restored, read_witness()["sha256"], {w:restored_root}, access_seal(db))
+        proof, access = read_witness()["sha256"], access_seal(db)
+        token = prepare_copy(restored, frozen, restored_root, proof, access)
+        recover(restored, proof, [token], access)
         restored.execute(
             "UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(restored_root), w)
         )
