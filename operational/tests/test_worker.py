@@ -255,10 +255,10 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
     )
     monkeypatch.setenv("PGDATABASE", name)
     with psycopg.connect("", autocommit=True) as restored:
-        recover(restored, read_witness()["sha256"], {w:restored_root}, access_seal(db))
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
+        recover(restored, read_witness()["sha256"], {w:restored_root}, access_seal(db))
         restored.execute(
             "UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(restored_root), w)
         )

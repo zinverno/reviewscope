@@ -41,7 +41,7 @@ CREATE TRIGGER retention_audit AFTER INSERT OR UPDATE OF state ON retention_requ
 FOR EACH ROW EXECUTE FUNCTION retention_transition();
 -- The durable queue survives a database commit followed by a filesystem failure.
 CREATE TABLE retention_object (
-    request_id uuid NOT NULL REFERENCES retention_request, digest sha256_hex NOT NULL,
+    request_id uuid NOT NULL REFERENCES retention_request, digest sha256_hex NOT NULL, classes text[] NOT NULL,
     outcome text CHECK (outcome IN ('erased','retained_with_reason')),
     PRIMARY KEY(request_id,digest)
 );
@@ -60,7 +60,7 @@ $$;
 
 -- Counts and per-parent references are safe for owner preview. Bind approval to the current graph.
 CREATE FUNCTION retention_plan(w uuid,k text,t uuid) RETURNS jsonb LANGUAGE sql STABLE
-SET search_path=pg_catalog,public,pg_temp AS $$
+SET TimeZone='UTC' SET search_path=pg_catalog,public,pg_temp AS $$
 WITH sources AS MATERIALIZED (SELECT retention_sources(w,k,t) id),
  snaps AS MATERIALIZED (SELECT id FROM snapshot WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  runs AS MATERIALIZED (SELECT id FROM analysis_run WHERE workspace_id=w AND snapshot_id IN (SELECT id FROM snaps)),
@@ -70,7 +70,7 @@ WITH sources AS MATERIALIZED (SELECT retention_sources(w,k,t) id),
         AND NOT EXISTS (SELECT FROM source_location m WHERE m.workspace_id=w AND m.location_id=l.id AND m.project_id=l.project_id AND m.source_id<>t)))
 SELECT jsonb_build_object('contract','retention-1','scope',jsonb_build_array(w,k,t),
  'tables',jsonb_build_object(
- 'workspace',(k='workspace')::int,'client_project',(SELECT count(*) FROM client_project WHERE workspace_id=w AND (k='workspace' OR k='project' AND id=t)),
+ 'workspace',(SELECT count(*) FROM workspace WHERE k='workspace' AND id=w),'client_project',(SELECT count(*) FROM client_project WHERE workspace_id=w AND (k='workspace' OR k='project' AND id=t)),
  'location',(SELECT count(*) FROM loc),'source',(SELECT count(*) FROM sources),
  'source_location',(SELECT count(*) FROM source_location WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  'delivery_authorization',(SELECT count(*) FROM delivery_authorization WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
@@ -78,21 +78,34 @@ SELECT jsonb_build_object('contract','retention-1','scope',jsonb_build_array(w,k
  'import_row',(SELECT count(*) FROM import_row WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  'review_identity',(SELECT count(*) FROM review_identity WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  'review_version',(SELECT count(*) FROM review_version WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
- 'policy_sha', (SELECT encode(sha256(convert_to(coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.source_id,p.class)::text,'[]'),'UTF8')),'hex')
-    FROM retention_policy p WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  'retention_policy',(SELECT count(*) FROM retention_policy WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  'snapshot',(SELECT count(*) FROM snaps),'snapshot_member',(SELECT count(*) FROM snapshot_member WHERE workspace_id=w AND snapshot_id IN (SELECT id FROM snaps)),
  'analysis_run',(SELECT count(*) FROM runs),'artifact',(SELECT count(*) FROM artifact WHERE workspace_id=w AND run_id IN (SELECT id FROM runs)),
  'workspace_membership',(SELECT count(*) FROM workspace_membership WHERE workspace_id=w AND k='workspace'),
  'membership_event',(SELECT count(*) FROM membership_event WHERE workspace_id=w AND k='workspace')),
+ 'policy_sha', (SELECT encode(sha256(convert_to(coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.source_id,p.class)::text,'[]'),'UTF8')),'hex')
+    FROM retention_policy p WHERE workspace_id=w AND source_id IN (SELECT id FROM sources)),
  'references',coalesce((SELECT jsonb_agg(jsonb_build_array(source_id,parent,class,digest) ORDER BY source_id,parent,class,digest) FROM refs),'[]'),
  'shared',coalesce((SELECT jsonb_agg(digest ORDER BY digest) FROM (SELECT DISTINCT digest FROM retention_refs
    WHERE workspace_id=w AND digest IN (SELECT digest FROM refs) AND source_id NOT IN (SELECT id FROM sources)) x),'[]'),
  'backup','BACKUP_ERASURE_NOT_VERIFIED','downloads','external_uncontrolled','ml_index_cache','not_applicable')
 $$;
+CREATE FUNCTION affected_requests(w uuid,k text,t uuid,r uuid) RETURNS SETOF uuid LANGUAGE sql STABLE
+SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT q.id FROM retention_request q WHERE workspace_id=w AND id IS DISTINCT FROM r
+ AND (state IN ('requested','blocked') OR state='completed' AND action='export')
+ AND (k='workspace' OR q.kind='workspace' OR (q.kind,q.target)=(k,t)
+ OR k='source' AND q.kind='project' AND EXISTS(SELECT FROM source WHERE workspace_id=w AND id=t AND project_id=q.target)
+ OR k='project' AND q.kind='source' AND EXISTS(SELECT FROM source WHERE workspace_id=w AND project_id=t AND id=q.target))
+$$;
+CREATE FUNCTION erasure_plan(w uuid,k text,t uuid,r uuid) RETURNS jsonb LANGUAGE sql STABLE
+SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT retention_plan(w,k,t)||jsonb_build_object('revoked_requests',ARRAY(SELECT id FROM affected_requests(w,k,t,r) id ORDER BY id))
+$$;
+REVOKE ALL ON FUNCTION affected_requests(uuid,text,uuid,uuid),erasure_plan(uuid,text,uuid,uuid) FROM PUBLIC;
 CREATE FUNCTION retention_owner(w uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT w=nullif(current_setting('rs.workspace',true),'')::uuid AND EXISTS
+ SELECT coalesce(w=nullif(current_setting('rs.workspace',true),'')::uuid,false) AND EXISTS
    (SELECT FROM workspace_membership m JOIN workspace ws ON ws.id=w WHERE m.workspace_id=w
     AND ws.state='active' AND principal_id=access_actor() AND m.role='owner' AND m.state='active')
 $$;
@@ -109,7 +122,9 @@ BEGIN
  ELSE
     IF NOT (k='workspace' AND w=t OR k='project' AND EXISTS (SELECT FROM client_project WHERE workspace_id=w AND id=t)
         OR k='source' AND EXISTS (SELECT FROM source WHERE workspace_id=w AND id=t)) THEN RETURN NULL; END IF;
-    plan:=retention_plan(w,k,t);
+    plan:=CASE WHEN a='erase' THEN erasure_plan(w,k,t,NULL) ELSE retention_plan(w,k,t) END;
+    IF EXISTS(SELECT FROM jsonb_array_elements(plan->'references') v WHERE v->>3 IS NULL OR v->>3 !~ '^[0-9a-f]{64}$') THEN
+        RAISE EXCEPTION 'invalid_object_reference'; END IF;
     IF octet_length(plan::text)>2097152 THEN RAISE EXCEPTION 'preview_bound'; END IF;
     INSERT INTO retention_request(workspace_id,kind,target,action,request_key,actor,preview_sha,report)
         VALUES(w,k,t,a,key,access_actor(),encode(sha256(convert_to(plan::text,'UTF8')),'hex'),plan) RETURNING * INTO req;
@@ -135,7 +150,7 @@ CREATE VIEW retention_clocks AS
     JOIN snapshot s ON (s.workspace_id,s.id)=(j.workspace_id,j.snapshot_id)
     JOIN import_batch b ON (b.workspace_id,b.source_id,b.id)=(s.workspace_id,s.source_id,s.batch_id);
 CREATE FUNCTION retention_terms(w uuid,s uuid) RETURNS SETOF jsonb LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path=pg_catalog,public,pg_temp AS $$
+SET TimeZone='UTC' SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('class',c,'object_id',i.object_id,'delivery_id',i.batch_id,'policy',CASE WHEN p.days IS NULL THEN 'unset' ELSE 'approved' END,
   'days',p.days,'anchor',p.anchor,'review_by',p.review_by,'review_days',p.review_days,'hold',p.hold_ref IS NOT NULL,
   'expires_at',(CASE p.anchor WHEN 'received' THEN i.received_at WHEN 'registered' THEN i.registered_at WHEN 'created' THEN i.created_at END)+make_interval(days=>p.days),
@@ -194,12 +209,12 @@ BEGIN
     AND NOT EXISTS (SELECT FROM source_location keep WHERE keep.workspace_id=w AND keep.project_id=m.project_id
         AND keep.location_id=m.location_id AND NOT keep.source_id=ANY(sources))) INTO locs;
  IF k='source' THEN SELECT ARRAY(SELECT project_id FROM source WHERE workspace_id=w AND id=t) INTO projects; END IF;
- UPDATE retention_request SET report=NULL,state='revoked' WHERE workspace_id=w AND id<>r AND state IN ('requested','blocked','completed')
- AND (action='export' OR state<>'completed') AND (k='workspace' OR kind='workspace' OR kind='source' AND target=ANY(sources)
-   OR kind='project' AND (target=ANY(projects) OR EXISTS (SELECT FROM source WHERE workspace_id=w AND project_id=target AND id=ANY(sources))));
- UPDATE retention_request SET report=NULL,state='revoking' WHERE id=r;
- INSERT INTO retention_object(request_id,digest) SELECT DISTINCT r,digest FROM retention_refs
-    WHERE workspace_id=w AND source_id=ANY(sources) ON CONFLICT DO NOTHING;
+ UPDATE retention_request SET report=NULL,state='revoked' WHERE id IN (SELECT affected_requests(w,k,t,r));
+ UPDATE retention_request SET report=jsonb_build_object('tables',retention_plan(w,k,t)->'tables'),state='revoking' WHERE id=r;
+ INSERT INTO retention_object(request_id,digest,classes)
+ SELECT r,digest,array_agg(DISTINCT CASE WHEN class IN ('mapping_sha256','passport_sha256','coverage_sha256')
+    THEN 'configuration' WHEN class='artifact' THEN 'worker_artifacts' ELSE class END)
+ FROM retention_refs WHERE workspace_id=w AND source_id=ANY(sources) GROUP BY digest ON CONFLICT DO NOTHING;
  PERFORM set_config('rs.erasure',r::text,true);
  SET CONSTRAINTS ALL DEFERRED;
  DELETE FROM artifact WHERE workspace_id=w AND run_id=ANY(runs);
@@ -243,7 +258,7 @@ BEGIN
 END $$;
 CREATE POLICY owner_export ON analysis_run FOR SELECT TO rs_retention USING (EXISTS
     (SELECT FROM snapshot WHERE workspace_id=analysis_run.workspace_id AND id=analysis_run.snapshot_id));
-CREATE POLICY owner_export ON artifact FOR SELECT TO rs_retention USING (EXISTS
+CREATE POLICY owner_export ON artifact FOR SELECT TO rs_retention USING (storage_state='available' AND EXISTS
     (SELECT FROM analysis_run WHERE workspace_id=artifact.workspace_id AND id=artifact.run_id));
 GRANT SELECT(workspace_id,id,snapshot_id,engine_version,model_version,definition_version,created_at,finished_at,status,
     output_artifact_id,job_kind,attempt,stage,processed,total,reason) ON analysis_run TO rs_retention;
@@ -313,7 +328,7 @@ $$;
 REVOKE ALL ON FUNCTION retention_current_owner(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION retention_current_owner(uuid) TO rs_retention;
 CREATE FUNCTION retention_access_seal() RETURNS text LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path=pg_catalog,public,pg_temp AS $$
+SET TimeZone='UTC' SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT encode(sha256(convert_to(coalesce(string_agg(fingerprint,'' ORDER BY fingerprint),''),'UTF8')),'hex')
  FROM (SELECT encode(sha256(convert_to(row_to_json(v)::text,'UTF8')),'hex') AS fingerprint FROM (
    SELECT 'principal' AS t,jsonb_build_array(id,login,state) AS x FROM principal
@@ -321,19 +336,21 @@ SET search_path=pg_catalog,public,pg_temp AS $$
    UNION ALL SELECT 'membership',to_jsonb(m) FROM workspace_membership m
    UNION ALL SELECT 'grant',to_jsonb(a) FROM delivery_authorization a
    UNION ALL SELECT 'workspace',jsonb_build_array(id,state) FROM workspace
+   UNION ALL SELECT 'retention_policy',to_jsonb(p) FROM retention_policy p
  ) v) hashes
 $$;
 REVOKE ALL ON FUNCTION retention_access_seal() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION retention_access_seal() TO rs_retention;
-CREATE FUNCTION approve_retention(r uuid,expected sha256_hex) RETURNS void
+CREATE FUNCTION approve_retention(r uuid,expected sha256_hex) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE q retention_request;
 BEGIN
  SELECT * INTO STRICT q FROM retention_request WHERE id=r AND action='erase' FOR UPDATE;
  IF NOT retention_eligible(r) OR q.preview_sha IS DISTINCT FROM expected OR retention_held(q.workspace_id,q.kind,q.target)
-    OR expected IS DISTINCT FROM encode(sha256(convert_to(retention_plan(q.workspace_id,q.kind,q.target)::text,'UTF8')),'hex') THEN
-    RAISE EXCEPTION 'confirmation_refused'; END IF;
+    OR expected IS DISTINCT FROM encode(sha256(convert_to(erasure_plan(q.workspace_id,q.kind,q.target,r)::text,'UTF8')),'hex') THEN
+    RETURN false; END IF;
  UPDATE retention_request SET approved_at=clock_timestamp() WHERE id=r;
+ RETURN true;
 END $$;
 REVOKE ALL ON FUNCTION approve_retention(uuid,sha256_hex) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION approve_retention(uuid,sha256_hex) TO rs_retention;
@@ -350,7 +367,7 @@ BEGIN
  RETURN true;
 END $$;
 CREATE FUNCTION retention_sweep(w uuid,s uuid,key uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
-SET search_path=pg_catalog,public,pg_temp AS $$
+SET TimeZone='UTC' SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE due bigint; blocked bigint;
 BEGIN
  IF NOT retention_owner(w) THEN RETURN NULL; END IF;
@@ -404,3 +421,26 @@ $$;
 REVOKE ALL ON FUNCTION claim_ready_job(),step_ready_job(uuid,uuid,uuid,text,integer,integer,text,sha256_hex,integer,sha256_hex) FROM rs_worker;
 REVOKE ALL ON FUNCTION retention_online(),claim_job(),worker_step(uuid,uuid,uuid,text,integer,integer,text,sha256_hex,integer,sha256_hex) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION claim_job(),worker_step(uuid,uuid,uuid,text,integer,integer,text,sha256_hex,integer,sha256_hex) TO rs_worker;
+CREATE POLICY owner_export ON workspace FOR SELECT TO rs_retention USING (EXISTS
+ (SELECT FROM retention_request q WHERE q.id=nullif(current_setting('rs.export_request',true),'')::uuid
+  AND q.workspace_id=workspace.id AND action='export' AND retention_eligible(q.id)));
+GRANT SELECT(id,name,state,created_at) ON workspace TO rs_retention;
+CREATE POLICY owner_export ON retention_policy FOR SELECT TO rs_retention USING
+ ((workspace_id,source_id) IN (SELECT * FROM retention_export_sources()));
+GRANT SELECT ON retention_policy TO rs_retention;
+-- Drop per-file fingerprints once reconciliation is complete. Carry durable unlink evidence
+-- across overlapping requests before releasing the completed queue.
+CREATE FUNCTION finish_retention(r uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q retention_request;
+BEGIN
+ SELECT * INTO STRICT q FROM retention_request WHERE id=r AND action='erase' AND approved_at IS NOT NULL AND state='completed';
+ IF EXISTS(SELECT FROM retention_object WHERE request_id=r AND (NOT verified OR outcome IS NULL)) THEN
+    RAISE EXCEPTION 'verification_incomplete'; END IF;
+ UPDATE retention_object o SET verified=true FROM retention_request pending
+ WHERE pending.id=o.request_id AND pending.id<>r AND (pending.workspace_id,pending.device,pending.inode)=(q.workspace_id,q.device,q.inode)
+ AND EXISTS(SELECT FROM retention_object done WHERE done.request_id=r AND done.digest=o.digest AND done.outcome='erased');
+ DELETE FROM retention_object WHERE request_id=r;
+END $$;
+REVOKE ALL ON FUNCTION finish_retention(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION finish_retention(uuid) TO rs_retention;

@@ -188,6 +188,7 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
         # A restored installation must explicitly authorize the new object directory.
         restored.commit()
         restored.autocommit = True
+        restored.execute(sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(new)))
         recover(restored, read_witness()["sha256"], {w:copy}, access_seal(db))
     restore_env = os.environ | {"PGDATABASE": new}
     for args, original in ((a, first), (b, second)):

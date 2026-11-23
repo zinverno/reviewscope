@@ -448,3 +448,235 @@ def test_policy_holds_graph_changes_and_permissions(db, key, tmp_path, monkeypat
         assert login(refused, "owner", pw).status_code == 503
     with pytest.raises(ValueError):
         worker.connect()
+
+
+def test_publication_import_and_confirmation_serialize(db, key, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from operational import import_delivery, retention
+
+    base, root, w, s = command(db, tmp_path)
+    snap = call(base + csv("a") + ["--apply"])["snapshot_id"]
+    pw = secrets.token_urlsafe(24)
+    provision(db, "owner-race", pw, key, workspace=w)
+    with TestClient(create_app(), base_url=ORIGIN) as client, ThreadPoolExecutor(2) as pool:
+        assert login(client, "owner-race", pw).status_code == 204
+        enqueue(client, ROOT + f"/workspaces/{w}/runs", snap)
+        for publisher in (worker, import_delivery):
+            ready, release = Event(), Event()
+            req = ask(client, w, "source", s, "erase")
+
+            def attempt(req=req):
+                with psycopg.connect(user="rs_retention", autocommit=True) as conn:
+                    return retention.confirm(conn, req["id"], req["preview_sha"], root)
+
+            original = publisher.publish
+
+            def pause(*args, ready=ready, release=release, original=original, **kwargs):
+                ready.set()
+                assert release.wait(10)
+                return original(*args, **kwargs)
+
+            with monkeypatch.context() as changed:
+                changed.setattr(publisher, "publish", pause)
+                if publisher is worker:
+
+                    def publish_job():
+                        with worker.connect() as c:
+                            return worker.process(c, take(c), Event())
+
+                    active = pool.submit(publish_job)
+                else:
+                    active = pool.submit(import_delivery.main, base + csv("b") + ["--apply"])
+                assert ready.wait(10)
+                pending = pool.submit(attempt)
+                try:
+                    assert not pending.done()
+                finally:
+                    release.set()
+                assert active.result() in (0, "succeeded")
+                with pytest.raises(ValueError, match="preview_changed"):
+                    pending.result()
+        req = ask(client, w, "source", s, "erase")
+        approve = (
+            "confirm",
+            "--request",
+            req["id"],
+            "--preview-sha256",
+            req["preview_sha"],
+            "--root",
+            root,
+        )
+        # Actual process loss after the independent fsync and before the DB commit.
+        probe = """import os,sys
+from operational import retention
+retention.revoke=lambda *args: os._exit(79)
+sys.exit(retention.main(sys.argv[1:]))"""
+        stopped = subprocess.run(
+            [sys.executable, "-c", probe, *map(str, approve)], capture_output=True
+        )
+        assert stopped.returncode == 79 and not stopped.stdout and not stopped.stderr
+        assert client.get(ROOT + f"/workspaces/{w}/sources/{s}").status_code == 503
+        assert operator(*approve) == "purging"
+        assert client.get(ROOT + f"/workspaces/{w}/sources/{s}").status_code == 404
+        # Crash after a real unlink. Only PostgreSQL's durable verified intent permits retry.
+        interrupted = """import os,sys
+from operational import retention
+unlink=os.unlink
+def interrupt(*args,**kwargs):
+    unlink(*args,**kwargs)
+    os._exit(80)
+retention.os.unlink=interrupt
+sys.exit(retention.main(sys.argv[1:]))"""
+        purge = ("purge", "--request", req["id"], "--root", root)
+        stopped = subprocess.run(
+            [sys.executable, "-c", interrupted, *map(str, purge)], capture_output=True
+        )
+        assert stopped.returncode == 80 and not stopped.stdout and not stopped.stderr
+        assert operator(*purge) == "completed"
+        assert not list((root / str(w) / "sha256").iterdir())
+
+
+def test_files_receipts_orphans_and_redaction(db, key, tmp_path, caplog):
+    from operational.tests.test_deliveries import json_input
+    from reviewscope.access import http
+
+    caplog.set_level("INFO", logger=http.LOG.name)
+    base, root, w, s = command(db, tmp_path)
+    marker = "private-canary-" + uuid4().hex
+    secret = tmp_path / marker
+    secret.mkdir()
+    payload = json_input(
+        secret,
+        [
+            {"id": "r1", "body": marker},
+            {"id": "r1", "body": marker},
+            {"id": "amb", "body": "one"},
+            {"id": "amb", "body": "two"},
+        ],
+        {"id": "source_review_id", "body": "text"},
+    )
+    snap = call(base + payload + ["--apply"])["snapshot_id"]
+    pw = secrets.token_urlsafe(24)
+    provision(db, "owner-files", pw, key, workspace=w)
+    dest = tmp_path / "handoff"
+    dest.mkdir(mode=0o700)
+    folder = root / str(w) / "sha256"
+    sha = db.execute("SELECT file_sha256 FROM import_batch").fetchone()[0]
+    obj = folder / sha
+    with TestClient(create_app(), base_url=ORIGIN) as client:
+        assert login(client, "owner-files", pw).status_code == 204
+        enqueue(client, ROOT + f"/workspaces/{w}/runs", snap)
+        assert cli("workspace-before-purge") == "succeeded"
+        req = ask(client, w, "source", s, "export")
+        args = ("export", "--request", req["id"], "--root", root, "--owner-handoff", dest)
+        saved = obj.read_bytes()
+        obj.unlink()
+        operator(*args, error="operation_refused")
+        obj.write_bytes(b"corrupt")
+        obj.chmod(0o400)
+        operator(*args, error="checksum_mismatch")
+        obj.unlink()
+        obj.write_bytes(saved)
+        obj.chmod(0o400)
+        assert not list(dest.iterdir())
+        interrupted = """import os,sys
+from operational import retention,retention_export
+publish=os.link
+def interrupt(*args,**kwargs):
+    publish(*args,**kwargs)
+    os._exit(81)
+retention_export.os.link=interrupt
+sys.exit(retention.main(sys.argv[1:]))"""
+        stopped = subprocess.run(
+            [sys.executable, "-c", interrupted, *map(str, args)], capture_output=True
+        )
+        assert stopped.returncode == 81 and not stopped.stdout and not stopped.stderr
+        operator(*args)
+        with ZipFile(dest / (req["id"] + ".zip")) as archive:
+            rows = list(map(json.loads, archive.read("rows/import_row.jsonl").splitlines()))
+            assert {r["status"] for r in rows} == {"accepted", "quarantined", "confirmed_duplicate"}
+        erase = ask(client, w, "workspace", w, "erase")
+        assert erase["report"]["tables"]["analysis_run"] == 1
+        outside = tmp_path / "other"
+        outside.mkdir(mode=0o700)
+        args = (
+            "confirm",
+            "--request",
+            erase["id"],
+            "--preview-sha256",
+            erase["preview_sha"],
+            "--root",
+        )
+        operator(*args, outside, error="object_root_unverified")
+        operator(*args, root)
+        data = b"uncommitted synthetic output"
+        orphan = folder / hashlib.sha256(data).hexdigest()
+        orphan.write_bytes(data)
+        orphan.chmod(0o400)
+        purge = ("purge", "--request", erase["id"], "--root", root)
+        assert operator(*purge) == "purging" and orphan.is_file()
+        earlier = time.time() - 65
+        os.utime(orphan, (earlier, earlier))
+        assert operator(*purge) == "completed" and not orphan.exists()
+        denied = client.get(ROOT + "/workspaces/" + marker)
+        assert denied.status_code == 404
+        sql_log = Path(os.environ["RS_TEST_PG_SOCKET"], "server.log").read_text()
+        observed = caplog.text + sql_log + denied.text
+        assert not any(
+            value in observed for value in (marker, pw, client.cookies[COOKIE], str(secret))
+        )
+
+
+def test_expiry_preview_and_damaged_reference(db, key, tmp_path, caplog):
+    from operational.tests.test_deliveries import COVER
+
+    base, root, w, s = command(db, tmp_path)
+    (tmp_path / "coverage").write_text(
+        json.dumps(COVER | {"received_at": "2020-01-01T00:00:00Z", "coverage": "partial"})
+    )
+    call(base + csv("a") + ["--apply"])
+    pw = secrets.token_urlsafe(24)
+    provision(db, "expiry-owner", pw, key, workspace=w)
+    url = ROOT + f"/workspaces/{w}/sources/{s}/retention"
+    with TestClient(create_app(), base_url=ORIGIN) as owner:
+        assert login(owner, "expiry-owner", pw).status_code == 204
+        for cls in ("raw", "configuration", "positions", "versions", "snapshot"):
+            rule = {
+                "data_class": cls,
+                "authority_ref": str(uuid4()),
+                "anchor": "received",
+                "days": 2,
+                "review_days": 30,
+                "hold_ref": None,
+            }
+            assert owner.put(url, json=rule, headers=CSRF).status_code == 204
+        body = {"idempotency_key": str(uuid4())}
+        eligible = owner.post(url + "/sweep", json=body, headers=CSRF)
+        assert eligible.status_code == 200 and eligible.json()["state"] == "requested"
+        assert eligible.json()["report"]["tables"]["review_version"] == 3
+        assert owner.post(url + "/sweep", json=body, headers=CSRF).json() == eligible.json()
+        assert owner.get(url).json()[0]["expires_at"].startswith("2020-01-03")
+        assert db.execute("SELECT count(*) FROM retention_object").fetchone() == (0,)
+        # Simulate a damaged restored receipt; no filesystem operation uses its value.
+        marker = "private-" + uuid4().hex
+        with db.transaction():
+            db.execute("ALTER TABLE import_batch DISABLE TRIGGER immutable_rows")
+            db.execute(
+                "UPDATE import_batch SET delivery=jsonb_set(delivery,'{mapping_sha256}',to_jsonb(%s::text))",
+                (marker,),
+            )
+            db.execute("ALTER TABLE import_batch ENABLE TRIGGER immutable_rows")
+        failed = owner.post(
+            ROOT + f"/workspaces/{w}/retention",
+            headers=CSRF,
+            json={
+                "kind": "source",
+                "target": str(s),
+                "action": "erase",
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert failed.status_code == 503 and failed.json() == {"error": "access_unavailable"}
+        assert marker not in caplog.text + failed.text and not (root / marker).exists()

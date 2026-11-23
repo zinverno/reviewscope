@@ -7,11 +7,21 @@ from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 from operational.delivery_objects import encoded, object_directory, open_object, private_directory
 from operational.import_delivery import FORMAT, verify_snapshot
-from operational.retention import exclusive, one, request, require, root_binding, scope
+from operational.retention import (
+    exclusive,
+    one,
+    request,
+    require,
+    root_binding,
+    scope,
+    verify_catalog,
+)
 from reviewscope.access.ledger import gate
 
 LIMIT = 256 * 1024 * 1024
 TABLES = {
+    "workspace": "id",
+    "retention_policy": "source_id,class",
     "client_project": "id",
     "location": "project_id,id",
     "source": "id",
@@ -56,17 +66,9 @@ def export(conn, rid, root, handoff):
         conn.execute("SET LOCAL TIME ZONE 'UTC'")
         plan = one(conn, "SELECT retention_preview(%s,%s,%s)", scope(q))
         require(plan == q["report"], "preview_changed")
-        require(
-            not one(
-                conn,
-                """SELECT EXISTS(SELECT FROM snapshot s WHERE
-            s.manifest_sha256<>snapshot_digest(s.workspace_id,s.source_id,s.batch_id,s.duckdb_sha256,s.filters,s.version_ids)
-            OR s.version_ids<>ARRAY(SELECT version_id FROM snapshot_member m WHERE m.workspace_id=s.workspace_id
-              AND m.snapshot_id=s.id ORDER BY version_id))""",
-            ),
-            "manifest_mismatch",
-        )
-        refs = plan["references"]
+        verify_catalog(conn)
+        visible = {str(a): size for a, size in conn.execute("SELECT id,size_bytes FROM artifact")}
+        refs = [row for row in plan["references"] if row[2] != "artifact" or row[1] in visible]
         directory = object_directory(root, w, create=False) if refs else None
         for source, batch in conn.execute(
             "SELECT source_id,batch_id FROM snapshot WHERE filters->>'format'=%s ORDER BY id",
@@ -81,6 +83,8 @@ def export(conn, rid, root, handoff):
             "external_downloads",
             "ml_index_cache_not_applicable",
         ]
+        if len(refs) != len(plan["references"]):
+            omissions.append("revoked_artifacts")
         if one(conn, "SELECT EXISTS(SELECT FROM import_batch WHERE delivery IS NULL)"):
             omissions.append("legacy_position_journal_and_configuration_unavailable")
         manifest = {
@@ -111,7 +115,9 @@ def export(conn, rid, root, handoff):
                 return {"bytes": count, "sha256": sha.hexdigest()}
 
             for table, order in TABLES.items():
-                fields = RUN_FIELDS if table == "analysis_run" else "*"
+                fields = {"workspace": "id,name,state,created_at", "analysis_run": RUN_FIELDS}.get(
+                    table, "*"
+                )
                 with conn.cursor(name="export_rows") as cur:
                     cur.itersize = 64
                     cur.execute(
@@ -127,6 +133,12 @@ def export(conn, rid, root, handoff):
                     item = member(path, iter(lambda: f.read(65536), b""))
                     require(item["sha256"] == sha, "checksum_mismatch")
                     manifest["entries"][path] = item
+            for _, parent, kind, sha in refs:
+                if kind == "artifact":
+                    require(
+                        manifest["entries"]["objects/" + sha]["bytes"] == visible[parent],
+                        "size_mismatch",
+                    )
             raw = encoded(manifest)
             member("manifest.json", [raw])
             archive.close()

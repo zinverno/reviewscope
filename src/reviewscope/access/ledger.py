@@ -7,6 +7,7 @@ import os
 import stat
 from contextlib import contextmanager
 from pathlib import Path
+from uuid import UUID
 
 LIMIT = 4 * 1024 * 1024
 
@@ -47,6 +48,28 @@ def read_witness():
             or data["body"]["version"] != 1
         ):
             raise LedgerError()
+        body = data["body"]
+        if (
+            set(body) != {"version", "events", "binding"}
+            or set(body["binding"]) != {"installation", "database", "boot", "oid"}
+            or not isinstance(body["events"], list)
+        ):
+            raise LedgerError()
+        seen = set()
+        for event in body["events"]:
+            request, workspace, kind, target, key = event
+            if (
+                kind not in {"source", "project", "workspace"}
+                or (kind == "workspace" and target != workspace)
+                or request in seen
+            ):
+                raise LedgerError()
+            if any(
+                not isinstance(item, str) or str(UUID(item)) != item
+                for item in (request, workspace, target, key)
+            ):
+                raise LedgerError()
+            seen.add(request)
         return data
     except (OSError, KeyError, TypeError, ValueError, RecursionError):
         raise LedgerError() from None

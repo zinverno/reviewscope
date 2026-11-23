@@ -32,6 +32,27 @@ def one(conn, query, params=()):
     return conn.execute(query, params).fetchone()[0]
 
 
+def limited_operator(conn):
+    require(
+        one(
+            conn,
+            """SELECT current_user=session_user AND current_user='rs_retention'
+      AND NOT (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication)
+      AND NOT EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid)
+      AND NOT EXISTS(SELECT FROM pg_class WHERE relowner=r.oid)
+      AND NOT EXISTS(SELECT FROM pg_database WHERE datdba=r.oid)
+      AND NOT EXISTS(SELECT FROM pg_namespace WHERE nspowner=r.oid)
+      AND NOT has_schema_privilege(current_user,'public','CREATE')
+      AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
+      AND row_security_active('review_version') AND row_security_active('import_row')
+      AND NOT EXISTS(SELECT FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r'
+          AND has_table_privilege(current_user,oid,'DELETE,TRUNCATE'))
+      FROM pg_roles r WHERE rolname=current_user""",
+        ),
+        "operator_role_refused",
+    )
+
+
 @contextmanager
 def exclusive(conn):
     with conn.transaction():
@@ -136,7 +157,10 @@ def confirm(conn, rid, preview_sha, root):
             if q["state"] in {"requested", "blocked"}:
                 require(events[-1] == event, "restore_required")
                 root_binding(conn, q["workspace_id"], root)
-                conn.execute("SELECT approve_retention(%s,%s)", (rid, preview_sha))
+                require(
+                    one(conn, "SELECT approve_retention(%s,%s)", (rid, preview_sha)),
+                    "preview_changed",
+                )
                 revoke(conn, event, root)
                 conn.execute(
                     "UPDATE retention_control SET checkpoint=%s,live_binding=%s::jsonb",
@@ -148,14 +172,8 @@ def confirm(conn, rid, preview_sha, root):
         if one(conn, "SELECT retention_held(%s,%s,%s)", scope(q)):
             conn.execute("UPDATE retention_request SET state='blocked' WHERE id=%s", (rid,))
             return "blocked"
-        current = one(
-            conn,
-            "SELECT encode(sha256(convert_to(retention_preview(%s,%s,%s)::text,'UTF8')),'hex')",
-            scope(q),
-        )
-        require(preview_sha == current, "preview_changed")
         root_binding(conn, q["workspace_id"], root)
-        conn.execute("SELECT approve_retention(%s,%s)", (rid, preview_sha))
+        require(one(conn, "SELECT approve_retention(%s,%s)", (rid, preview_sha)), "preview_changed")
         events.append(event)
         save(conn, data["body"])
         revoke(conn, event, root)
@@ -223,7 +241,25 @@ def purge(conn, rid, root):
             with objects(root, q["workspace_id"], [q["device"], q["inode"]]) as fd:
                 for (name,) in pending:
                     require(re.fullmatch(r"[0-9a-f]{64}", name), "invalid_digest")
-                    check_file(fd, name, hashed=True)
+                    try:
+                        check_file(fd, name, hashed=True)
+                    except FileNotFoundError:
+                        # Another approved purge may have already completed its durable intent.
+                        proven = one(
+                            conn,
+                            """SELECT EXISTS(SELECT FROM retention_object o JOIN retention_request r ON r.id=o.request_id
+                            WHERE r.workspace_id=%s AND r.device=%s AND r.inode=%s AND o.digest=%s
+                            AND o.verified AND o.outcome='erased') AND NOT retention_referenced(%s,%s)""",
+                            (
+                                q["workspace_id"],
+                                q["device"],
+                                q["inode"],
+                                name,
+                                q["workspace_id"],
+                                name,
+                            ),
+                        )
+                        require(proven, "missing_object")
             conn.execute("UPDATE retention_object SET verified=true WHERE request_id=%s", (rid,))
         conn.execute("UPDATE retention_request SET state='verifying' WHERE id=%s", (rid,))
     with exclusive(conn):
@@ -231,11 +267,12 @@ def purge(conn, rid, root):
             gate(cur)
         q = request(conn, rid)
         require(object_identity(root) == [q["device"], q["inode"]], "object_root_unverified")
-        candidates = dict(
-            conn.execute(
-                "SELECT digest,outcome FROM retention_object WHERE request_id=%s", (rid,)
-            ).fetchall()
-        )
+        candidates = {
+            row[0]: None
+            for row in conn.execute(
+                "SELECT digest FROM retention_object WHERE request_id=%s", (rid,)
+            )
+        }
         w = q["workspace_id"]
         young = False
         orphan_count = 0
@@ -246,35 +283,56 @@ def purge(conn, rid, root):
                     hashed = re.fullmatch(r"[0-9a-f]{64}", name) is not None
                     require(hashed or re.fullmatch(r"tmp[a-z0-9_]{8}", name), "unexpected_object")
                     if hashed and one(conn, "SELECT retention_referenced(%s,%s)", (w, name)):
-                        if name in candidates:
-                            candidates[name] = "retained_with_reason"
                         continue
                     info = check_file(fd, name, hashed=hashed)
-                    if name not in candidates and time.time() - info.st_mtime < GRACE_SECONDS:
+                    reserved = (
+                        hashed
+                        and name not in candidates
+                        and one(
+                            conn,
+                            """SELECT EXISTS(
+                        SELECT FROM retention_object o JOIN retention_request q ON q.id=o.request_id
+                        WHERE q.workspace_id=%s AND q.device=%s AND q.inode=%s AND o.digest=%s)""",
+                            (w, q["device"], q["inode"], name),
+                        )
+                    )
+                    if reserved or (
+                        name not in candidates and time.time() - info.st_mtime < GRACE_SECONDS
+                    ):
                         young = True
                         continue
                     os.unlink(name, dir_fd=fd)
                     orphan_count += int(name not in candidates)
                 os.fsync(fd)
+                remaining = set(os.listdir(fd))
                 for name in candidates:
-                    if candidates[name] != "retained_with_reason":
-                        require(
-                            not os.path.lexists(root / str(w) / "sha256" / name),
-                            "verification_failed",
-                        )
+                    if one(conn, "SELECT retention_referenced(%s,%s)", (w, name)):
+                        check_file(fd, name, hashed=True)
+                        candidates[name] = "retained_with_reason"
+                    else:
+                        require(name not in remaining, "verification_failed")
+                        candidates[name] = "erased"
         with conn.cursor() as cur:
             cur.executemany(
                 "UPDATE retention_object SET outcome=%s WHERE request_id=%s AND digest=%s",
                 ((outcome or "erased", rid, name) for name, outcome in candidates.items()),
             )
+        remaining_graph = one(conn, "SELECT retention_preview(%s,%s,%s)", scope(q))
         require(
-            not one(
-                conn, "SELECT retention_preview(%s,%s,%s)->'references' <> '[]'::jsonb", scope(q)
-            ),
+            not remaining_graph["references"] and not any(remaining_graph["tables"].values()),
             "verification_failed",
         )
         state = "purging" if young else "completed"
+        by_class = {}
+        for label, outcome, count in conn.execute(
+            """SELECT label,outcome,count(*) FROM retention_object,
+                unnest(classes) label WHERE request_id=%s GROUP BY label,outcome""",
+            (rid,),
+        ):
+            by_class.setdefault(label, {})[outcome] = count
         report = {
+            "tables": (q["report"] or {}).get("tables", {}),
+            "physical_objects_by_class": by_class,
             "erased": sum(v != "retained_with_reason" for v in candidates.values()),
             "shared": sum(v == "retained_with_reason" for v in candidates.values()),
             "orphan_files_removed_this_pass": orphan_count,
@@ -287,6 +345,8 @@ def purge(conn, rid, root):
             "UPDATE retention_request SET state=%s, report=%s::jsonb WHERE id=%s",
             (state, json.dumps(report), rid),
         )
+        if state == "completed":
+            conn.execute("SELECT finish_retention(%s)", (rid,))
         return state
 
 
@@ -294,12 +354,30 @@ def access_seal(conn):
     return one(conn, "SELECT retention_access_seal()")
 
 
+def verify_catalog(conn):
+    broken = one(
+        conn,
+        """SELECT EXISTS(SELECT FROM snapshot s WHERE s.manifest_sha256 <>
+        snapshot_digest(s.workspace_id,s.source_id,s.batch_id,s.duckdb_sha256,s.filters,s.version_ids) OR
+        s.version_ids <> ARRAY(SELECT version_id FROM snapshot_member m WHERE (m.workspace_id,m.snapshot_id)=(s.workspace_id,s.id) ORDER BY version_id))
+        OR EXISTS (SELECT FROM import_batch b LEFT JOIN snapshot s
+          ON (s.workspace_id,s.source_id,s.batch_id)=(b.workspace_id,b.source_id,b.id) AND s.filters->>'format'='canonical-json-v1'
+          CROSS JOIN LATERAL (SELECT count(*) n,count(*) FILTER(WHERE status='quarantined') q,
+            count(*) FILTER(WHERE status='confirmed_duplicate') d,
+            coalesce(array_agg(version_id ORDER BY version_id) FILTER(WHERE status='accepted'),'{}') ids
+            FROM import_row WHERE (workspace_id,source_id,batch_id)=(b.workspace_id,b.source_id,b.id)) j
+          WHERE b.delivery IS NOT NULL AND (s.id IS NULL OR (b.input_count,b.rejected_count,b.confirmed_duplicate_count,b.accepted_count,s.version_ids)
+          IS DISTINCT FROM (j.n,j.q,j.d,cardinality(j.ids),j.ids)))""",
+    )
+    require(not broken, "manifest_mismatch")
+
+
 def recover(admin, expected, roots, access_sha):
     """Offline activation. Operator attests the head from the independent live authority."""
     require(admin.autocommit, "offline_connection_required")
     with exclusive(admin):
         data = read_witness()
-        head, binding = stamp(admin)
+        _, binding = stamp(admin)
         require(
             data["sha256"] == expected
             and binding["installation"] == data["body"]["binding"]["installation"],
@@ -331,7 +409,11 @@ def recover(admin, expected, roots, access_sha):
                 "SELECT id,delivery_object_root FROM workspace WHERE delivery_object_root IS NOT NULL"
             ).fetchall()
         )
-        required = set(stored) | {UUID(e[1]) for e in events}
+        required = (
+            set(stored)
+            | {UUID(e[1]) for e in events}
+            | {w for (w,) in admin.execute("SELECT DISTINCT workspace_id FROM retention_refs")}
+        )
         require(required == set(roots), "restore_roots_incomplete")
         recovery_id = digest(
             [binding, sorted((str(w), object_identity(p)) for w, p in roots.items())]
@@ -355,13 +437,38 @@ def recover(admin, expected, roots, access_sha):
                 "UPDATE retention_request SET approved_at=clock_timestamp() WHERE id=%s", (r,)
             )
     with psycopg.connect(user="rs_retention", dbname=admin.info.dbname, autocommit=True) as op:
+        limited_operator(op)
         with exclusive(op):
             require(read_witness()["sha256"] == expected, "ledger_changed")
             for event in events:
                 revoke(op, event, roots[UUID(event[1])])
-            require(access_sha == access_seal(op), "access_review_required")
-            data["body"]["binding"] = binding
-            return save(op, data["body"])
+    with exclusive(admin):
+        from operational.delivery_objects import object_directory
+        from operational.import_delivery import FORMAT, verify_snapshot
+
+        require(read_witness()["sha256"] == expected, "ledger_changed")
+        require(access_sha == access_seal(admin), "access_review_required")
+        for w, root in roots.items():
+            refs = admin.execute(
+                "SELECT DISTINCT digest FROM retention_refs WHERE workspace_id=%s", (w,)
+            ).fetchall()
+            if refs:
+                with objects(root, w, object_identity(root)) as fd:
+                    for (name,) in refs:
+                        require(
+                            isinstance(name, str) and re.fullmatch(r"[0-9a-f]{64}", name),
+                            "invalid_digest",
+                        )
+                        check_file(fd, name, hashed=True)
+            for source, batch in admin.execute(
+                "SELECT source_id,batch_id FROM snapshot WHERE workspace_id=%s AND filters->>'format'=%s",
+                (w, FORMAT),
+            ):
+                verify_snapshot(admin, (w, source), batch, object_directory(root, w, create=False))
+        verify_catalog(admin)
+        admin.execute("UPDATE retention_control SET enrolled=true")
+        data["body"]["binding"] = binding
+        return save(admin, data["body"])
 
 
 class Arguments(argparse.ArgumentParser):
@@ -403,6 +510,8 @@ def main(argv=None):
         with psycopg.connect(
             **role, host=host, autocommit=True, options="-c search_path=pg_catalog,public"
         ) as conn:
+            if role:
+                limited_operator(conn)
             if args.command == "initialize":
                 result = initialize(conn)
             elif args.command == "recover":
