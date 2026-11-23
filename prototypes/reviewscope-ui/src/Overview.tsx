@@ -272,6 +272,19 @@ function terms(values: (string | number)[][]) {
 export function LegacyOverview({ search }: { search: string }) {
 	const q = new URLSearchParams(search),
 		id = q.get("place") ?? "p1";
+	if ([...q.keys()].some((k) => !["view", "place", "ranking"].includes(k)))
+		return (
+			<p role="alert">
+				Область публичного демо не совпадает с запросом.{" "}
+				<a href="/cabinet/?view=legacy">Открыть публичную синтетику</a>
+			</p>
+		);
+	const ranking = q.get("ranking") === "five" ? "five" : "one";
+	const metric = ranking === "five" ? "five_star_share" : "one_star_share";
+	const rankLabel = ranking === "five" ? "Доля 5 ★" : "Доля 1 ★";
+	const address = (p: string, rank: string) =>
+		"/cabinet/?" +
+		new URLSearchParams({ view: "legacy", place: p, ranking: rank });
 	const place = demo.places.find((p) => p.id === id);
 	return (
 		<section>
@@ -285,12 +298,7 @@ export function LegacyOverview({ search }: { search: string }) {
 				Точка демо
 				<select
 					value={id}
-					onChange={(e) =>
-						location.assign(
-							"/cabinet/?view=legacy&place=" +
-								encodeURIComponent(e.target.value),
-						)
-					}
+					onChange={(e) => location.assign(address(e.target.value, ranking))}
 				>
 					{demo.places.map((p) => (
 						<option key={p.id} value={p.id}>
@@ -328,7 +336,13 @@ export function LegacyOverview({ search }: { search: string }) {
 					<h3>Новые термины</h3>
 					<p>{terms(place.emerging)}</p>
 					<details>
-						<summary>Ключевые слова по звёздам</summary>
+						<summary>Тональность по оценке и ключевые слова по звёздам</summary>
+						<p>Положительная группа (4–5 ★): {terms(place.positive)}</p>
+						<p>Отрицательная группа (1–2 ★): {terms(place.negative)}</p>
+						<p>
+							Группы определяются оценкой автора. У отзывов с 3 ★ и без оценки
+							здесь нет тональной группы.
+						</p>
 						{Object.entries(place.by_rating).map(([k, v]) => (
 							<p key={k}>
 								{k} ★ · {terms(v)}
@@ -339,32 +353,42 @@ export function LegacyOverview({ search }: { search: string }) {
 			) : (
 				<p role="alert">Точка отсутствует в публичном демо.</p>
 			)}
-			<h3>Discover · доля одной звезды</h3>
+			<h3>Discover · все точки демо</h3>
+			<label>
+				Ранжировать по
+				<select
+					value={ranking}
+					onChange={(e) => location.assign(address(id, e.target.value))}
+				>
+					<option value="one">Доля 1 ★</option>
+					<option value="five">Доля 5 ★</option>
+				</select>
+			</label>
 			<table>
 				<thead>
 					<tr>
 						<th>Точка</th>
 						<th>Отзывов</th>
-						<th>Доля 1 ★</th>
+						<th>{rankLabel}</th>
 					</tr>
 				</thead>
 				<tbody>
 					{[...demo.places]
 						.sort(
 							(a, b) =>
-								(b.one_star_share ?? -1) - (a.one_star_share ?? -1) ||
+								(b[metric] ?? -1) - (a[metric] ?? -1) ||
 								a.id.localeCompare(b.id),
 						)
 						.map((p) => (
 							<tr key={p.id}>
 								<td>
-									<a href={"/cabinet/?view=legacy&place=" + p.id}>{p.name}</a>
+									<a href={address(p.id, ranking)}>{p.name}</a>
 								</td>
 								<td>{p.count}</td>
 								<td>
-									{p.one_star_share == null
+									{p[metric] == null
 										? "Н/Д"
-										: p.one_star_share.toLocaleString("ru", {
+										: p[metric].toLocaleString("ru", {
 												maximumFractionDigits: 1,
 											}) + "%"}
 								</td>

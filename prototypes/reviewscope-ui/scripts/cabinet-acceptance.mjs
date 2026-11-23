@@ -329,7 +329,7 @@ async function test(type) {
 		await page.goBack();
 		await page.getByRole("link", { name: "Сбросить фильтры" }).click();
 		await page.getByText("6 принятых отзывов из 12 позиций поставки").waitFor();
-		for (const width of [1366, 320]) {
+		for (const width of [1920, 1366, 390, 320]) {
 			await page.setViewportSize({ width, height: 768 });
 			assert.ok(
 				await page.evaluate(
@@ -349,11 +349,21 @@ async function test(type) {
 		await page.getByText(/204 отзывов/).waitFor();
 		await page.getByLabel("Точка демо").selectOption("p2");
 		await page
-			.getByRole("heading", { name: "Discover · доля одной звезды" })
+			.getByRole("heading", { name: "Discover · все точки демо" })
 			.waitFor();
 		assert.equal(new URL(page.url()).searchParams.get("snapshot"), null);
 		await page.goBack();
 		await page.getByText(/204 отзывов/).waitFor();
+		await page.getByLabel("Ранжировать по").selectOption("five");
+		await page.getByRole("columnheader", { name: "Доля 5 ★" }).waitFor();
+		await page
+			.getByText("Тональность по оценке и ключевые слова по звёздам")
+			.click();
+		await page.getByText(/Положительная группа/).waitFor();
+		if (media)
+			await page.screenshot({
+				path: join(media, "discover-" + type.name() + "-320.png"),
+			});
 		stage = type.name() + " finish recording";
 		await review.close();
 	} finally {

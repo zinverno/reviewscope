@@ -27,6 +27,11 @@ def test_public_overview_parity():
             assert [t["count"] for t in row["topics"]] == [
                 len(t.review_ids) for t in actual.clusters
             ]
+            assert [w[0] for w in row["positive"]] == [w for w, _ in actual.positive_keywords]
+            assert [w[0] for w in row["negative"]] == [w for w, _ in actual.negative_keywords]
+            assert row["five_star_share"] == pytest.approx(
+                100 * rated.count(5) / len(rated), abs=0.0001
+            )
             assert [w[0] for w in row["keywords"]] == [w for w, _ in actual.keywords]
             assert [w[0] for w in row["by_rating"]["5"]] == [
                 w for w, _ in keywords_by_rating(actual.reviews)[5]

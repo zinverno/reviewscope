@@ -243,7 +243,7 @@ export function ReviewEvidence({
 									/>
 								</label>
 								{flags("has_text", "Наличие текста", params)}
-								{flags("has_date", "Сопоставимая дата", params)}
+								{flags("has_date", "Наличие даты", params)}
 							</div>
 							<p>
 								Границы периода включительны. Моменты времени сравниваются по
