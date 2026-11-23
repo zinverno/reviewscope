@@ -8,6 +8,7 @@ import {
 import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
+import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
 type Space = { id: string; name: string; role: string };
 type Session = { principal_id: string; workspaces: Space[] };
@@ -102,6 +103,14 @@ const jsonPost = (value: unknown): RequestInit => ({
 });
 function link(changes: Record<string, string>) {
 	const u = new URL(window.location.href);
+	if (
+		["workspace", "source", "snapshot"].some(
+			(k) => k in changes && changes[k] !== u.searchParams.get(k),
+		)
+	) {
+		for (const k of [...evidenceFields, "view", "review", "offset"])
+			u.searchParams.delete(k);
+	}
 	for (const [k, v] of Object.entries(changes)) {
 		if (v) u.searchParams.set(k, v);
 		else u.searchParams.delete(k);
@@ -644,7 +653,11 @@ function Cabinet() {
 					</button>
 				)}
 			</header>
-			<h1>Проверка снимка и пригодности данных</h1>
+			<h1>
+				{query.get("view") === "reviews"
+					? "Панель доказательств"
+					: "Проверка снимка и пригодности данных"}
+			</h1>
 			{msg && <p role="alert">{msg}</p>}
 			{!ready ? (
 				<p role="status">Загрузка…</p>
@@ -692,7 +705,20 @@ function Cabinet() {
 					}
 				>
 					{!w ? (
-						<p>Нет доступных рабочих областей.</p>
+						<p>Рабочая область недоступна.</p>
+					) : query.get("view") === "reviews" ? (
+						snapshot && canWrite ? (
+							<ReviewEvidence
+								workspace={w}
+								snapshot={snapshot}
+								search={search}
+								targets={targets}
+								api={api}
+								link={link}
+							/>
+						) : (
+							<p>Нет доступа к отзывам выбранного снимка.</p>
+						)
 					) : (
 						<>
 							{canWrite ? (
@@ -974,6 +1000,13 @@ function Cabinet() {
 								</section>
 							)}
 							<section>
+								{snapshot && canWrite && (
+									<p>
+										<a href={link({ view: "reviews", review: "", offset: "" })}>
+											Отзывы выбранного снимка
+										</a>
+									</p>
+								)}
 								<h2>Фоновые проверки</h2>
 								<p>
 									Доступна проверка целостности и пригодности. Анализ жалоб пока
@@ -1028,7 +1061,21 @@ function Cabinet() {
 										{success.metrics && (
 											<span>
 												{" "}
-												· С пригодным текстом{" "}
+												·{" "}
+												<a
+													href={link({
+														view: "reviews",
+														snapshot: success.snapshot_id,
+														...Object.fromEntries(
+															evidenceFields.map((k) => [k, ""]),
+														),
+														has_text: "true",
+														review: "",
+														offset: "",
+													})}
+												>
+													С пригодным текстом
+												</a>{" "}
 												{success.metrics.eligibility.usable_text.numerator} из{" "}
 												{success.metrics.eligibility.usable_text.denominator}.
 												Карантин {success.metrics.counts.quarantined.numerator}{" "}

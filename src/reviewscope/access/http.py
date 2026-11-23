@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import store, uploads
+from . import evidence, store, uploads
 from .security import normalize, password_proof, server_key, session_proof
 
 LOG = logging.getLogger("reviewscope.access.requests")
@@ -591,4 +591,5 @@ def create_app():
                 raise HTTPException(status)
 
     uploads.install(app, authenticated, key, cookie, local)
+    evidence.install(app, authenticated, local, read_contract, errors)
     return app

@@ -25,6 +25,7 @@ def test_policy():
             "members": {"owner"},
             "retention": {"owner"},
             "register_delivery": {"owner", "analyst"},
+            "review_evidence": {"owner", "analyst"},
             "start_analysis": {"owner", "analyst"},
             "unknown": set(),
         }.items():
