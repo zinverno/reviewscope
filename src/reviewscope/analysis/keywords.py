@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -107,6 +107,10 @@ def keywords_by_rating(
     return result
 
 
+def _utc_naive(value: datetime) -> datetime:
+    return value.astimezone(UTC).replace(tzinfo=None) if value.tzinfo else value
+
+
 def emerging_keywords(
     reviews: Sequence[NormalizedReview],
     reference_days: int = 90,
@@ -125,16 +129,16 @@ def emerging_keywords(
     dates: list[datetime] = []
     for r in reviews:
         try:
-            dates.append(datetime.fromisoformat(r.published_at))
+            dates.append(_utc_naive(datetime.fromisoformat(r.published_at)))
         except (TypeError, ValueError):
             pass
     if not dates:
         return []
-    anchor = reference_date or max(dates)
+    anchor = _utc_naive(reference_date) if reference_date is not None else max(dates)
 
     def within(published_iso: str, start: datetime, end: datetime) -> bool:
         try:
-            dt = datetime.fromisoformat(published_iso)
+            dt = _utc_naive(datetime.fromisoformat(published_iso))
         except (TypeError, ValueError):
             return False
         return start <= dt <= end

@@ -41,6 +41,8 @@ results in a Streamlit dashboard.
 
 Development plan (RU) · [Baseline](docs/development/baseline.md) · [Product contract and acceptance criteria](docs/development/product-contract.md) · [Handoff](docs/development/handoff.md)
 
+The [local HTTP JSON API v1](docs/development/api-contract.md) exposes places, paginated reviews and explainable analysis over one read-only snapshot. Run `python -m reviewscope.api` after installing the `api` extra.
+
 ```text
 reviewscope/
 ├── app.py                          ← Streamlit entry point

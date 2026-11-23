@@ -4,6 +4,8 @@
 
 ReviewScope ships as a public read-only demo for Streamlit Community Cloud and as a local full-featured application. This guide covers the deployment configuration required for a public beta on Streamlit Community Cloud.
 
+The separate HTTP API binds to loopback and has no authentication. Its startup commands, dataset preflight and restrictions are in the [local API contract](development/api-contract.md).
+
 ### Key constraints
 
 - Public demo runs **without** `sentence-transformers`/PyTorch (embeddings are precomputed).
