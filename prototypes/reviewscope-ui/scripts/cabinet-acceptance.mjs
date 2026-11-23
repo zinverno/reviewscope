@@ -169,6 +169,19 @@ async function test(type) {
 			await page.getByText(/С пригодным текстом 3 из 3/).waitFor();
 			await submit("b", 6, 6, 0, 0);
 			await submit("json", 12, 6, 5, 1);
+			for (const name of ["b", "json"]) {
+				const u = new URL("/cabinet/", origin);
+				u.search = new URLSearchParams({
+					workspace: fixture.w,
+					source: fixture.s,
+					snapshot: snapshots.get(name),
+				});
+				await page.goto(u.href);
+				await page.getByRole("button", { name: "Запустить проверку" }).click();
+				await page
+					.getByRole("link", { name: "Последняя успешная проверка" })
+					.waitFor({ timeout: 25000 });
+			}
 		} else {
 			stage = "saved delivery";
 			await page.getByText(/Сохранённые поставки/).click();
@@ -279,6 +292,68 @@ async function test(type) {
 					path: join(media, "evidence-" + type.name() + "-" + width + ".png"),
 				});
 		}
+		stage = type.name() + " scoped overview";
+		for (const [name, n, den] of [
+			["a", 3, 3],
+			["b", 6, 6],
+			["json", 6, 12],
+		]) {
+			const u = new URL("/cabinet/", origin);
+			u.search = new URLSearchParams({
+				view: "overview",
+				workspace: fixture.w,
+				source: fixture.s,
+				snapshot: snapshots.get(name),
+			});
+			await page.goto(u.href);
+			await page
+				.getByText(n + " принятых отзывов из " + den + " позиций поставки")
+				.waitFor();
+			await page.getByText(/Покрытие неизвестно/).waitFor();
+			await page.getByText(/ANALYSIS_NOT_AVAILABLE/).waitFor();
+		}
+		await page.getByText("Причины исключений и предупреждения").click();
+		await page
+			.getByRole("rowheader", { name: "Конфликт идентификаторов" })
+			.waitFor();
+		await page.getByRole("link", { name: "Только с текстом" }).click();
+		await page.getByText(/FILTER_NOT_COMPUTED/).waitFor();
+		assert.equal(
+			await page.getByRole("heading", { name: "Позиции поставки" }).count(),
+			0,
+		);
+		await page
+			.getByRole("link", { name: "Открыть отзывы этой выборки" })
+			.click();
+		await page.getByText(/Отзывов в выборке:/).waitFor();
+		await page.goBack();
+		await page.getByRole("link", { name: "Сбросить фильтры" }).click();
+		await page.getByText("6 принятых отзывов из 12 позиций поставки").waitFor();
+		for (const width of [1366, 320]) {
+			await page.setViewportSize({ width, height: 768 });
+			assert.ok(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth <= innerWidth,
+				),
+			);
+			if (media)
+				await page.screenshot({
+					path: join(media, "overview-" + type.name() + "-" + width + ".png"),
+				});
+		}
+		await page
+			.getByRole("link", {
+				name: "Открыть отдельный обзор публичной синтетики",
+			})
+			.click();
+		await page.getByText(/204 отзывов/).waitFor();
+		await page.getByLabel("Точка демо").selectOption("p2");
+		await page
+			.getByRole("heading", { name: "Discover · доля одной звезды" })
+			.waitFor();
+		assert.equal(new URL(page.url()).searchParams.get("snapshot"), null);
+		await page.goBack();
+		await page.getByText(/204 отзывов/).waitFor();
 		stage = type.name() + " finish recording";
 		await review.close();
 	} finally {

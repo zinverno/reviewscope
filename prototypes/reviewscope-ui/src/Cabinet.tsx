@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
+import { SnapshotOverview, LegacyOverview } from "./Overview";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
 type Space = { id: string; name: string; role: string };
@@ -360,6 +361,8 @@ function Cabinet() {
 				if (run) {
 					const v = await api<Job>(workspace + "/runs/" + run + "/status");
 					if (!current) return;
+					if (snapshot && v.snapshot_id !== snapshot)
+						throw new Error("Проверка недоступна для выбранного снимка.");
 					setJob(v);
 					setRuns((before) => [
 						v,
@@ -515,7 +518,9 @@ function Cabinet() {
 			<h1>
 				{query.get("view") === "reviews"
 					? "Панель доказательств"
-					: "Проверка снимка и пригодности данных"}
+					: query.get("view") === "overview" || query.get("view") === "legacy"
+						? "Обзор данных"
+						: "Проверка снимка и пригодности данных"}
 			</h1>
 			{msg && <p role="alert">{msg}</p>}
 			{!ready ? (
@@ -573,6 +578,22 @@ function Cabinet() {
 					</label>
 					{!w ? (
 						<p>Рабочая область недоступна.</p>
+					) : query.get("view") === "overview" ? (
+						snapshot ? (
+							<SnapshotOverview
+								key={workspace + search}
+								workspace={w}
+								snapshot={snapshot}
+								search={search}
+								canRead={canWrite}
+								api={api}
+								link={link}
+							/>
+						) : (
+							<p>Выберите снимок.</p>
+						)
+					) : query.get("view") === "legacy" ? (
+						<LegacyOverview search={search} />
 					) : query.get("view") === "reviews" ? (
 						snapshot && canWrite ? (
 							<ReviewEvidence
@@ -874,6 +895,14 @@ function Cabinet() {
 										</a>
 									</p>
 								)}
+								{snapshot && (
+									<p>
+										<a href={link({ view: "overview" })}>
+											Обзор выбранного снимка
+										</a>
+									</p>
+								)}
+								<a href="/cabinet/?view=legacy">Обзор публичной синтетики</a>
 								<h2>Фоновые проверки</h2>
 								<p>
 									Доступна проверка целостности и пригодности. Анализ жалоб пока
