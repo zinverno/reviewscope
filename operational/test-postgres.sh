@@ -3,6 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bindir=$(pg_config --bindir)
+if [[ -n "${RS_TEST_PG_MAJOR:-}" ]]; then
+    bindir="/usr/lib/postgresql/$RS_TEST_PG_MAJOR/bin"
+    [[ "$("$bindir/postgres" -V)" == *" $RS_TEST_PG_MAJOR."* ]]
+fi
 python_bin=$(command -v python)
 export PATH="$bindir:$PATH"
 scratch=$(mktemp -d)

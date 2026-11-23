@@ -20,6 +20,8 @@ jobs:
           cache: pip
       - run: python -m pip install -e ".[operational,access,dev]"
       - name: Migrate, backfill and restore on disposable PostgreSQL
+        env:
+          RS_TEST_PG_MAJOR: "16"
         run: |
           python -VV
           python -m pytest -q tests/test_access.py

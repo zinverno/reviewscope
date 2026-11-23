@@ -38,13 +38,17 @@ def key(tmp_path, monkeypatch):
     return secret
 
 
-def dataset(db, marker):
+def dataset(db, marker, *, legacy=False):
     w, project, source = scope(db, source_key="same")
     (place,) = db.execute(
         "INSERT INTO location(workspace_id,project_id) VALUES (%s,%s) RETURNING id", (w, project)
     ).fetchone()
     db.execute("INSERT INTO source_location VALUES (%s,%s,%s,'p1',%s)", (w, project, source, place))
-    i = identity(db, w, source, "r1")
+    if legacy:
+        i, = db.execute("""INSERT INTO review_identity(workspace_id,source_id,external_review_id)
+                           VALUES (%s,%s,'r1') RETURNING id""", (w, source)).fetchone()
+    else:
+        i = identity(db, w, source, "r1")
     b = receipt(db, w, source)
     (v,) = db.execute(
         """INSERT INTO review_version(workspace_id,source_id,identity_id,batch_id,version_no,
@@ -276,11 +280,11 @@ def test_legacy_upgrade_and_preservation(monkeypatch, key):
     monkeypatch.setenv("PGDATABASE", name)
     subprocess.run([*ALEMBIC, "upgrade", "0001_operational"], check=True)
     with psycopg.connect("", autocommit=True) as db:
-        w, data = dataset(db, "synthetic legacy version")
+        w, data = dataset(db, "synthetic legacy version", legacy=True)
         old = uuid4()
         db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'analyst','inactive')", (w, old))
         queries = (
-            "SELECT * FROM review_version",
+            "SELECT to_jsonb(v) - 'event_at' - 'event_date' FROM review_version v",
             "SELECT * FROM snapshot",
             "SELECT * FROM snapshot_member",
             "SELECT * FROM analysis_run",

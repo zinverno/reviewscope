@@ -43,7 +43,7 @@ def import_demo(workspace: UUID, source: UUID, *, apply=False, object_root: Path
     for review in reviews:
         identity = uuid5(namespace, "review:" + review.review_id)
         version = uuid5(batch, str(identity))
-        identities.append((workspace, source, identity, review.review_id))
+        identities.append((workspace, source, identity, review.review_id, review.place_id))
         stamp = datetime.fromisoformat(review.published_at).replace(tzinfo=UTC) if review.published_at else None
         metadata = review.model_dump(exclude={
             "review_id", "reviewer_id", "place_id", "rating", "text", "published_at",
@@ -84,6 +84,11 @@ def import_demo(workspace: UUID, source: UUID, *, apply=False, object_root: Path
                     (workspace, source) * 3)
         if cur.fetchone()[0]:
             raise ValueError("initial backfill requires an unused synthetic source")
+        cur.execute("SELECT version_num FROM alembic_version")
+        revision, = cur.fetchone()
+        historical = revision in {"0001_operational", "0002_principals", "0003_workspace_access"}
+        if not historical and revision != "0004_delivery_history":
+            raise ValueError("unsupported operational revision")
         cur.execute("""INSERT INTO import_batch
                        (workspace_id,source_id,id,file_sha256,procedure_version,status,
                         input_count,accepted_count,rejected_count)
@@ -94,8 +99,12 @@ def import_demo(workspace: UUID, source: UUID, *, apply=False, object_root: Path
         cur.executemany("""INSERT INTO source_location(workspace_id,project_id,source_id,external_place_id,location_id)
                            VALUES (%s,%s,%s,%s,%s)""",
                         [(workspace, project, source, place, location) for place, (location, _) in locations.items()])
-        cur.executemany("""INSERT INTO review_identity(workspace_id,source_id,id,external_review_id)
-                           VALUES (%s,%s,%s,%s)""", identities)
+        if historical:
+            cur.executemany("""INSERT INTO review_identity(workspace_id,source_id,id,external_review_id)
+                               VALUES (%s,%s,%s,%s)""", [item[:-1] for item in identities])
+        else:
+            cur.executemany("""INSERT INTO review_identity(workspace_id,source_id,id,external_review_id,external_place_id)
+                               VALUES (%s,%s,%s,%s,%s)""", identities)
         cur.executemany("""INSERT INTO review_version
                            (workspace_id,source_id,id,identity_id,batch_id,normalization_version,
                             source_reviewer_id,external_place_id,text_content,rating,published_at,metadata,version_no)
