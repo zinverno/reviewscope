@@ -153,6 +153,9 @@ export function ReviewEvidence({
 	return (
 		<section className="evidence">
 			<a href={link({ view: "", review: "" })}>Вернуться к снимку</a>
+			<p>
+				<a href={link({ view: "overview" })}>Обзор этой выборки</a>
+			</p>
 			<h2>Отзывы и доказательства</h2>
 			{matching?.error ? (
 				<p role="alert">Снимок или версия недоступны. {matching.error}</p>

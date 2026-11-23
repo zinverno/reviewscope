@@ -240,6 +240,17 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
     assert cli("invalid-source") == "failed"
     assert client.get(path + f"/{bad}/status").json()["reason"] == "INTEGRITY_ERROR"
     assert client.get(latest).json() == status
+    metrics = latest.replace("latest-summary", "summary-metrics")
+    assert client.get(metrics, params={"run_id": bad}).json()["metrics"] is None
+    assert client.get(metrics).json()["id"] == run
+    assert client.get(metrics, params={"run_id": second}).status_code == 404
+    assert client.get(metrics, params={"source_id": uuid4()}).status_code == 404
+    selected = client.get(metrics, params={"run_id": run, "source_id": value["source_id"]}).json()
+    assert selected["context"] == {
+        k: value[k] for k in ("source_id", "batch_id", "coverage", "covered_from", "covered_until",
+                              "delivery_exclusions", "metric_exclusions")
+    } | {"selection": "accepted_in_delivery"}
+    assert selected["metrics"]["rating_distribution"] == value["rating_distribution"]
     source.write_bytes(saved)
     source.chmod(0o400)
     assert db.execute("SELECT count(*) FROM artifact").fetchone() == (3,)
@@ -638,3 +649,26 @@ sys.exit(worker.main())
     time.sleep(1.05)
     assert cli("restart-after-SIGTERM") == "succeeded"
     assert client.get(path + f"/{rid}/status").json()["attempt"] == 2
+
+
+def test_empty_overview_projection(db, tmp_path, key):
+    base, _, w, s = command(db, tmp_path)
+    # The intake has one position, all quarantined. The immutable selection is empty.
+    snap = call(base + json_input(tmp_path, [False], {"id": "source_review_id"},
+                                  {"source": "synthetic", "source_place_id": "p1"}) + ["--apply"])
+    secret = secrets.token_urlsafe(24)
+    actor = provision(db, "empty-overview", secret, key, workspace=w)
+    with TestClient(create_app(), base_url=ORIGIN) as web:
+        assert login(web, "empty-overview", secret).status_code == 204
+        path = f"{ROOT}/workspaces/{w}"
+        run, _ = enqueue(web, path + "/runs", snap["snapshot_id"])
+        assert cli("empty-overview") == "succeeded"
+        url = path + "/snapshots/" + snap["snapshot_id"] + "/summary-metrics"
+        foreign, _ = dataset(db, "other-synthetic")
+        assert web.get(url.replace(str(w), str(foreign))).status_code == 404
+        projection = web.get(url, params={"run_id": run, "source_id": s}).json()
+        assert projection["metrics"]["counts"]["observations"] == worker.measure(0, 1)
+        assert projection["metrics"]["eligibility"]["usable_text"] == worker.measure(0, 0)
+        assert projection["context"]["delivery_exclusions"]["invalid_json_item"] == worker.measure(1, 1)
+        db.execute("UPDATE workspace_membership SET state='inactive' WHERE principal_id=%s", (actor,))
+        assert web.get(url).status_code == 404
