@@ -77,8 +77,7 @@ pip install -e .
 python scripts/generate_demo_data.py
 ```
 
-This creates `data/demo_reviews.csv` (1 058 reviews) and a DuckDB database
-at `data/reviewscope.duckdb`.
+This creates synthetic CSV, JSON and metadata files in `data/` (1 058 reviews).
 
 ## Run
 
@@ -88,8 +87,13 @@ streamlit run app.py
 
 ## Run tests
 
+From a test checkout with locally available MiniLM weights:
+
 ```bash
-pytest
+pip install -e '.[api,dev,embeddings]'
+python scripts/generate_demo_data.py
+cp -n demo/reviewscope_demo.duckdb data/reviewscope.duckdb
+HF_HUB_OFFLINE=1 python -m pytest
 ```
 
 Ruff is used for linting:

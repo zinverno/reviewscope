@@ -45,7 +45,7 @@ pydantic==2.13.5
 
 The `embeddings` extra (which pulls in `sentence-transformers` and PyTorch) is **not** installed in the public demo. Precomputed embeddings in the packaged dataset remove the need for model loading entirely. If missing, the app fails loudly with a clear error pointing to this guide.
 
-For local full-featured work: `pip install -e ".[dev,embeddings]"`.
+For local full-featured work, install `pip install -e ".[api,dev,embeddings]"`.
 
 ## Configuration
 
@@ -101,13 +101,15 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 RS_PUBLIC_DEMO=1 streamlit run app.py
 
-# full test suite with embeddings/dev
-pip install -e ".[dev,embeddings]"
-pytest
+# full test suite in a test checkout with locally available weights
+pip install -e ".[api,dev,embeddings]"
+python scripts/generate_demo_data.py
+cp -n demo/reviewscope_demo.duckdb data/reviewscope.duckdb
+HF_HUB_OFFLINE=1 python -m pytest
 ruff check .
 ```
 
-The packaged artifact's integrity is verified by `scripts/build_public_demo_dataset.py verify` (committed `manifest.json` + `file_sha256`).
+The packaged artifact's integrity is verified by `python scripts/build_public_demo_dataset.py --verify` (committed `manifest.json` + `file_sha256`).
 
 ## Security/Privacy
 
