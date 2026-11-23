@@ -165,3 +165,5 @@
 .evidence dd { margin:0; }
 
 .overview-count strong { font: 2.5rem var(--serif); }
+
+.source-text { white-space: pre-wrap; }

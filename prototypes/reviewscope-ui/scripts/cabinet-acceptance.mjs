@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, firefox } from "playwright";
+import { checkSources } from "./overview-sources-acceptance.mjs";
 import { checkPoll } from "./poll-acceptance.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
@@ -375,6 +376,14 @@ async function test(type) {
 			await page.screenshot({
 				path: join(media, "discover-" + type.name() + "-320.png"),
 			});
+		stage = type.name() + " topic and term sources";
+		const sourcesTab = await review.newPage();
+		await checkSources(sourcesTab, origin);
+		await sourcesTab.close();
+		if (media)
+			await sourcesTab
+				.video()
+				.saveAs(join(media, "overview-sources-" + type.name() + ".webm"));
 		stage = type.name() + " finish recording";
 		await review.close();
 	} finally {

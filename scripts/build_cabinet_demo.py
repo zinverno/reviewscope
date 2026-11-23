@@ -8,8 +8,11 @@ from pathlib import Path
 
 from reviewscope.analysis.engine import AnalysisEngine
 from reviewscope.analysis.keywords import (
+    _make_vectorizer,
+    _tokenize,
     emerging_keywords,
     extract_keywords,
+    keyword_periods,
     keywords_by_rating,
     keywords_by_sentiment,
 )
@@ -53,6 +56,62 @@ def ranked_terms(weighted, limit):
     return sorted(weighted, key=lambda term: (-term[1], term[0]))[:limit]
 
 
+def public_review(review):
+    fields = {"text": review.text, "rating": review.rating, "date": review.published_at}
+    return {**fields, "version": result_id([DEMO_SHA, review.place_id, review.review_id, fields])}
+
+
+def write_sources(place, overview):
+    reviews = place.reviews
+    groups = {
+        "keywords": (reviews, overview["keywords"]),
+        "positive": (
+            [r for r in reviews if r.rating is not None and r.rating >= 4],
+            overview["positive"],
+        ),
+        "negative": (
+            [r for r in reviews if r.rating is not None and r.rating <= 2],
+            overview["negative"],
+        ),
+        "emerging": (keyword_periods(reviews)[1], overview["emerging"]),
+    }
+    for star, weights in overview["by_rating"].items():
+        groups[f"star-{star}"] = ([r for r in reviews if r.rating == star], weights)
+    matches = {}
+    analyze = _make_vectorizer().build_analyzer()
+    for group, (sample, weighted) in groups.items():
+        selection = {term: [] for term, _ in weighted}
+        texts = [r for r in sample if (r.text or "").strip()]
+        tokenize = _tokenize if len(texts) == 1 and group != "emerging" else analyze
+        for review in texts:
+            for term in selection.keys() & set(tokenize(review.text)):
+                selection[term].append(review.review_id)
+        matches[group] = selection
+    doc = {
+        "place": place.place_id,
+        "snapshot": DEMO_SHA,
+        "topics": {str(t.cluster_id): t.review_ids for t in place.clusters},
+        "terms": matches,
+        "reviews": {
+            r.review_id: {
+                **r.model_dump(exclude={"text", "rating", "published_at", "place_id", "review_id"}),
+                **public_review(r),
+            }
+            for r in reviews
+        },
+    }
+    digest = result_id(doc)
+    directory = OUTPUT.parent / "overview-sources"
+    directory.mkdir(exist_ok=True)
+    (directory / (place.place_id + ".json")).write_text(
+        json.dumps(
+            {"result": digest, **doc}, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
+        + "\n"
+    )
+    return digest
+
+
 def build():
     with public_engine() as (store, engine):
         discover = build_dataset_summary(store, engine)
@@ -90,8 +149,9 @@ def build():
                     ],
                 }
             )
+            places[-1]["source_result"] = write_sources(place, places[-1])
     data = {
-        "contract": "public-demo-overview-v1",
+        "contract": "public-demo-overview-v2",
         "snapshot": DEMO_SHA,
         "encoding": FROZEN_ID,
         "producer": "AnalysisEngine / build_dataset_summary / reviewscope.analysis.keywords",

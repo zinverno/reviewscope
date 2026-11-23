@@ -2,10 +2,13 @@
 
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from reviewscope.analysis.keywords import (
+    _make_vectorizer,
+    _tokenize,
     emerging_keywords,
     extract_keywords,
     keywords_by_rating,
@@ -70,3 +73,65 @@ def test_public_overview_parity():
                 tied = ["место сервис", "обстановка", "отличное", "отличное место", "ставлю"]
                 assert len({weights[t] for t in tied}) == 1
                 assert [t for t, _ in row["positive"] if t in tied] == sorted(tied)[:2]
+
+
+def test_public_sources_membership_and_versions():
+    overview = json.loads(OUTPUT.read_bytes())
+    assert overview["contract"] == "public-demo-overview-v2"
+    assert len(overview["places"]) == 12
+    with public_engine() as (_, engine):
+        for entry in overview["places"]:
+            place = entry["id"]
+            doc = json.loads((OUTPUT.parent / "overview-sources" / (place + ".json")).read_bytes())
+            assert doc.pop("result") == entry["source_result"] == result_id(doc)
+            assert doc["place"] == place and doc["snapshot"] == DEMO_SHA
+            result = engine.analyze(place)
+            reviews = result.reviews
+            assert doc["topics"] == {str(t.cluster_id): t.review_ids for t in result.clusters}
+            assert set(doc["reviews"]) == {r.review_id for r in reviews}
+            for r in reviews:
+                expected = {"text": r.text, "rating": r.rating, "date": r.published_at}
+                saved = doc["reviews"][r.review_id].copy()
+                assert saved.pop("version") == result_id([DEMO_SHA, place, r.review_id, expected])
+                assert saved == expected | r.model_dump(
+                    exclude={"review_id", "place_id", "published_at", "text", "rating"}
+                )
+            dates = {
+                r.review_id: datetime.fromisoformat(r.published_at)
+                for r in reviews
+                if r.published_at
+            }
+            dates = {
+                key: (d.astimezone(UTC).replace(tzinfo=None) if d.tzinfo else d)
+                for key, d in dates.items()
+            }
+            recent = {
+                key for key, d in dates.items() if d >= max(dates.values()) - timedelta(days=30)
+            }
+            for group, terms in doc["terms"].items():
+                sample = [r for r in reviews if (r.text or "").strip()]
+                if group == "emerging":
+                    sample = [r for r in sample if r.review_id in recent]
+                elif group == "positive":
+                    sample = [r for r in sample if r.rating is not None and r.rating >= 4]
+                elif group == "negative":
+                    sample = [r for r in sample if r.rating is not None and r.rating <= 2]
+                elif group.startswith("star-"):
+                    sample = [r for r in sample if r.rating == int(group[-1])]
+                else:
+                    assert group == "keywords"
+                weighted = (
+                    entry["by_rating"][group[-1]] if group.startswith("star-") else entry[group]
+                )
+                assert set(terms) == {term for term, _ in weighted}
+                analyze = (
+                    _tokenize
+                    if len(sample) == 1 and group != "emerging"
+                    else _make_vectorizer().build_analyzer()
+                )
+                tokens = {r.review_id: set(analyze(r.text)) for r in sample}
+                for term, ids in terms.items():
+                    assert ids == [rid for rid, words in tokens.items() if term in words]
+            if place == "p1":
+                assert "r00066" in doc["topics"]["3"]
+                assert not any("r00066" in g.review_ids for g in result.duplicate_groups)

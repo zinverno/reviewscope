@@ -1,6 +1,6 @@
 {
- "run": "6dfa0532d115aea0f374f4331713e65e2357722fc51ddcdd587fe995fccb8847",
- "contract": "public-demo-overview-v1",
+ "run": "9bc1ca105565bad5210235e0505140fa94b52c8cc9ce40720ba90ef7e16cfb11",
+ "contract": "public-demo-overview-v2",
  "snapshot": "85ca0756ca60f56c735360ab46632d8893287635e7fec1a28548f97dae5fcfe2",
  "encoding": "rs-frozen-demo:b04e06b7cae1d945cb5b898ef9a969f4349cec092f9ee6b70ea18fa979e2385b",
  "producer": "AnalysisEngine / build_dataset_summary / reviewscope.analysis.keywords",
@@ -419,7 +419,8 @@
       "великолепно каждая"
      ]
     }
-   ]
+   ],
+   "source_result": "1730d216674f5ccdf3a18a9a562b38eb11e6dc9fef89d0ead983b5df15642654"
   },
   {
    "id": "p10",
@@ -649,7 +650,8 @@
      ]
     ]
    },
-   "topics": []
+   "topics": [],
+   "source_result": "78fb39c6adddedda879575d48bf902f594caf5980c2f85df1a551b0aa74d4e33"
   },
   {
    "id": "p11",
@@ -879,7 +881,8 @@
      ]
     ]
    },
-   "topics": []
+   "topics": [],
+   "source_result": "a30d3c3cbea12ffcc66d00dfa9cb498a79ecfd6a99e6eb474b25f62c33335299"
   },
   {
    "id": "p12",
@@ -1142,7 +1145,8 @@
      ]
     ]
    },
-   "topics": []
+   "topics": [],
+   "source_result": "310592cf056eafdff76053dd31c0192dedc6e1063cc8915e57f02d1418790b40"
   },
   {
    "id": "p2",
@@ -1535,7 +1539,8 @@
       "понравилось"
      ]
     }
-   ]
+   ],
+   "source_result": "91e30503ce230d77d0b5a90a4aa0d0f778e8e376339c182293b02e6b7719c984"
   },
   {
    "id": "p3",
@@ -1939,7 +1944,8 @@
       "приём стоматолога"
      ]
     }
-   ]
+   ],
+   "source_result": "4607c6e0aba126a09657afa6753872977176a83bd593522d7bf6ca57e4aaf2af"
   },
   {
    "id": "p4",
@@ -2332,7 +2338,8 @@
       "нормальной"
      ]
     }
-   ]
+   ],
+   "source_result": "66776c05b6a9d87d69ec5961c86ee28ff6afe2b69bccf8c68d5ecebea5fbd0f0"
   },
   {
    "id": "p5",
@@ -2725,7 +2732,8 @@
       "советую"
      ]
     }
-   ]
+   ],
+   "source_result": "ec87bde729ef89075c85b58974e8f8e92728693bd7d1d8e7a97ab314b3e10a0d"
   },
   {
    "id": "p6",
@@ -3118,7 +3126,8 @@
       "оплатил"
      ]
     }
-   ]
+   ],
+   "source_result": "f285d11ff5db3e2777a5f87f0b8e504c764fc6bd5db1fc2c2074377465f5f3dd"
   },
   {
    "id": "p7",
@@ -3348,7 +3357,8 @@
      ]
     ]
    },
-   "topics": []
+   "topics": [],
+   "source_result": "8c7ccfcdab75599959554587725d9c524359e0e6d81b6e0b3b7940fc72fadf73"
   },
   {
    "id": "p8",
@@ -3578,7 +3588,8 @@
      ]
     ]
    },
-   "topics": []
+   "topics": [],
+   "source_result": "e298131539398ed636bd9bc6bd0243d6eed73e503acf5eda4089218fae1ae62e"
   },
   {
    "id": "p9",
@@ -3841,7 +3852,8 @@
      ]
     ]
    },
-   "topics": []
+   "topics": [],
+   "source_result": "be4879e187ce55f3e3a95727ae611e2261dc14cf71d90573dd93d39531e6848e"
   }
  ]
 }

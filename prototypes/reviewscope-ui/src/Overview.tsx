@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import {
+	OverviewSources,
+	UnknownSelection,
+	overviewAddress,
+} from "./OverviewSources";
 import demo from "./overview.synthetic.json";
 import { evidenceFields } from "./ReviewEvidence";
 
@@ -266,26 +271,75 @@ export function SnapshotOverview({
 		</section>
 	);
 }
-function terms(values: (string | number)[][]) {
-	return values.map((row) => row[0]).join(" · ") || "Нет выделенных терминов";
-}
 export function LegacyOverview({ search }: { search: string }) {
 	const q = new URLSearchParams(search),
 		id = q.get("place") ?? "p1";
-	if ([...q.keys()].some((k) => !["view", "place", "ranking"].includes(k)))
-		return (
-			<p role="alert">
-				Область публичного демо не совпадает с запросом.{" "}
-				<a href="/cabinet/?view=legacy">Открыть публичную синтетику</a>
-			</p>
-		);
-	const ranking = q.get("ranking") === "five" ? "five" : "one";
+	const valid = [
+		"view",
+		"place",
+		"ranking",
+		"dataset",
+		"result",
+		"group",
+		"item",
+		"page",
+		"review",
+		"version",
+	];
+	const scoped = [
+		"dataset",
+		"result",
+		"group",
+		"item",
+		"page",
+		"review",
+		"version",
+	].some((k) => q.has(k));
+	const selection = ["group", "item", "page", "review", "version"].some((k) =>
+		q.has(k),
+	);
+	const ranking = q.get("ranking") ?? "one";
+	if (
+		[...q.keys()].some((k) => !valid.includes(k) || q.getAll(k).length !== 1) ||
+		!["one", "five"].includes(ranking) ||
+		(scoped &&
+			(q.get("dataset") !== demo.snapshot || q.get("result") !== demo.run)) ||
+		(selection && (!q.has("place") || !q.get("group") || !q.get("item")))
+	)
+		return <UnknownSelection />;
 	const metric = ranking === "five" ? "five_star_share" : "one_star_share";
 	const rankLabel = ranking === "five" ? "Доля 5 ★" : "Доля 1 ★";
-	const address = (p: string, rank: string) =>
-		"/cabinet/?" +
-		new URLSearchParams({ view: "legacy", place: p, ranking: rank });
+	const address = overviewAddress;
 	const place = demo.places.find((p) => p.id === id);
+	if (!place) return <UnknownSelection />;
+	if (selection)
+		return (
+			<OverviewSources
+				key={id}
+				place={id}
+				ranking={ranking}
+				query={q}
+				digest={place.source_result}
+			/>
+		);
+	function terms(group: string, values: (string | number)[][]) {
+		return values.length
+			? values.map(([term], i) => (
+					<span key={term}>
+						{i > 0 && " · "}
+						<a
+							href={address(id, ranking, {
+								group,
+								item: String(term),
+								page: "1",
+							})}
+						>
+							{term}
+						</a>
+					</span>
+				))
+			: "Нет выделенных терминов";
+	}
 	return (
 		<section>
 			<a href="/cabinet/">Вернуться в кабинет</a>
@@ -323,8 +377,16 @@ export function LegacyOverview({ search }: { search: string }) {
 						<ul>
 							{place.topics.map((t) => (
 								<li key={t.id}>
-									{t.phrases.join(" · ") || "Без выделенных фраз"} — {t.count}{" "}
-									отзывов
+									<a
+										href={address(id, ranking, {
+											group: "topic",
+											item: String(t.id),
+											page: "1",
+										})}
+									>
+										Тема {t.id} · {t.count} отзывов
+									</a>{" "}
+									— {t.phrases.join(" · ") || "Без выделенных фраз"}
 								</li>
 							))}
 						</ul>
@@ -332,20 +394,24 @@ export function LegacyOverview({ search }: { search: string }) {
 						<p>Ядро не выделило тем.</p>
 					)}
 					<h3>Ключевые слова</h3>
-					<p>{terms(place.keywords)}</p>
+					<p>{terms("keywords", place.keywords)}</p>
 					<h3>Новые термины</h3>
-					<p>{terms(place.emerging)}</p>
+					<p>{terms("emerging", place.emerging)}</p>
 					<details>
 						<summary>Тональность по оценке и ключевые слова по звёздам</summary>
-						<p>Положительная группа (4–5 ★): {terms(place.positive)}</p>
-						<p>Отрицательная группа (1–2 ★): {terms(place.negative)}</p>
+						<p>
+							Положительная группа (4–5 ★): {terms("positive", place.positive)}
+						</p>
+						<p>
+							Отрицательная группа (1–2 ★): {terms("negative", place.negative)}
+						</p>
 						<p>
 							Группы определяются оценкой автора. У отзывов с 3 ★ и без оценки
 							здесь нет тональной группы.
 						</p>
 						{Object.entries(place.by_rating).map(([k, v]) => (
 							<p key={k}>
-								{k} ★ · {terms(v)}
+								{k} ★ · {terms("star-" + k, v)}
 							</p>
 						))}
 					</details>
