@@ -26,6 +26,13 @@ jobs:
           python -VV
           python -m pytest -q tests/test_access.py
           bash operational/test-postgres.sh
+      - name: Export local TLS workspace OpenAPI
+        run: |
+          python -c 'import json; from reviewscope.access.http import create_app; print(json.dumps(create_app().openapi(), sort_keys=True, indent=2))' > workspace-openapi.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workspace-openapi
+          path: workspace-openapi.json
 
   test:
     runs-on: ubuntu-latest

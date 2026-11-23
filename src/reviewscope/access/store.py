@@ -48,7 +48,7 @@ def transaction(engine):
                     AND NOT has_schema_privilege(current_user,'public','CREATE')
                     AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
                     AND (SELECT array_agg(version_num) FROM public.alembic_version)
-                        = ARRAY['0004_delivery_history']::varchar[]
+                        = ARRAY['0005_background_jobs']::varchar[]
                     AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
                     AND to_regclass('public.password_credential') IS NOT NULL
                     AND to_regclass('public.access_session') IS NOT NULL
@@ -111,3 +111,28 @@ def metadata(cur, resource, workspace, object_id: UUID | None, offset):
     if row is None:
         raise HTTPException(404)
     return row
+
+
+def job_status(cur, workspace, *, run=None, snapshot=None):
+    # A published artifact's read policy also checks the run's workspace policy.
+    condition = (
+        "j.id=%s"
+        if run is not None
+        else (
+            "j.snapshot_id=%s AND j.job_kind='snapshot_integrity_and_summary_v1' AND j.status='succeeded'"
+        )
+    )
+    cur.execute(
+        f"""SELECT j.id,j.snapshot_id,j.status,j.job_kind,j.engine_version,j.definition_version,
+            j.model_version,j.attempt,j.stage,j.processed,j.total,j.reason,j.cancel_requested,
+            j.finished_at,a.id AS artifact_id,a.checksum AS sha256,a.size_bytes
+            FROM analysis_run j LEFT JOIN artifact a ON (a.workspace_id,a.run_id,a.id)=
+                (j.workspace_id,j.id,j.output_artifact_id)
+            WHERE j.workspace_id=%s AND j.stage IS NOT NULL AND {condition}
+            ORDER BY j.finished_at DESC,j.id DESC LIMIT 1""",
+        (workspace, run if run is not None else snapshot),
+    )
+    value = cur.fetchone()
+    if value is None:
+        raise HTTPException(404)
+    return value

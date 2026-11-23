@@ -87,7 +87,7 @@ def import_demo(workspace: UUID, source: UUID, *, apply=False, object_root: Path
         cur.execute("SELECT version_num FROM alembic_version")
         revision, = cur.fetchone()
         historical = revision in {"0001_operational", "0002_principals", "0003_workspace_access"}
-        if not historical and revision != "0004_delivery_history":
+        if not historical and revision not in {"0004_delivery_history", "0005_background_jobs"}:
             raise ValueError("unsupported operational revision")
         cur.execute("""INSERT INTO import_batch
                        (workspace_id,source_id,id,file_sha256,procedure_version,status,

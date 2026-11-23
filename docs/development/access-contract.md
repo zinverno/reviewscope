@@ -44,3 +44,7 @@
 Тело ошибки содержит только `error`. Коды — 400 invalid_host, 401 unauthenticated, 403 forbidden, 404 not_found, 405 method_not_allowed, 413 request_too_large, 422 invalid_request, 429 rate_limited, 500 internal_error, 503 access_unavailable. 503 возникает при непригодной конфигурации ключа, подключении, ревизии, профиле роли или ошибке запроса к схеме. Доступ закрыт до исправления причины. Открытая синтетика живёт в другом процессе.
 
 Исторические статусы **BLOCKED_REAL_SOURCE**, **BLOCKED_CLIENT_PILOT**. Статус PR **NEEDS_AUTHZ_REVIEW**.
+
+## Roadmap PR-11 · Фоновые заявки
+
+Ревизия 0005 добавляет идемпотентный запуск, статус и отмену в локальном API 8001, отдельный worker и атомарную публикацию числовой сводки. Исторические снимки и краткие GET остаются доступными. **NEEDS_WORKER_CONTRACT_REVIEW · BLOCKED_REAL_SOURCE · BLOCKED_CLIENT_PILOT**. [Контракт и границы расчёта](worker-contract.md) · [Запуск и восстановление](worker-operations.md)

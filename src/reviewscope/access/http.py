@@ -31,6 +31,7 @@ ERRORS = {
     403: "forbidden",
     404: "not_found",
     405: "method_not_allowed",
+    409: "job_conflict",
     413: "request_too_large",
     422: "invalid_request",
     429: "rate_limited",
@@ -90,6 +91,49 @@ class Run(Strict):
     status: str
 
 
+class JobRequest(Strict):
+    snapshot_id: UUID
+    idempotency_key: UUID
+    job_kind: str = Field(min_length=1, max_length=64)
+    engine_version: str = Field(min_length=1, max_length=32)
+
+
+class JobStatus(Run):
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    job_kind: str
+    engine_version: str
+    definition_version: str
+    model_version: str
+    attempt: int
+    stage: Literal["queued", "verify", "summarize", "publish"]
+    processed: int
+    total: int | None
+    reason: (
+        Literal[
+            "CANCELLED",
+            "ACCESS_REVOKED",
+            "LEASE_EXPIRED",
+            "STORAGE_UNAVAILABLE",
+            "WORKER_STOPPED",
+            "INTEGRITY_ERROR",
+            "UNSUPPORTED_FORMAT",
+            "RESOURCE_LIMIT",
+            "UNSUPPORTED_VERSION",
+            "INTERNAL_ERROR",
+        ]
+        | None
+    )
+    cancel_requested: bool
+    finished_at: datetime | None
+    artifact_id: UUID | None
+    sha256: str | None
+    size_bytes: int | None
+
+
+class JobErrorResponse(Strict):
+    error: str
+
+
 def create_app():
     engine = store.pool()
     local = os.environ.get("RS_ACCESS_HTTP_LOOPBACK") == "1"
@@ -121,6 +165,12 @@ def create_app():
 
     @app.exception_handler(RequestValidationError)
     async def invalid(request, exc):
+        if any(
+            e["type"].startswith("uuid_")
+            and (e["loc"][0] == "path" or e["loc"] == ("body", "snapshot_id"))
+            for e in exc.errors()
+        ):
+            return error(404)
         return error(422)
 
     @app.middleware("http")
@@ -152,7 +202,7 @@ def create_app():
                 size += len(chunk)
                 if size > 4096:
                     raise HTTPException(413)
-                if chunk and (not changing or request.url.path.endswith("/logout")):
+                if chunk and (not changing or request.url.path.endswith(("/logout", "/cancel"))):
                     raise HTTPException(422)
                 if chunk:
                     body.extend(chunk)
@@ -259,6 +309,100 @@ def create_app():
 
     for resource, model in (("sources", Source), ("snapshots", Snapshot), ("runs", Run)):
         register_metadata(resource, model)
+
+    job_path = ROOT + "/workspaces/{workspace}/runs"
+    errors = {
+        status: {"model": JobErrorResponse, "description": ERRORS[status]}
+        for status in (400, 401, 403, 404, 409, 413, 422, 429, 503)
+    }
+
+    session_parameter = {
+        "name": cookie,
+        "in": "cookie",
+        "required": True,
+        "schema": {"type": "string"},
+    }
+    read_contract = {"parameters": [session_parameter]}
+    write_contract = {
+        "parameters": [
+            session_parameter,
+            {
+                "name": "Origin",
+                "in": "header",
+                "required": True,
+                "schema": {"type": "string", "enum": [origin]},
+            },
+            {
+                "name": "X-RS-CSRF",
+                "in": "header",
+                "required": True,
+                "schema": {"type": "string", "enum": ["1"]},
+            },
+        ]
+    }
+
+    @app.post(
+        job_path,
+        status_code=202,
+        responses={200: {"model": JobStatus}, **errors},
+        openapi_extra=write_contract,
+    )
+    def enqueue(
+        workspace: UUID,
+        data: JobRequest,
+        request: Request,
+        response: Response,
+        _: Annotated[Strict, Query()],
+    ) -> JobStatus:
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "start_analysis")
+            cur.execute(
+                "SELECT * FROM enqueue_job(%s,%s,%s,%s,%s)",
+                (
+                    workspace,
+                    data.snapshot_id,
+                    data.idempotency_key,
+                    data.job_kind,
+                    data.engine_version,
+                ),
+            )
+            result = cur.fetchone()
+            if result["code"] not in (200, 202):
+                raise HTTPException(result["code"])
+            response.status_code = result["code"]
+            return store.job_status(cur, workspace, run=result["run_id"])
+
+    @app.get(job_path + "/{run_id}/status", responses=errors, openapi_extra=read_contract)
+    def job_status(
+        workspace: UUID, run_id: UUID, request: Request, _: Annotated[Strict, Query()]
+    ) -> JobStatus:
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "read")
+            return store.job_status(cur, workspace, run=run_id)
+
+    @app.post(job_path + "/{run_id}/cancel", responses=errors, openapi_extra=write_contract)
+    def cancel(
+        workspace: UUID, run_id: UUID, request: Request, _: Annotated[Strict, Query()]
+    ) -> JobStatus:
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "start_analysis")
+            cur.execute("SELECT cancel_job(%s,%s) AS status", (workspace, run_id))
+            status = cur.fetchone()["status"]
+            if status != 200:
+                raise HTTPException(status)
+            return store.job_status(cur, workspace, run=run_id)
+
+    @app.get(
+        ROOT + "/workspaces/{workspace}/snapshots/{snapshot_id}/latest-summary",
+        responses=errors,
+        openapi_extra=read_contract,
+    )
+    def latest_summary(
+        workspace: UUID, snapshot_id: UUID, request: Request, _: Annotated[Strict, Query()]
+    ) -> JobStatus:
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "read")
+            return store.job_status(cur, workspace, snapshot=snapshot_id)
 
     @app.patch(ROOT + "/workspaces/{workspace}/members/{subject}", status_code=204)
     def change(
