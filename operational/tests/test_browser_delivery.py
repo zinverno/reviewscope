@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 
 import psycopg
+import pytest
 from fastapi.testclient import TestClient
 
 from operational.tests.test_access import CSRF, ORIGIN, ROOT, key, login  # noqa: F401
@@ -25,6 +26,7 @@ def importer(tmp_path, monkeypatch):
     monkeypatch.setenv("RS_UPLOAD_SOCKET", str(path))
     env = os.environ.copy()
     env.pop("RS_ACCESS_KEY_FILE", None)
+    env["PGPASSFILE"] = os.path.join(env["PGHOST"], "rs_upload.pass")
     proc = subprocess.Popen([sys.executable, "-m", "operational.browser_import"], env=env)
     try:
         for _ in range(200):
@@ -96,6 +98,77 @@ def test_browser_delivery(db, tmp_path, monkeypatch, key):  # noqa: F811
         assert post(web, "preview").status_code == 403
         assert web.get(path).status_code == 403
 
+        db.execute(
+            "UPDATE workspace_membership SET role='owner' WHERE workspace_id=%s AND principal_id=%s",
+            (w, owner),
+        )
+        verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, path)
+
+
+def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_url):
+    from zipfile import ZipFile
+
+    from psycopg import sql
+
+    from operational.retention import capture_access, recover
+    from operational.tests.conftest import freeze_objects, generation, prepare_copy
+    from operational.tests.test_retention import ask, fresh_restore_cluster, operator
+    from operational.tests.test_worker import cli, enqueue
+    from reviewscope.access.ledger import read_witness
+
+    snapshot = web.get(draft_url).json()["snapshot_id"]
+    path = f"{ROOT}/workspaces/{w}"
+    enqueue(web, path + "/runs", snapshot)
+    assert cli("browser-summary") == "succeeded"
+    metrics_url = path + f"/snapshots/{snapshot}/summary-metrics"
+    assert web.get(metrics_url).json()["metrics"]["counts"]["observations"] == {
+        "numerator": 3,
+        "denominator": 3,
+    }
+    req = ask(web, w, "source", s, "export")
+    handoff = tmp_path / "handoff"
+    handoff.mkdir(mode=0o700)
+    operator("export", "--request", req["id"], "--root", root, "--owner-handoff", handoff)
+    with ZipFile(handoff / (req["id"] + ".zip")) as zipped:
+        row = zipped.read("rows/browser_delivery.jsonl")
+        assert b"diagnostics" in row and b"approval" not in row and b"session" not in row
+    archive = tmp_path / "old.dump"
+    subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
+    frozen = freeze_objects(root, tmp_path, [w])
+    erase = ask(web, w, "source", s, "erase")
+    assert (
+        erase["report"]["tables"]["browser_delivery"]
+        == erase["report"]["tables"]["browser_admission"]
+        == 1
+    )
+    operator(
+        "confirm",
+        "--request",
+        erase["id"],
+        "--preview-sha256",
+        erase["preview_sha"],
+        "--root",
+        root,
+    )
+    assert web.get(draft_url).status_code == web.get(metrics_url).status_code == 404
+    assert db.execute("SELECT count(*) FROM browser_summary").fetchone() == (0,)
+    assert operator("purge", "--request", erase["id"], "--root", root) == "completed"
+    proof, access = read_witness()["sha256"], capture_access(db)
+    with (
+        fresh_restore_cluster(monkeypatch, archive) as (_, name),
+        psycopg.connect("", autocommit=True) as target,
+    ):
+        target.execute(
+            sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
+        )
+        restored = generation("browser")
+        token = prepare_copy(target, frozen, restored, proof, access)
+        recover(target, proof, [token], access)
+        assert target.execute(
+            "SELECT (SELECT count(*) FROM browser_delivery),(SELECT count(*) FROM browser_admission)"
+        ).fetchone() == (0, 0)
+        assert operator("purge", "--request", erase["id"], "--root", restored) == "completed"
+
 
 def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
     """Drive the built cabinet against the TLS launcher, live broker and bounded worker."""
@@ -104,7 +177,7 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
 
     from operational.tests.test_deliveries import json_input
 
-    _, _root, w, s = command(db, tmp_path)
+    _, object_root, w, s = command(db, tmp_path)
     db.execute(
         "UPDATE location SET name=sl.external_place_id FROM source_location sl WHERE location.id=sl.location_id"
     )
@@ -164,10 +237,49 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
     assert (ui / "dist/cabinet.html").is_file(), (
         "Build the cabinet before its native acceptance test"
     )
+    staging = tmp_path / "http-stage"
+    staging.mkdir(mode=0o700)
+    monkeypatch.setenv("RS_CABINET_STAGING", str(staging))
+    frontend = os.environ | {
+        "RS_ACCESS_TLS_CERT": str(cert),
+        "RS_ACCESS_TLS_KEY": str(tls),
+        "PGPASSFILE": os.path.join(os.environ["PGHOST"], "rs_runtime.pass"),
+    }
+    with pytest.raises(psycopg.OperationalError):
+        psycopg.connect(user="rs_upload", passfile=frontend["PGPASSFILE"])
+    private_object = object_root / "synthetic-private"
+    private_object.write_bytes(b"synthetic")
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import os, sys, tempfile
+from reviewscope.access.cabinet_sandbox import confine
+confine()
+for file, mode in [(sys.argv[1], os.O_RDONLY), (os.environ['RS_RETENTION_LEDGER'], os.O_WRONLY),
+                   (sys.argv[2], os.O_RDONLY)]:
+    try:
+        fd = os.open(file, mode)
+    except PermissionError:
+        continue
+    os.close(fd)
+    raise SystemExit('cabinet_file_boundary')
+with tempfile.TemporaryFile() as stage:
+    assert os.fstat(stage.fileno()).st_mode & 0o777 == 0o600
+    assert os.fstat(stage.fileno()).st_nlink == 0
+    stage.write(b'synthetic')
+""",
+            str(private_object),
+            os.path.join(os.environ["PGHOST"], "harness.pass"),
+        ],
+        env=frontend,
+        check=True,
+    )
     with importer(tmp_path, monkeypatch):
         access = subprocess.Popen(
             [sys.executable, "-m", "reviewscope.access"],
-            env=os.environ | {"RS_ACCESS_TLS_CERT": str(cert), "RS_ACCESS_TLS_KEY": str(tls)},
+            env=frontend | {"RS_UPLOAD_SOCKET": os.environ["RS_UPLOAD_SOCKET"]},
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -231,3 +343,157 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
             "SELECT input_count,accepted_count,rejected_count,confirmed_duplicate_count FROM import_batch"
         ).fetchall()
     ) == [(3, 3, 0, 0), (6, 6, 0, 0), (12, 6, 5, 1)]
+
+
+def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811
+    import logging
+    from threading import Event
+
+    from reviewscope.access import upload_wire
+    from reviewscope.import_preview.contract import MAX_BYTES, MAX_CONFIG, MAX_ROWS
+
+    _, store_root, w, s = command(db, tmp_path)
+    pw = secrets.token_urlsafe(20)
+    actor = provision(db, "audit-analyst", pw, key, workspace=w, role="analyst")
+    caplog.set_level(logging.INFO, logger="reviewscope.access.requests")
+    loc = str(
+        db.execute(
+            "SELECT location_id FROM source_location WHERE source_id=%s AND external_place_id='p1'",
+            (s,),
+        ).fetchone()[0]
+    )
+    base = f"{ROOT}/workspaces/{w}/sources/{s}/uploads/"
+    marker = "private-fixture-" + uuid4().hex
+
+    def posting(web, path, parts, **changes):
+        mapping, passport, raw = parts
+        headers = (
+            CSRF
+            | {
+                "content-type": "application/octet-stream",
+                "x-rs-parts": ",".join(str(len(b)) for b in parts),
+                "x-rs-format": "csv",
+                "x-rs-locations": loc,
+                "x-rs-file-sha256": hashlib.sha256(raw).hexdigest(),
+            }
+            | changes
+        )
+        return web.post(path, headers=headers, content=iter((mapping, passport, raw)))
+
+    parts = [(FIX / f).read_bytes() for f in ("mapping.json", "a.passport.json", "a.csv")]
+    db.execute(
+        "INSERT INTO browser_admission VALUES(%s,%s,%s)",
+        (w, s, hashlib.sha256(parts[-1]).hexdigest()),
+    )
+    with importer(tmp_path, monkeypatch), TestClient(create_app(), base_url=ORIGIN) as web:
+        url = base + str(uuid4())
+        assert login(web, "audit-analyst", pw).status_code == 204
+        assert (
+            posting(web, url + "/preview", parts, **{"Origin": "https://invalid.test"}).status_code
+            == 403
+        )
+        assert posting(web, url + "/preview", parts, **{"Host": "invalid.test"}).status_code == 400
+        assert (
+            posting(
+                web, url + "/preview", parts, **{"x-rs-parts": f"1,1,{MAX_BYTES + 1}"}
+            ).status_code
+            == 413
+        )
+        assert (
+            posting(
+                web, url + "/preview", parts, **{"x-rs-parts": f"{MAX_CONFIG + 1},1,1"}
+            ).status_code
+            == 413
+        )
+        assert posting(web, url + "/preview", parts, **{"x-rs-parts": "1,1,1"}).status_code == 413
+        assert (
+            posting(web, url + "/preview", parts, **{"x-rs-locations": str(uuid4())}).status_code
+            == 404
+        )
+        assert (
+            posting(web, url + "/preview", parts, **{"x-rs-file-sha256": "/" + marker}).status_code
+            == 422
+        )
+        invalid = posting(web, url + "/preview", [('{"' + marker + '":"x"}').encode(), *parts[1:]])
+        assert (
+            invalid.status_code == 422 and marker not in invalid.text and marker not in caplog.text
+        )
+        for wrong in (url.replace(str(w), str(uuid4())), url.replace(str(s), str(uuid4()))):
+            assert posting(web, wrong + "/preview", parts).json() == {"error": "not_found"}
+        result = posting(web, url + "/preview", parts)
+        assert result.status_code == 200, result.text
+        entered, release = Event(), Event()
+        original = upload_wire.commit
+
+        def after_approval(message, blobs):
+            entered.set()
+            assert release.wait(10)
+            return original(message, blobs)
+
+        with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=1) as pool:
+            patch.setattr(upload_wire, "commit", after_approval)
+            future = pool.submit(
+                posting,
+                web,
+                url + "/confirm",
+                parts,
+                **{"x-rs-fingerprint": result.json()["fingerprint"]},
+            )
+            try:
+                assert entered.wait(10)
+                db.execute(
+                    "UPDATE workspace_membership SET state='inactive' WHERE workspace_id=%s AND principal_id=%s",
+                    (w, actor),
+                )
+            finally:
+                release.set()
+            assert future.result().status_code == 404
+        assert not list(store_root.iterdir()) and db.execute(
+            "SELECT count(*) FROM snapshot"
+        ).fetchone() == (0,)
+        db.execute(
+            "UPDATE workspace_membership SET state='active' WHERE workspace_id=%s AND principal_id=%s",
+            (w, actor),
+        )
+        db.execute("UPDATE browser_delivery SET expires_at=now()-interval '1 minute'")
+        assert web.get(url).status_code == 404
+        assert (
+            posting(
+                web, url + "/confirm", parts, **{"x-rs-fingerprint": result.json()["fingerprint"]}
+            ).status_code
+            == 404
+        )
+
+        header = b"id,body\n"
+        width, extra = divmod(MAX_BYTES - len(header) - MAX_ROWS * 7, MAX_ROWS)
+        raw = header + b"".join(
+            b"%05d,%s\n" % (i, b"t" * (width + (i < extra))) for i in range(MAX_ROWS)
+        )
+        assert len(raw) == MAX_BYTES
+        db.execute(
+            "INSERT INTO browser_admission VALUES(%s,%s,%s)",
+            (w, s, hashlib.sha256(raw).hexdigest()),
+        )
+        bounded_url = base + str(uuid4())
+        bounded_parts = [
+            b'{"version":"bounded","fields":{"id":"source_review_id","body":"text"}}',
+            b'{"source":"synthetic","source_place_id":"p1","delimiter":","}',
+            raw,
+        ]
+        report = posting(web, bounded_url + "/preview", bounded_parts)
+        assert report.status_code == 200, report.status_code
+        assert report.json()["diagnostics"]["summary"]["accepted"] == MAX_ROWS
+        assert db.execute("SELECT count(*) FROM browser_delivery").fetchone() == (1,)
+        assert not list(store_root.iterdir())
+        started = time.monotonic()
+        applied = posting(
+            web,
+            bounded_url + "/confirm",
+            bounded_parts,
+            **{"x-rs-fingerprint": report.json()["fingerprint"]},
+        )
+        assert applied.status_code == 200, applied.status_code
+        assert db.execute("SELECT count(*) FROM review_version").fetchone() == (MAX_ROWS,)
+        print(
+            f"Browser confirmation: {MAX_BYTES} bytes, {MAX_ROWS} positions, {time.monotonic() - started:.2f}s"
+        )

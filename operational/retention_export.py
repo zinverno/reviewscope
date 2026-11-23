@@ -114,10 +114,18 @@ def export(conn, rid, root, handoff):
                         count += len(chunk)
                 return {"bytes": count, "sha256": sha.hexdigest()}
 
-            for table, order in TABLES.items():
-                fields = {"workspace": "id,name,state,created_at", "analysis_run": RUN_FIELDS}.get(
-                    table, "*"
+            tables = dict(TABLES)
+            if one(conn, "SELECT to_regclass('public.browser_delivery') IS NOT NULL"):
+                tables["browser_delivery"] = "source_id,id"
+                omissions.extend(
+                    ["browser_admission_authorizations", "browser_confirmation_credentials"]
                 )
+            for table, order in tables.items():
+                fields = {
+                    "workspace": "id,name,state,created_at",
+                    "analysis_run": RUN_FIELDS,
+                    "browser_delivery": "workspace_id,id,source_id,fmt,locations,checksum,fingerprint,diagnostics,expires_at,snapshot_id",
+                }.get(table, "*")
                 with conn.cursor(name="export_rows") as cur:
                     cur.itersize = 64
                     cur.execute(

@@ -21,6 +21,19 @@ class ImportPreview:
     rows: list[CanonicalRow]
     summary: ImportSummary
 
+    def allowed_in_browser(self, source_key, places):
+        return (
+            self.passport.source in (None, source_key)
+            and self.passport.source_place_id in places | {None}
+            and all(
+                r.reviewer_id is None
+                and r.source_url is None
+                and r.source in (None, source_key)
+                and r.source_place_id in places | {None}
+                for r in self.rows
+            )
+        )
+
     def public_report(self):
         return {
             "procedure_version": VERSION,

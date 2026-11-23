@@ -23,6 +23,7 @@ if [[ "${1:-}" != --native-test-volume ]]; then
         fi
         exec /usr/bin/setpriv --inh-caps=-all --ambient-caps=-all --no-new-privs "$@"
     ' fixture "$test_uid" "$test_gid" /usr/bin/env "PATH=$PATH" "PYTHONPATH=${PYTHONPATH:-}" \
+        "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-}" "RS_TEST_BROWSER_OUT=${RS_TEST_BROWSER_OUT:-}" \
         "RS_TEST_PG_MAJOR=${RS_TEST_PG_MAJOR:-}" "$(command -v python)" -m operational.tests.native_volume \
         bash operational/test-postgres.sh --native-test-volume "$@"
 fi
@@ -44,16 +45,14 @@ cleanup() {
     rm -rf -- "$scratch"
 }
 trap cleanup EXIT
+"$python_bin" -m operational.tests.cluster_auth prepare
+export PGPASSFILE="$scratch/harness.pass"
 "$bindir/initdb" -D "$scratch/data" --username="$PGUSER" --encoding=UTF8 --no-locale \
-    --auth-local=trust --auth-host=reject >/dev/null
+    --auth-local=scram-sha-256 --pwfile="$scratch/bootstrap.pass" --auth-host=reject >/dev/null
 "$bindir/pg_ctl" -D "$scratch/data" -l "$scratch/server.log" \
     -o "-k '$scratch' -c listen_addresses='' -c log_min_error_statement=panic -c log_min_messages=panic" -w start >/dev/null
 "$bindir/psql" -XAtc 'SELECT version()'
-"$bindir/psql" -X -v ON_ERROR_STOP=1 -c 'CREATE ROLE rs_migration LOGIN CREATEDB' \
-    -c 'CREATE ROLE rs_runtime LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION' \
-    -c 'CREATE ROLE rs_upload LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION' \
-    -c 'CREATE ROLE rs_retention LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION' \
-    -c 'CREATE ROLE rs_worker LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION'
+"$python_bin" -m operational.tests.cluster_auth create
 export PGUSER=rs_migration
 export RS_TEST_PG_SOCKET="$scratch"
 "$python_bin" -m pytest -o addopts= -q operational/tests "$@"

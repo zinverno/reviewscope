@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
@@ -117,24 +117,120 @@ const mappingDefault = JSON.stringify(
 				"observed_at",
 				"source_url",
 				"reviewer_id",
-			].map((k) => [k, k]),
+			].map((k) => [k, ["reviewer_id", "source_url"].includes(k) ? null : k]),
 		),
 	},
 	null,
 	2,
 );
-const passportDefault = JSON.stringify(
-	{
-		timezone: "Europe/Moscow",
-		rating_scale: [1, 5],
-		event_basis: "published",
-		delimiter: ",",
-	},
-	null,
-	2,
-);
-
+const passportDefault = JSON.stringify({ delimiter: "," }, null, 2);
+type Term = {
+	object_id: string | null;
+	delivery_id: string | null;
+	class: string;
+	policy: string;
+	anchor: string | null;
+	days: number | null;
+	expires_at: string | null;
+	erasure: string | null;
+};
+const classLabels: Record<string, string> = {
+	raw: "Исходные данные",
+	configuration: "Конфигурации",
+	positions: "Позиции",
+	versions: "Версии",
+	snapshot: "Снимки",
+	temporary: "Временные файлы",
+	derivatives: "Производные",
+	report_export: "Отчёты и экспорт",
+	diagnostics: "Диагностика",
+	backup: "Резервные копии",
+};
+function RetentionTerms({ sourceUrl }: { sourceUrl: string }) {
+	const [terms, setTerms] = useState<Term[] | null>(null),
+		[offset, setOffset] = useState(0),
+		[open, setOpen] = useState(false),
+		[error, setError] = useState(false);
+	useEffect(() => {
+		let current = true;
+		if (open) {
+			setTerms(null);
+			setError(false);
+			api<Term[]>(sourceUrl + "?offset=" + offset)
+				.then((v) => {
+					if (current) setTerms(v);
+				})
+				.catch(() => {
+					if (current) setError(true);
+				});
+		}
+		return () => {
+			current = false;
+		};
+	}, [sourceUrl, offset, open]);
+	return (
+		<details onToggle={(e) => setOpen(e.currentTarget.open)}>
+			<summary>Сроки хранения источника</summary>
+			<p>
+				Исчезновение из резервных копий требует проверки
+				(BACKUP_ERASURE_NOT_VERIFIED).
+			</p>
+			{error ? (
+				<p role="alert">Условия недоступны.</p>
+			) : terms ? (
+				<>
+					<table>
+						<thead>
+							<tr>
+								<th>Данные</th>
+								<th>Срок</th>
+								<th>Истечение</th>
+							</tr>
+						</thead>
+						<tbody>
+							{terms.map((t) => (
+								<tr key={JSON.stringify([t.class, t.object_id, t.delivery_id])}>
+									<td>{classLabels[t.class] ?? t.class}</td>
+									<td>
+										{t.policy === "unset"
+											? "Не установлен"
+											: t.days +
+												" дн. · " +
+												({
+													received: "от получения",
+													registered: "от регистрации",
+													created: "от создания",
+												}[t.anchor ?? ""] ?? "")}
+									</td>
+									<td>
+										{t.expires_at
+											? new Date(t.expires_at).toLocaleDateString("ru")
+											: "Неизвестно"}
+										{t.erasure && " · " + t.erasure}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+					{offset > 0 && (
+						<button type="button" onClick={() => setOffset(offset - 50)}>
+							Предыдущие условия
+						</button>
+					)}
+					{terms.length === 50 && (
+						<button type="button" onClick={() => setOffset(offset + 50)}>
+							Следующие условия
+						</button>
+					)}
+				</>
+			) : (
+				<p role="status">Загрузка условий…</p>
+			)}
+		</details>
+	);
+}
 function Cabinet() {
+	const pendingJob = useRef<{ snapshot: string; key: string } | null>(null);
 	const [session, setSession] = useState<Session | null>(null),
 		[ready, setReady] = useState(false),
 		[msg, setMsg] = useState(""),
@@ -153,7 +249,9 @@ function Cabinet() {
 		snapshot = query.get("snapshot") ?? "";
 	const [targets, setTargets] = useState<Target[]>([]),
 		[drafts, setDrafts] = useState<Draft[]>([]),
-		[draft, setDraft] = useState<Draft | null>(null);
+		[loadedDraft, setDraft] = useState<(Draft & { scope: string }) | null>(
+			null,
+		);
 	const [runs, setRuns] = useState<Job[]>([]),
 		[job, setJob] = useState<Job | null>(null),
 		[success, setSuccess] = useState<Job | null>(null);
@@ -167,6 +265,10 @@ function Cabinet() {
 	const [login, setLogin] = useState(""),
 		[password, setPassword] = useState("");
 	const sourcePath = workspace + "/sources/" + source + "/uploads";
+	const draft =
+		loadedDraft?.scope === sourcePath && loadedDraft.id === delivery
+			? loadedDraft
+			: null;
 	const go = (v: Record<string, string>) => {
 		history.pushState(null, "", link(v));
 		setSearch(location.search);
@@ -210,7 +312,6 @@ function Cabinet() {
 	useEffect(() => {
 		let current = true;
 		setDrafts([]);
-		setDraft(null);
 		setPage(0);
 		if (canWrite && source) {
 			api<Draft[]>(sourcePath)
@@ -223,7 +324,7 @@ function Cabinet() {
 			if (delivery)
 				api<Draft>(sourcePath + "/" + delivery)
 					.then((v) => {
-						if (current) setDraft(v);
+						if (current) setDraft({ ...v, scope: sourcePath });
 					})
 					.catch((e) => {
 						if (current) setMsg(e.message);
@@ -251,6 +352,10 @@ function Cabinet() {
 					const v = await api<Job>(workspace + "/runs/" + run + "/status");
 					if (!current) return;
 					setJob(v);
+					setRuns((before) => [
+						v,
+						...before.filter((item) => item.id !== v.id),
+					]);
 					running = ["queued", "running"].includes(v.status);
 				}
 				if (snapshot) {
@@ -318,6 +423,13 @@ function Cabinet() {
 			),
 		};
 		if (confirm && draft) headers["X-RS-Fingerprint"] = draft.fingerprint;
+		await api(
+			sourcePath + "/eligibility",
+			jsonPost({
+				checksum: headers["X-RS-File-Sha256"],
+				locations: [...locs].sort(),
+			}),
+		);
 		const current = location.search;
 		const v = await api<Draft>(
 			sourcePath + "/" + id + "/" + (confirm ? "confirm" : "preview"),
@@ -333,13 +445,17 @@ function Cabinet() {
 				run: "",
 			});
 		}
-		setDraft(v);
+		setDraft({ ...v, scope: sourcePath });
 		setPage(0);
 		setValid(!confirm);
 		setDrafts(await api<Draft[]>(sourcePath));
 	}
 	async function start() {
-		const id = crypto.randomUUID();
+		const id =
+			pendingJob.current?.snapshot === snapshot
+				? pendingJob.current.key
+				: crypto.randomUUID();
+		pendingJob.current = { snapshot, key: id };
 		const result = await api<Job>(
 			workspace + "/runs",
 			jsonPost({
@@ -349,6 +465,7 @@ function Cabinet() {
 				engine_version: "1",
 			}),
 		);
+		pendingJob.current = null;
 		go({ run: result.id });
 	}
 	const locations = targets.filter((t) => t.source_id === source);
@@ -508,6 +625,12 @@ function Cabinet() {
 											</div>
 											{source && (
 												<>
+													<RetentionTerms
+														key={sourcePath}
+														sourceUrl={
+															workspace + "/sources/" + source + "/retention"
+														}
+													/>
 													<fieldset>
 														<legend>Разрешённые точки</legend>
 														{locations.map((t) => (
@@ -563,7 +686,8 @@ function Cabinet() {
 														<label>
 															Mapping (JSON)
 															<textarea
-																aria-label="Mapping (JSON)" value={mapping}
+																aria-label="Mapping (JSON)"
+																value={mapping}
 																onChange={(e) => {
 																	setMapping(e.target.value);
 																	setValid(false);
@@ -573,7 +697,8 @@ function Cabinet() {
 														<label>
 															Паспорт (JSON)
 															<textarea
-																aria-label="Паспорт (JSON)" value={passport}
+																aria-label="Паспорт (JSON)"
+																value={passport}
 																onChange={(e) => {
 																	setPassport(e.target.value);
 																	setValid(false);

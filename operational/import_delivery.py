@@ -295,10 +295,14 @@ def register(conn, args, witness):
     mapping = read_local(args.mapping, MAX_CONFIG)
     passport = read_local(args.passport, MAX_CONFIG)
     coverage_bytes = read_local(args.coverage_passport, MAX_CONFIG)
-    return register_bytes(conn, args, source_key, principal, data, mapping, passport, coverage_bytes)
+    return register_bytes(
+        conn, args, source_key, principal, data, mapping, passport, coverage_bytes
+    )
 
 
-def register_bytes(conn, args, source_key, principal, data, mapping, passport, coverage_bytes):
+def register_bytes(
+    conn, args, source_key, principal, data, mapping, passport, coverage_bytes, *, browser=False
+):
     """Both callers hold the exclusive source row lock for the whole delivery transaction."""
     scope = (args.workspace, args.source)
     batch = args.delivery_id
@@ -307,6 +311,16 @@ def register_bytes(conn, args, source_key, principal, data, mapping, passport, c
     result = preview(data, args.format, mapping, passport)
     if result.fingerprint != args.preview_fingerprint:
         raise DeliveryError("preview_mismatch")
+    if browser:
+        allowed = {
+            place
+            for (place,) in conn.execute(
+                "SELECT external_place_id FROM source_location WHERE workspace_id=%s AND source_id=%s",
+                scope,
+            )
+        }
+        if not result.allowed_in_browser(source_key, allowed):
+            raise DeliveryError("scope_denied")
     places = {r.source_place_id for r in result.rows if r.status == "accepted"}
     if result.passport.source_place_id:
         places.add(result.passport.source_place_id)

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import signal
 import socketserver
 import sys
 from pathlib import Path
@@ -81,7 +82,9 @@ def apply(message, parts):
                 apply=True,
                 preview_fingerprint=message["fingerprint"],
             )
-            result = register_bytes(conn, args, source_key, actor, data, mapping, passport, UNKNOWN)
+            result = register_bytes(
+                conn, args, source_key, actor, data, mapping, passport, UNKNOWN, browser=True
+            )
             snapshot = result["snapshot_id"]
             if not conn.execute(
                 "SELECT browser_complete(%s,%s,%s,%s)", (w, s, d, snapshot)
@@ -115,6 +118,10 @@ class Server(socketserver.UnixStreamServer):
 
 
 def main():
+    def shutdown(_signum, _frame):
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, shutdown)
     os.umask(0o077)
     try:
         path = socket_path()

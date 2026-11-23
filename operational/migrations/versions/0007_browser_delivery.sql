@@ -19,6 +19,17 @@ CREATE INDEX browser_pending_by_actor ON browser_delivery(workspace_id,actor,exp
 ALTER TABLE browser_admission ENABLE ROW LEVEL SECURITY;
 ALTER TABLE browser_delivery ENABLE ROW LEVEL SECURITY;
 
+CREATE TABLE browser_summary (
+ workspace_id uuid NOT NULL, run_id uuid NOT NULL, artifact_id uuid NOT NULL,
+ metrics jsonb NOT NULL, PRIMARY KEY(workspace_id,artifact_id),
+ FOREIGN KEY(workspace_id,run_id,artifact_id) REFERENCES artifact(workspace_id,run_id,id) ON DELETE CASCADE
+);
+ALTER TABLE browser_summary ENABLE ROW LEVEL SECURITY;
+CREATE POLICY visible_summary ON browser_summary FOR SELECT TO rs_runtime USING (EXISTS (
+ SELECT FROM artifact a WHERE (a.workspace_id,a.run_id,a.id)=(browser_summary.workspace_id,browser_summary.run_id,browser_summary.artifact_id)
+));
+GRANT SELECT ON browser_summary TO rs_runtime;
+
 CREATE FUNCTION browser_member(w uuid,s uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT retention_online() AND EXISTS(
@@ -52,6 +63,33 @@ CREATE FUNCTION browser_bindings(w uuid,s uuid,h text,loc uuid[]) RETURNS TABLE(
 $$;
 REVOKE ALL ON FUNCTION browser_bindings(uuid,uuid,text,uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION browser_bindings(uuid,uuid,text,uuid[]) TO rs_runtime;
+CREATE FUNCTION browser_diagnostics_safe(report jsonb) RETURNS boolean LANGUAGE plpgsql IMMUTABLE
+ SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE nums constant text[] := ARRAY['total_input_rows','accepted','quarantined','confirmed_duplicates','warning_count','missing_author_count','missing_date_count','missing_text_count','missing_review_id_count','missing_rating_count','rating_excluded_count'];
+ codes constant text[] := ARRAY['ambiguous_time','binding_mismatch','confirmed_duplicate','conflicting_id','conflicting_mapping','duplicate_header','duplicate_key','empty_input','ineligible_event_basis','invalid_arguments','invalid_csv','invalid_date','invalid_encoding','invalid_field_type','invalid_format','invalid_header','invalid_json','invalid_json_item','invalid_mapping','invalid_passport','invalid_rating','invalid_shape','invalid_url','io_error','missing_date','missing_place','missing_rating','missing_review_id','missing_reviewer','missing_source','missing_text','nonexistent_time','observation_mismatch','over_limit','private_output','row_width','unexpected_column','unknown_column','unknown_timezone','unmapped_scale'];
+ summary jsonb := report->'summary'; item jsonb; pos integer := 0;
+BEGIN
+ IF jsonb_typeof(report) IS DISTINCT FROM 'object' OR report-ARRAY['summary','positions']<>'{}'
+ OR jsonb_typeof(summary) IS DISTINCT FROM 'object' OR jsonb_typeof(report->'positions') IS DISTINCT FROM 'array'
+ OR jsonb_typeof(summary->'reason_counts') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+ IF summary-(nums||ARRAY['reason_counts'])<>'{}' OR NOT summary ?& nums
+ OR EXISTS(SELECT FROM jsonb_each(summary-'reason_counts') n WHERE n.value::text !~ '^[0-9]{1,6}$')
+ OR EXISTS(SELECT FROM jsonb_each(summary->'reason_counts') n WHERE NOT n.key=ANY(codes) OR n.value::text !~ '^[0-9]{1,6}$')
+ THEN RETURN false; END IF;
+ FOR item IN SELECT jsonb_array_elements(report->'positions') LOOP
+  pos:=pos+1;
+  IF jsonb_typeof(item) IS DISTINCT FROM 'object' OR item-ARRAY['position','status','reasons','warnings','related_position']<>'{}'
+   OR NOT item ?& ARRAY['position','status','reasons','warnings','related_position'] OR item->'position' IS DISTINCT FROM to_jsonb(pos)
+   OR item->>'status' NOT IN ('accepted','quarantined','confirmed_duplicate') OR jsonb_typeof(item->'status') IS DISTINCT FROM 'string'
+   OR jsonb_typeof(item->'reasons') IS DISTINCT FROM 'array' OR jsonb_typeof(item->'warnings') IS DISTINCT FROM 'array'
+   OR (item->'related_position')::text !~ '^(null|[1-9][0-9]{0,4})$' THEN RETURN false; END IF;
+  IF EXISTS(SELECT FROM jsonb_array_elements_text((item->'reasons')||(item->'warnings')) r(code)
+    WHERE r.code IS NULL OR NOT r.code=ANY(codes)) THEN RETURN false; END IF;
+ END LOOP;
+ RETURN pos BETWEEN 1 AND 10000 AND (summary->>'total_input_rows')::int=pos;
+END $$;
+REVOKE ALL ON FUNCTION browser_diagnostics_safe(jsonb) FROM PUBLIC;
+
 CREATE FUNCTION browser_preview(w uuid,s uuid,d uuid,f text,loc uuid[],h text,fp text,report jsonb)
  RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE previous browser_delivery;
@@ -65,10 +103,12 @@ BEGIN
  IF FOUND THEN
    IF (previous.actor,previous.source_id) IS DISTINCT FROM (access_actor(),s) THEN RETURN 404; END IF;
    IF previous.snapshot_id IS NOT NULL THEN RETURN 409; END IF;
- ELSIF (SELECT count(*) FROM browser_delivery WHERE workspace_id=w AND snapshot_id IS NULL)>=16 THEN RETURN 429;
+ ELSIF (SELECT count(*) FROM browser_delivery WHERE workspace_id=w AND snapshot_id IS NULL)>=16
+ OR (SELECT count(*) FROM browser_delivery WHERE workspace_id=w)>=256 THEN RETURN 429;
  END IF;
  IF jsonb_typeof(report->'positions') IS DISTINCT FROM 'array' OR jsonb_array_length(report->'positions')>10000
  OR pg_column_size(report)>4194304 THEN RETURN 413; END IF;
+ IF NOT browser_diagnostics_safe(report) THEN RETURN 422; END IF;
  INSERT INTO browser_delivery(workspace_id,id,source_id,actor,fmt,locations,checksum,fingerprint,diagnostics,expires_at,snapshot_id) VALUES(w,d,s,access_actor(),f,loc,h,fp,report,clock_timestamp()+interval '30 minutes',NULL)
  ON CONFLICT(workspace_id,id) DO UPDATE SET fmt=excluded.fmt,locations=excluded.locations,
  checksum=excluded.checksum,fingerprint=excluded.fingerprint,diagnostics=excluded.diagnostics,expires_at=excluded.expires_at,approval_hash=NULL,approval_session=NULL,approved_until=NULL;
@@ -107,7 +147,9 @@ SET search_path=pg_catalog,public,pg_temp AS $$
  WITH plan AS (SELECT retention_plan_v6(w,k,t) p), targets AS MATERIALIZED(SELECT retention_sources(w,k,t) id)
  SELECT jsonb_set(p,'{tables}',(p->'tables') || jsonb_build_object(
  'browser_admission',(SELECT count(*) FROM browser_admission WHERE workspace_id=w AND source_id IN (SELECT id FROM targets)),
- 'browser_delivery',(SELECT count(*) FROM browser_delivery WHERE workspace_id=w AND source_id IN (SELECT id FROM targets)))) FROM plan
+ 'browser_delivery',(SELECT count(*) FROM browser_delivery WHERE workspace_id=w AND source_id IN (SELECT id FROM targets)),
+ 'browser_summary',(SELECT count(*) FROM browser_summary m JOIN analysis_run r ON (r.workspace_id,r.id)=(m.workspace_id,m.run_id)
+ JOIN snapshot sn ON (sn.workspace_id,sn.id)=(r.workspace_id,r.snapshot_id) WHERE m.workspace_id=w AND sn.source_id IN (SELECT id FROM targets)))) FROM plan
 $$;
 REVOKE ALL ON FUNCTION retention_plan(uuid,text,uuid) FROM PUBLIC;
 
@@ -214,15 +256,18 @@ CREATE FUNCTION browser_role_safe() RETURNS boolean LANGUAGE sql STABLE SET sear
  AND c.relkind='r' AND (has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE') OR has_any_column_privilege(r.oid,c.oid,'UPDATE'))))
  AND NOT EXISTS(SELECT FROM pg_class WHERE relnamespace='public'::regnamespace AND
  relname=ANY(ARRAY['review_version','review_identity','import_row','import_batch','snapshot','snapshot_member','source_location',
- 'browser_admission','browser_delivery']) AND NOT relrowsecurity)
+ 'browser_admission','browser_delivery','browser_summary']) AND NOT relrowsecurity)
+ AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace AND c.relkind IN ('r','v')
+ AND ((c.relname NOT IN ('alembic_version','import_batch','review_identity','review_version','import_row','snapshot','snapshot_member','source_location')
+ AND has_any_column_privilege(r.oid,c.oid,'SELECT')) OR (c.relname NOT IN ('import_batch','review_identity','review_version','import_row','snapshot','snapshot_member')
+ AND has_any_column_privilege(r.oid,c.oid,'INSERT'))))
  FROM pg_roles r WHERE rolname='rs_upload'
 $$;
 REVOKE ALL ON FUNCTION browser_role_safe() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION browser_role_safe() TO rs_upload;
 
 -- Keep the verified producer's numeric projection with its immutable artifact.
-ALTER TABLE artifact ADD COLUMN browser_summary jsonb;
-CREATE FUNCTION browser_project_summary() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+CREATE FUNCTION browser_project_summary() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE raw text := nullif(current_setting('rs.summary_projection',true),''); doc jsonb; item jsonb;
  name text; group_name text; projected jsonb := '{}'; group_values jsonb;
 BEGIN
@@ -246,9 +291,14 @@ BEGIN
   END LOOP;
   projected:=projected||jsonb_build_object(group_name,group_values);
  END LOOP;
- NEW.browser_summary:=projected;
+ INSERT INTO browser_summary VALUES(NEW.workspace_id,NEW.run_id,NEW.id,projected);
  RETURN NEW;
 END $$;
-CREATE TRIGGER browser_project_summary BEFORE INSERT ON artifact FOR EACH ROW EXECUTE FUNCTION browser_project_summary();
+CREATE TRIGGER browser_project_summary AFTER INSERT ON artifact FOR EACH ROW EXECUTE FUNCTION browser_project_summary();
 REVOKE ALL ON FUNCTION browser_project_summary() FROM PUBLIC;
-GRANT SELECT(browser_summary) ON artifact TO rs_runtime;
+
+
+CREATE POLICY scoped_export ON browser_delivery FOR SELECT TO rs_retention USING
+ ((workspace_id,source_id) IN (SELECT * FROM retention_export_sources()));
+GRANT SELECT(workspace_id,id,source_id,fmt,locations,checksum,fingerprint,diagnostics,expires_at,snapshot_id)
+ ON browser_delivery TO rs_retention;

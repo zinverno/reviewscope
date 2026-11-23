@@ -50,6 +50,14 @@ def transaction(engine):
                     AND (SELECT array_agg(version_num) FROM public.alembic_version)
                         IN (ARRAY['0006_retention']::varchar[], ARRAY['0007_browser_delivery']::varchar[])
                     AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
+                    AND (to_regclass('public.browser_delivery') IS NULL OR
+                        (row_security_active(to_regclass('public.browser_delivery'))
+                        AND row_security_active(to_regclass('public.browser_admission'))
+                        AND row_security_active(to_regclass('public.browser_summary'))
+                        AND NOT has_any_column_privilege(current_user,to_regclass('public.browser_delivery'),'SELECT')
+                        AND NOT has_any_column_privilege(current_user,to_regclass('public.browser_admission'),'SELECT')
+                        AND NOT has_any_column_privilege(current_user,'public.review_version','SELECT')
+                        AND NOT has_any_column_privilege(current_user,'public.import_row','SELECT')))
                     AND to_regclass('public.password_credential') IS NOT NULL
                     AND to_regclass('public.access_session') IS NOT NULL
                     AND to_regclass('public.principal') IS NOT NULL) AS ready

@@ -471,12 +471,12 @@ def create_app():
             metrics = None
             if cur.fetchone()["version_num"] != "0006_retention":
                 cur.execute(
-                    "SELECT browser_summary FROM artifact WHERE workspace_id=%s AND id=%s",
+                    "SELECT metrics FROM browser_summary WHERE workspace_id=%s AND artifact_id=%s",
                     (workspace, job["artifact_id"]),
                 )
                 artifact = cur.fetchone()
                 if artifact:
-                    metrics = artifact["browser_summary"]
+                    metrics = artifact["metrics"]
             return job | {"metrics": metrics}
 
     retention_path = ROOT + "/workspaces/{workspace}/retention"

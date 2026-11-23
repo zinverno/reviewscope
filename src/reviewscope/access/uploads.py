@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import hmac
+import os
 import re
 from dataclasses import asdict
 from datetime import datetime
@@ -15,8 +16,9 @@ from uuid import UUID
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
+from starlette.requests import ClientDisconnect
 
 from reviewscope.import_preview import preview
 from reviewscope.import_preview.contract import ImportSummary, PreviewError
@@ -29,6 +31,12 @@ DRAFTS = BASE + "/sources/{source}/uploads"
 U = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
 POST = re.compile(rf"/api/v1/workspaces/{U}/sources/{U}/uploads/{U}/(?:preview|confirm)")
 SLOTS = BoundedSemaphore(2)
+
+
+class Selection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    locations: list[UUID] = Field(min_length=1, max_length=64)
 
 
 class Target(BaseModel):
@@ -128,17 +136,7 @@ def inspect(parts, fmt, bindings):
     result = preview(data, fmt, mapping, passport)
     places = {r["place_key"] for r in bindings}
     source = bindings[0]["source_key"]
-    if (
-        result.passport.source not in (source, None)
-        or result.passport.source_place_id not in places | {None}
-        or any(
-            r.reviewer_id
-            or r.source_url
-            or r.source not in (source, None)
-            or r.source_place_id not in places | {None}
-            for r in result.rows
-        )
-    ):
+    if not result.allowed_in_browser(source, places):
         raise HTTPException(422)
     return result.fingerprint, dict(
         summary=asdict(result.summary),
@@ -163,6 +161,7 @@ def install(app, authenticated, key, cookie, local):
             raise HTTPException(404)
         return FileResponse(
             path,
+            media_type={".html": "text/html", ".css": "text/css", ".js": "text/javascript"}[path.suffix],
             headers={
                 "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
                 "Referrer-Policy": "no-referrer",
@@ -183,6 +182,8 @@ def install(app, authenticated, key, cookie, local):
     def guard(request):
         if local or request.url.scheme != "https":
             raise HTTPException(403)
+        if not os.environ.get("RS_UPLOAD_SOCKET"):
+            raise HTTPException(503)
         if request.url.query:
             raise HTTPException(422)
 
@@ -229,6 +230,13 @@ def install(app, authenticated, key, cookie, local):
                 raise HTTPException(404)
             return bindings
 
+    @app.post(DRAFTS + "/eligibility", status_code=204)
+    def eligibility(workspace: UUID, source: UUID, data: Selection, request: Request):
+        guard(request)
+        if data.locations != sorted(set(data.locations)):
+            raise HTTPException(422)
+        bindings_for(request, workspace, source, data.checksum, data.locations)
+
     def process(request, w, s, d, fmt, digest, loc, parts, bindings, confirm):
         fp, report = inspect(parts, fmt, bindings)
         if confirm and header(request, "x-rs-fingerprint") != fp:
@@ -238,7 +246,7 @@ def install(app, authenticated, key, cookie, local):
             if confirm:
                 ticket = hmac.new(
                     key(),
-                    f"apply|{request.cookies[cookie]}|{w}|{s}|{d}|{fp}".encode(),
+                    f"apply|{request.cookies[cookie]}|{w}|{s}|{d}|{fp}|{','.join(map(str, loc))}".encode(),
                     hashlib.sha256,
                 ).hexdigest()
                 cur.execute(
@@ -289,7 +297,7 @@ def install(app, authenticated, key, cookie, local):
             return await run_in_threadpool(
                 process, request, w, s, d, fmt, digest, loc, parts, bindings, confirm
             )
-        except TimeoutError:
+        except (TimeoutError, ClientDisconnect):
             raise HTTPException(422) from None
         except PreviewError as exc:
             return JSONResponse(
@@ -298,19 +306,41 @@ def install(app, authenticated, key, cookie, local):
         finally:
             SLOTS.release()
 
+    def parameter(name, location="header"):
+        return {"name": name, "in": location, "required": True, "schema": {"type": "string"}}
+
     binary = {
+        "parameters": [
+            parameter(cookie, "cookie"),
+            *(
+                parameter(n)
+                for n in (
+                    "Origin",
+                    "X-RS-CSRF",
+                    "X-RS-Format",
+                    "X-RS-Parts",
+                    "X-RS-File-SHA256",
+                    "X-RS-Locations",
+                )
+            ),
+        ],
         "requestBody": {
             "required": True,
             "content": {
                 "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
             },
-        }
+        },
     }
 
     @app.post(DRAFTS + "/{delivery}/preview", response_model=Draft, openapi_extra=binary)
     async def preview_file(workspace: UUID, source: UUID, delivery: UUID, request: Request):
         return await upload(request, workspace, source, delivery, False)
 
-    @app.post(DRAFTS + "/{delivery}/confirm", response_model=Draft, openapi_extra=binary)
+    @app.post(
+        DRAFTS + "/{delivery}/confirm",
+        response_model=Draft,
+        openapi_extra=binary
+        | {"parameters": [*binary["parameters"], parameter("X-RS-Fingerprint")]},
+    )
     async def confirm_file(workspace: UUID, source: UUID, delivery: UUID, request: Request):
         return await upload(request, workspace, source, delivery, True)
