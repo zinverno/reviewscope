@@ -88,7 +88,7 @@ def authorize(conn, args, witness):
         WHERE a.workspace_id=%s AND a.source_id=%s AND current_user=session_user
           AND a.operator_login=session_user AND current_user<>'rs_runtime'
           AND w.state='active' AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
-          AND (SELECT version_num FROM alembic_version) = '0006_retention'
+          AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery')
         FOR UPDATE OF s FOR SHARE OF a,w,m,p
     """,
         (args.workspace, args.source),
@@ -119,7 +119,7 @@ def version_for(conn, scope, batch, row, metadata):
         )
         (identity,) = conn.execute(
             """SELECT id FROM review_identity WHERE
-            (workspace_id,source_id,external_place_id,external_review_id)=(%s,%s,%s,%s) FOR UPDATE""",
+            (workspace_id,source_id,external_place_id,external_review_id)=(%s,%s,%s,%s)""",
             key,
         ).fetchone()
     last = conn.execute(
@@ -290,13 +290,18 @@ def verify_snapshot(conn, scope, batch, directory):
 
 
 def register(conn, args, witness):
-    scope = (args.workspace, args.source)
-    batch = args.delivery_id
     source_key, principal = authorize(conn, args, witness)
     data = read_local(args.input, MAX_BYTES)
     mapping = read_local(args.mapping, MAX_CONFIG)
     passport = read_local(args.passport, MAX_CONFIG)
     coverage_bytes = read_local(args.coverage_passport, MAX_CONFIG)
+    return register_bytes(conn, args, source_key, principal, data, mapping, passport, coverage_bytes)
+
+
+def register_bytes(conn, args, source_key, principal, data, mapping, passport, coverage_bytes):
+    """Both callers hold the exclusive source row lock for the whole delivery transaction."""
+    scope = (args.workspace, args.source)
+    batch = args.delivery_id
     coverage_sha = hashlib.sha256(coverage_bytes).hexdigest()
     cover = coverage_passport(coverage_bytes)
     result = preview(data, args.format, mapping, passport)

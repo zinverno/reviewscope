@@ -66,7 +66,7 @@ def import_demo(workspace: UUID, source: UUID, *, apply=False, object_root: Path
         return summary
     with psycopg.connect("") as conn, conn.cursor() as cur:
         cur.execute("SELECT version_num FROM alembic_version")
-        if cur.fetchone()[0] == "0006_retention":
+        if cur.fetchone()[0] in {"0006_retention", "0007_browser_delivery"}:
             gate(cur)
         cur.execute("""SELECT project_id FROM source WHERE workspace_id=%s AND id=%s
                        AND kind='synthetic_demo' FOR UPDATE""", (workspace, source))
@@ -91,7 +91,7 @@ def import_demo(workspace: UUID, source: UUID, *, apply=False, object_root: Path
         cur.execute("SELECT version_num FROM alembic_version")
         revision, = cur.fetchone()
         historical = revision in {"0001_operational", "0002_principals", "0003_workspace_access"}
-        if not historical and revision not in {"0004_delivery_history", "0005_background_jobs", "0006_retention"}:
+        if not historical and revision not in {"0004_delivery_history", "0005_background_jobs", "0006_retention", "0007_browser_delivery"}:
             raise ValueError("unsupported operational revision")
         cur.execute("""INSERT INTO import_batch
                        (workspace_id,source_id,id,file_sha256,procedure_version,status,

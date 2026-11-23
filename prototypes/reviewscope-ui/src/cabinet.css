@@ -1,0 +1,133 @@
+.cab {
+	max-width: 62rem;
+	margin: auto;
+	padding: 1.5rem clamp(1rem, 4vw, 3.5rem) 5rem;
+	overflow-wrap: anywhere;
+}
+.cab header {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	margin-bottom: 3rem;
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 1rem;
+}
+.cab header strong {
+	font-family: var(--serif);
+	font-size: 1.45rem;
+}
+.cab header span,
+.cab dt {
+	color: var(--muted);
+}
+.cab header button {
+	margin-left: auto;
+}
+.cab h1 {
+	font: normal clamp(2rem, 5vw, 4.1rem) / 1.03 var(--serif);
+	max-width: 20ch;
+	margin: 0 0 2rem;
+}
+.cab section,
+.cab form {
+	padding: 1.5rem 0;
+	border-top: 1px solid var(--border);
+	margin-top: 1.5rem;
+}
+.cab h2,
+.cab h3 {
+	margin: 0 0 1rem;
+}
+.cab p,
+.cab details,
+.cab fieldset {
+	margin: 1rem 0;
+}
+.cab label {
+	display: grid;
+	gap: 0.35rem;
+	margin: 0.8rem 0;
+}
+.cab input,
+.cab select,
+.cab textarea {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: inherit;
+	padding: 0.65rem;
+	width: 100%;
+	min-width: 0;
+}
+.cab textarea {
+	min-height: 12rem;
+	font: 0.875rem / 1.5 var(--mono);
+}
+.cab input:focus-visible,
+.cab textarea:focus-visible,
+.cab summary:focus-visible {
+	outline: 3px solid var(--blue);
+}
+.cab .check {
+	display: flex;
+	align-items: center;
+}
+.cab input[type="checkbox"] {
+	width: auto;
+}
+.cab fieldset {
+	border: 1px solid var(--border);
+	min-width: 0;
+}
+.cab .pair {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+	gap: 1rem;
+}
+.cab button,
+.cab summary {
+	padding: 0.65rem 0.9rem;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font: inherit;
+}
+.cab summary {
+	cursor: pointer;
+}
+.cab .primary {
+	background: var(--text);
+	color: var(--base);
+}
+.cab a {
+	color: var(--blue);
+	text-decoration: underline;
+}
+.cab button + a {
+	margin-left: 0.8rem;
+}
+.cab [role="alert"] {
+	color: var(--red-light);
+}
+.cab dl {
+	display: flex;
+	background: var(--surface);
+	gap: 1.5rem;
+	padding: 1.2rem;
+	flex-wrap: wrap;
+}
+.cab dd {
+	font-size: 1.6rem;
+	margin: 0.3rem 0;
+}
+.cab table {
+	width: 100%;
+	border-collapse: collapse;
+	table-layout: fixed;
+}
+.cab td,
+.cab th {
+	text-align: left;
+	vertical-align: top;
+	border-bottom: 1px solid var(--border);
+	padding: 0.4rem;
+}

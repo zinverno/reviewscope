@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import store
+from . import store, uploads
 from .security import normalize, password_proof, server_key, session_proof
 
 LOG = logging.getLogger("reviewscope.access.requests")
@@ -161,6 +161,21 @@ class JobStatus(Run):
     size_bytes: int | None
 
 
+class Count(Strict):
+    numerator: int
+    denominator: int
+
+
+class Metrics(Strict):
+    counts: dict[str, Count]
+    eligibility: dict[str, Count]
+    rating_distribution: dict[str, Count] | None
+
+
+class JobSummary(JobStatus):
+    metrics: Metrics | None
+
+
 class JobErrorResponse(Strict):
     error: str
 
@@ -227,19 +242,25 @@ def create_app():
             if len(request.query_params.multi_items()) != len(request.query_params):
                 raise HTTPException(422)
             # Bound even unframed/chunked input before handing JSON to the framework.
-            body = bytearray()
-            size = 0
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > 4096:
-                    raise HTTPException(413)
-                if chunk and (not changing or request.url.path.endswith(("/logout", "/cancel"))):
+            if not uploads.binary_route(request):
+                body = bytearray()
+                size = 0
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > 4096:
+                        raise HTTPException(413)
+                    if chunk and (
+                        not changing or request.url.path.endswith(("/logout", "/cancel"))
+                    ):
+                        raise HTTPException(422)
+                    if chunk:
+                        body.extend(chunk)
+                if (
+                    size
+                    and request.headers.get("content-type", "").split(";")[0] != "application/json"
+                ):
                     raise HTTPException(422)
-                if chunk:
-                    body.extend(chunk)
-            if size and request.headers.get("content-type", "").split(";")[0] != "application/json":
-                raise HTTPException(422)
-            request._body = bytes(body)
+                request._body = bytes(body)
             response = await call_next(request)
         except StarletteHTTPException as exc:
             response = error(exc.status_code)
@@ -435,6 +456,29 @@ def create_app():
             store.authorize(cur, principal, workspace, "read")
             return store.job_status(cur, workspace, snapshot=snapshot_id)
 
+    @app.get(
+        ROOT + "/workspaces/{workspace}/snapshots/{snapshot_id}/summary-metrics",
+        responses=errors,
+        openapi_extra=read_contract,
+    )
+    def summary_metrics(
+        workspace: UUID, snapshot_id: UUID, request: Request, _: Annotated[Strict, Query()]
+    ) -> JobSummary:
+        with authenticated(request) as (cur, principal):
+            store.authorize(cur, principal, workspace, "read")
+            job = store.job_status(cur, workspace, snapshot=snapshot_id)
+            cur.execute("SELECT version_num FROM alembic_version")
+            metrics = None
+            if cur.fetchone()["version_num"] != "0006_retention":
+                cur.execute(
+                    "SELECT browser_summary FROM artifact WHERE workspace_id=%s AND id=%s",
+                    (workspace, job["artifact_id"]),
+                )
+                artifact = cur.fetchone()
+                if artifact:
+                    metrics = artifact["browser_summary"]
+            return job | {"metrics": metrics}
+
     retention_path = ROOT + "/workspaces/{workspace}/retention"
 
     @app.post(retention_path, openapi_extra=write_contract)
@@ -546,4 +590,5 @@ def create_app():
             if status != 204:
                 raise HTTPException(status)
 
+    uploads.install(app, authenticated, key, cookie, local)
     return app

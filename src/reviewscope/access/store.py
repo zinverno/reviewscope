@@ -48,7 +48,7 @@ def transaction(engine):
                     AND NOT has_schema_privilege(current_user,'public','CREATE')
                     AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
                     AND (SELECT array_agg(version_num) FROM public.alembic_version)
-                        = ARRAY['0006_retention']::varchar[]
+                        IN (ARRAY['0006_retention']::varchar[], ARRAY['0007_browser_delivery']::varchar[])
                     AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
                     AND to_regclass('public.password_credential') IS NOT NULL
                     AND to_regclass('public.access_session') IS NOT NULL

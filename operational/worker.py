@@ -67,7 +67,7 @@ def connect():
             AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
-            AND (SELECT version_num FROM alembic_version)='0006_retention'
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -319,6 +319,9 @@ def process(conn, job, stopping):
                 raise Finished(step())
             digest = publish(directory, (data,))
             verify_file(directory, digest, len(data))
+            conn.execute(
+                "SELECT set_config('rs.summary_projection',%s,true)", (data.decode("utf-8"),)
+            )
             outcome = step(
                 "WORKER_STOPPED" if stopping.is_set() else None, digest, len(data), info["manifest"]
             )
