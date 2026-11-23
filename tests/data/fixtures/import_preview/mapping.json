@@ -1,0 +1,14 @@
+{
+  "version": "pilot-synthetic-1",
+  "fields": {
+    "source": "source",
+    "source_place_id": "source_place_id",
+    "source_review_id": "source_review_id",
+    "text": "text",
+    "rating": "rating",
+    "published_at": "published_at",
+    "observed_at": "observed_at",
+    "source_url": "source_url",
+    "reviewer_id": "reviewer_id"
+  }
+}

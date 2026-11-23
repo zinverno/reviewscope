@@ -1,0 +1,11 @@
+{
+  "timezone": "Europe/Moscow",
+  "rating_scale": [
+    1,
+    5
+  ],
+  "event_basis": "published",
+  "reviewer_id_allowed": true,
+  "delimiter": ",",
+  "observed_at": "2026-10-01T09:00:00+03:00"
+}
