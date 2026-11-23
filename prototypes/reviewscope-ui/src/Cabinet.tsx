@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+	useEffect,
+	useRef,
+	useState,
+	type FormEvent,
+	type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
@@ -238,6 +244,58 @@ function RetentionTerms({ sourceUrl }: { sourceUrl: string }) {
 				<p role="status">Загрузка условий…</p>
 			)}
 		</details>
+	);
+}
+function WorkspacePanel({
+	spaces,
+	selected,
+	connection,
+	onSelect,
+	onRefresh,
+	children,
+}: {
+	spaces: Space[];
+	selected: string;
+	connection: "checking" | "ready" | "denied" | "retrying";
+	onSelect: (workspace: string) => void;
+	onRefresh: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<>
+			<label>
+				Рабочая область
+				<select
+					aria-label="Рабочая область"
+					value={selected}
+					onChange={(e) => onSelect(e.target.value)}
+				>
+					{spaces.map((space) => (
+						<option key={space.id} value={space.id}>
+							{space.name} · {space.role}
+						</option>
+					))}
+				</select>
+			</label>
+			{connection === "ready" ? (
+				children
+			) : (
+				<section aria-label="Состояние соединения">
+					<p role="status">
+						{connection === "denied"
+							? "Проверка недоступна в выбранной области."
+							: connection === "retrying"
+								? "Связь прервана. Повторяем проверку доступа…"
+								: "Проверяем доступ к заданию…"}
+					</p>
+					{connection === "denied" && (
+						<button type="button" onClick={onRefresh}>
+							Обновить статус
+						</button>
+					)}
+				</section>
+			)}
+		</>
 	);
 }
 function Cabinet() {
@@ -617,47 +675,24 @@ function Cabinet() {
 					</button>
 				</form>
 			) : (
-				<>
-					<label>
-						Рабочая область
-						<select
-							aria-label="Рабочая область"
-							value={w}
-							onChange={(e) =>
-								go({
-									workspace: e.target.value,
-									project: "",
-									source: "",
-									delivery: "",
-									snapshot: "",
-									run: "",
-								})
-							}
-						>
-							{session.workspaces.map((v) => (
-								<option key={v.id} value={v.id}>
-									{v.name} · {v.role}
-								</option>
-							))}
-						</select>
-					</label>
+				<WorkspacePanel
+					spaces={session.workspaces}
+					selected={w}
+					connection={watch ? (visible?.state ?? "checking") : "ready"}
+					onRefresh={() => setRevision((v) => v + 1)}
+					onSelect={(workspace) =>
+						go({
+							workspace,
+							project: "",
+							source: "",
+							delivery: "",
+							snapshot: "",
+							run: "",
+						})
+					}
+				>
 					{!w ? (
-						<p>Рабочая область недоступна.</p>
-					) : watch && visible?.state !== "ready" ? (
-						<section aria-label="Состояние соединения">
-							<p role="status">
-								{visible?.state === "denied"
-									? "Проверка недоступна в выбранной области."
-									: visible?.state === "retrying"
-										? "Связь прервана. Повторяем проверку доступа…"
-										: "Проверяем доступ к заданию…"}
-							</p>
-							{visible?.state === "denied" && (
-								<button type="button" onClick={() => setRevision((v) => v + 1)}>
-									Обновить статус
-								</button>
-							)}
-						</section>
+						<p>Нет доступных рабочих областей.</p>
 					) : (
 						<>
 							{canWrite ? (
@@ -1017,7 +1052,7 @@ function Cabinet() {
 							</section>
 						</>
 					)}
-				</>
+				</WorkspacePanel>
 			)}
 		</main>
 	);
