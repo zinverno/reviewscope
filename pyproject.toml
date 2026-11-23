@@ -30,6 +30,7 @@ embeddings = [
 ]
 api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
 operational = ["alembic>=1.13,<2", "sqlalchemy>=2,<3", "psycopg[binary]>=3.2,<4"]
+access = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "psycopg[binary]>=3.2,<4", "sqlalchemy>=2,<3", "argon2-cffi>=23,<26"]
 dev = [
     "httpx>=0.28,<1",
     "ruff>=0.6",

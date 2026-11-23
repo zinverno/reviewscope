@@ -1,13 +1,11 @@
 """Run only via operational/test-postgres.sh against its private synthetic cluster."""
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
-from pathlib import Path
 from threading import Barrier
 from uuid import UUID, uuid4
 
@@ -15,32 +13,14 @@ import psycopg
 import pytest
 
 from operational.backfill_demo import DEMO_SHA
+from operational.tests.conftest import ALEMBIC, new_db
 from reviewscope.public_demo import DEFAULT_DEMO_DB, repo_root
 from reviewscope.storage import DuckDBStore
 
-ALEMBIC = [sys.executable, "-m", "alembic", "-c", "operational/alembic.ini"]
 DEMO = repo_root() / DEFAULT_DEMO_DB
 
 
-def new_db():
-    name = "rs_test_" + uuid4().hex
-    subprocess.run(["createdb", name], check=True)
-    return name
-
-
-@pytest.fixture
-def db(monkeypatch):
-    socket = os.environ.get("RS_TEST_PG_SOCKET")
-    if not socket or os.environ.get("PGHOST") != socket or not Path(socket, "data", "PG_VERSION").is_file():
-        pytest.fail("use operational/test-postgres.sh")
-    name = new_db()
-    monkeypatch.setenv("PGDATABASE", name)
-    subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
-    with psycopg.connect("", autocommit=True) as conn:
-        yield conn
-
-
-def scope(conn, *, workspace=None, project=None, source=None):
+def scope(conn, *, workspace=None, project=None, source=None, source_key=None):
     if workspace is None:
         workspace = conn.execute("INSERT INTO workspace(name) VALUES ('Synthetic') RETURNING id").fetchone()[0]
     if project is None:
@@ -49,7 +29,7 @@ def scope(conn, *, workspace=None, project=None, source=None):
     source = source or uuid4()
     conn.execute("""INSERT INTO source(workspace_id,project_id,id,source_key,kind,origin_label)
                     VALUES (%s,%s,%s,%s,'synthetic_demo','fixture')""",
-                 (workspace, project, source, str(source)))
+                 (workspace, project, source, source_key or str(source)))
     return workspace, project, source
 
 
@@ -93,10 +73,10 @@ def test_revision_scope_nulls_and_history(db):
     w, project, s = scope(db)
     other_w, _, other_s = scope(db)
     _, _, s2 = scope(db, workspace=w, project=project)
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001_operational",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003_workspace_access",)
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         scope(db, workspace=other_w, project=project)
-    actor = uuid4()
+    actor, = db.execute("INSERT INTO principal(login,state) VALUES ('fixture','active') RETURNING id").fetchone()
     db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'analyst','active')", (w, actor))
     with pytest.raises(psycopg.errors.UniqueViolation):
         db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'viewer','active')", (w, actor))
@@ -173,7 +153,7 @@ def test_revision_scope_nulls_and_history(db):
     assert db.execute(history).fetchall() == before
     rejected = subprocess.run([*ALEMBIC, "downgrade", "base"], capture_output=True)
     assert rejected.returncode != 0
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001_operational",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003_workspace_access",)
 
 
 def test_concurrent_identity(db):
@@ -284,7 +264,7 @@ def test_backfill_restore_and_replay(db, tmp_path):
     restored_name = new_db()
     restored_root = tmp_path / "restored_objects"
     shutil.copytree(root, restored_root)
-    subprocess.run(["pg_restore", "--single-transaction", "--exit-on-error", "--no-owner", "--no-privileges",
+    subprocess.run(["pg_restore", "--single-transaction", "--exit-on-error", "--no-owner",
                     "-d", restored_name, archive], check=True)
     with psycopg.connect(dbname=restored_name) as restored:
         for sql in ("SELECT * FROM snapshot", "SELECT * FROM analysis_run", "SELECT * FROM import_batch",
