@@ -29,6 +29,7 @@ embeddings = [
     "sentence-transformers>=3.0",
 ]
 api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+operational = ["alembic>=1.13,<2", "sqlalchemy>=2,<3", "psycopg[binary]>=3.2,<4"]
 dev = [
     "httpx>=0.28,<1",
     "ruff>=0.6",
