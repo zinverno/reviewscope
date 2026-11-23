@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, firefox } from "playwright";
+import { checkPoll } from "./poll-acceptance.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const fixture = JSON.parse(input),
@@ -53,6 +54,7 @@ async function test(type) {
 		await page.getByLabel("Пароль").fill(fixture.password);
 		await page.getByRole("button", { name: "Войти" }).press("Enter");
 		stage = "permitted source";
+		await page.getByLabel("Рабочая область").selectOption(fixture.w);
 		await page.getByLabel("Источник", { exact: true }).selectOption(fixture.s);
 		const content = await context.storageState();
 		// Record only after authentication and never persist browser storage or private headers.
@@ -175,6 +177,15 @@ async function test(type) {
 				.getByRole("heading", { name: "Диагностика поставки" })
 				.waitFor();
 		}
+		stage = type.name() + " polling recovery";
+		const polling = await review.newPage();
+		await polling.goto(origin + "/cabinet/?workspace=" + fixture.w);
+		await checkPoll(polling, fixture);
+		await polling.close();
+		if (media)
+			await polling
+				.video()
+				.saveAs(join(media, "poll-recovery-" + type.name() + ".webm"));
 		stage = type.name() + " responsive";
 		for (const width of [1920, 1366, 390, 320]) {
 			stage = type.name() + " viewport " + width;

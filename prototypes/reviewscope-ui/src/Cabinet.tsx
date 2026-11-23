@@ -65,6 +65,14 @@ const codes: Record<string, string> = {
 	invalid_request: "Проверьте формат, размеры и выбранную точку.",
 	invalid_passport: "Проверьте паспорт источника.",
 };
+class AccessError extends Error {
+	constructor(
+		readonly status: number,
+		message: string,
+	) {
+		super(message);
+	}
+}
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 	const res = await fetch(ROOT + path, {
 		...init,
@@ -74,7 +82,10 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 	});
 	if (!res.ok) {
 		const body = await res.json().catch(() => ({}));
-		throw new Error(codes[body.error] ?? "Операция недоступна.");
+		throw new AccessError(
+			res.status,
+			codes[body?.error] ?? "Операция недоступна.",
+		);
 	}
 	return res.status === 204 ? (null as T) : res.json();
 }
@@ -237,9 +248,9 @@ function Cabinet() {
 		[busy, setBusy] = useState(false);
 	const [search, setSearch] = useState(location.search);
 	const query = new URLSearchParams(search);
-	const space =
-		session?.workspaces.find((w) => w.id === query.get("workspace")) ??
-		session?.workspaces[0];
+	const space = query.has("workspace")
+		? session?.workspaces.find((w) => w.id === query.get("workspace"))
+		: session?.workspaces[0];
 	const w = space?.id ?? "",
 		workspace = "/workspaces/" + w,
 		canWrite = space?.role === "owner" || space?.role === "analyst";
@@ -252,9 +263,31 @@ function Cabinet() {
 		[loadedDraft, setDraft] = useState<(Draft & { scope: string }) | null>(
 			null,
 		);
-	const [runs, setRuns] = useState<Job[]>([]),
-		[job, setJob] = useState<Job | null>(null),
-		[success, setSuccess] = useState<Job | null>(null);
+	const [historyPage, setHistoryPage] = useState<{
+		workspace: string;
+		rows: Job[];
+	} | null>(null);
+	const runs = historyPage?.workspace === workspace ? historyPage.rows : [];
+	const principal = session?.principal_id;
+	const [revision, setRevision] = useState(0);
+	const watch = !!w && !query.get("view") && !!(run || snapshot);
+	const scope = JSON.stringify([
+		session?.principal_id,
+		w,
+		source,
+		snapshot,
+		run,
+		revision,
+	]);
+	const [observation, setObservation] = useState<{
+		scope: string;
+		state: "ready" | "retrying" | "denied";
+		job?: Job | null;
+		success?: Job | null;
+	} | null>(null);
+	const visible = watch && observation?.scope === scope ? observation : null;
+	const job = visible?.job,
+		success = visible?.success;
 	const [locs, setLocs] = useState<string[]>([]),
 		[file, setFile] = useState<File | null>(null),
 		[fmt, setFmt] = useState("csv");
@@ -287,7 +320,7 @@ function Cabinet() {
 	useEffect(() => {
 		let current = true;
 		setTargets([]);
-		setRuns([]);
+		setHistoryPage(null);
 		if (w) {
 			if (canWrite)
 				api<Target[]>(workspace + "/upload-targets")
@@ -299,7 +332,7 @@ function Cabinet() {
 					});
 			api<Job[]>(workspace + "/runs")
 				.then((v) => {
-					if (current) setRuns(v);
+					if (current) setHistoryPage({ workspace, rows: v });
 				})
 				.catch((e) => {
 					if (current) setMsg(e.message);
@@ -341,48 +374,96 @@ function Cabinet() {
 		}
 	}, [sourcePath]);
 	useEffect(() => {
-		let current = true;
+		if (!watch) return;
+		const controller = new AbortController();
 		let timer: ReturnType<typeof setTimeout>;
-		setJob(null);
-		setSuccess(null);
+		let backoff = 1500;
+		let revalidate = true;
 		async function poll() {
+			const init = {
+				signal: AbortSignal.any([
+					controller.signal,
+					AbortSignal.timeout(12000),
+				]),
+			};
 			try {
-				let running = false;
-				if (run) {
-					const v = await api<Job>(workspace + "/runs/" + run + "/status");
-					if (!current) return;
-					setJob(v);
-					setRuns((before) => [
-						v,
-						...before.filter((item) => item.id !== v.id),
-					]);
-					running = ["queued", "running"].includes(v.status);
+				const job = run
+					? await api<Job>(workspace + "/runs/" + run + "/status", init)
+					: null;
+				const id = snapshot || job?.snapshot_id;
+				if (!id || (job && (job.id !== run || job.snapshot_id !== id)))
+					throw new AccessError(404, codes.not_found);
+				const path = workspace + "/snapshots/" + id;
+				let success: Job | null = null;
+				try {
+					success = await api<Job>(path + "/summary-metrics", init);
+				} catch (error) {
+					if (!(error instanceof AccessError && error.status === 404))
+						throw error;
+					// A missing summary also occurs before the first successful run.
 				}
-				if (snapshot) {
-					const res = await fetch(
-						ROOT + workspace + "/snapshots/" + snapshot + "/summary-metrics",
-						{ cache: "no-store" },
-					);
-					if (!current) return;
-					if (res.ok) setSuccess(await res.json());
-					else if (res.status === 404) setSuccess(null);
-					else throw new Error("Статус недоступен.");
-				}
-				if (current && running) timer = setTimeout(poll, 1500);
-			} catch (e) {
+				const target = await api<{ id: string; source_id: string }>(path, init);
+				if (
+					target.id !== id ||
+					(source && target.source_id !== source) ||
+					(success &&
+						(success.snapshot_id !== id || success.status !== "succeeded"))
+				)
+					throw new AccessError(404, codes.not_found);
+				if (job?.status === "succeeded" && !success)
+					throw new AccessError(503, codes.access_unavailable);
+				const current = revalidate
+					? await api<Session>("/session", init)
+					: null;
+				if (controller.signal.aborted) return;
 				if (current) {
-					setJob(null);
-					setSuccess(null);
-					setMsg((e as Error).message);
+					if (current.principal_id !== principal) {
+						setSession(null);
+						return;
+					}
+					if (!current.workspaces.some((v) => v.id === w))
+						throw new AccessError(404, codes.not_found);
+					setSession(current);
+				}
+				revalidate = false;
+				setObservation({ scope, state: "ready", job, success });
+				if (job)
+					setHistoryPage((before) => ({
+						workspace,
+						rows: [
+							job,
+							...(before?.workspace === workspace ? before.rows : []).filter(
+								(v) => v.id !== job.id,
+							),
+						],
+					}));
+				backoff = 1500;
+				if (job && ["queued", "running"].includes(job.status))
+					timer = setTimeout(poll, backoff);
+			} catch (error) {
+				if (controller.signal.aborted) return;
+				if (error instanceof AccessError && error.status === 401) {
+					setSession(null);
+					return;
+				}
+				revalidate = true;
+				const denied =
+					error instanceof AccessError &&
+					error.status < 500 &&
+					![408, 429].includes(error.status);
+				setObservation({ scope, state: denied ? "denied" : "retrying" });
+				if (!denied) {
+					timer = setTimeout(poll, backoff);
+					backoff = Math.min(backoff * 2, 15000);
 				}
 			}
 		}
-		if (w && (run || snapshot)) void poll();
+		void poll();
 		return () => {
-			current = false;
+			controller.abort();
 			clearTimeout(timer);
 		};
-	}, [run, snapshot, workspace, w]);
+	}, [watch, scope, run, snapshot, workspace, source, principal, w]);
 	async function action(fn: () => Promise<void>) {
 		setBusy(true);
 		setMsg("");
@@ -451,6 +532,7 @@ function Cabinet() {
 		setDrafts(await api<Draft[]>(sourcePath));
 	}
 	async function start() {
+		const address = location.href;
 		const id =
 			pendingJob.current?.snapshot === snapshot
 				? pendingJob.current.key
@@ -465,6 +547,7 @@ function Cabinet() {
 				engine_version: "1",
 			}),
 		);
+		if (location.href !== address) return;
 		pendingJob.current = null;
 		go({ run: result.id });
 	}
@@ -559,7 +642,22 @@ function Cabinet() {
 						</select>
 					</label>
 					{!w ? (
-						<p>Нет доступных рабочих областей.</p>
+						<p>Рабочая область недоступна.</p>
+					) : watch && visible?.state !== "ready" ? (
+						<section aria-label="Состояние соединения">
+							<p role="status">
+								{visible?.state === "denied"
+									? "Проверка недоступна в выбранной области."
+									: visible?.state === "retrying"
+										? "Связь прервана. Повторяем проверку доступа…"
+										: "Проверяем доступ к заданию…"}
+							</p>
+							{visible?.state === "denied" && (
+								<button type="button" onClick={() => setRevision((v) => v + 1)}>
+									Обновить статус
+								</button>
+							)}
+						</section>
 					) : (
 						<>
 							{canWrite ? (
@@ -872,14 +970,15 @@ function Cabinet() {
 										<button
 											type="button"
 											onClick={() =>
-												void action(async () =>
-													setJob(
-														await api<Job>(
-															workspace + "/runs/" + run + "/cancel",
-															{ method: "POST" },
-														),
-													),
-												)
+												void action(async () => {
+													const address = location.href;
+													await api<Job>(
+														workspace + "/runs/" + run + "/cancel",
+														{ method: "POST" },
+													);
+													if (location.href === address)
+														setRevision((v) => v + 1);
+												})
 											}
 										>
 											Отменить проверку

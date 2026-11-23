@@ -182,7 +182,13 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
         "UPDATE location SET name=sl.external_place_id FROM source_location sl WHERE location.id=sl.location_id"
     )
     pw = secrets.token_urlsafe(24)
-    provision(db, "cabinet-owner", pw, key, workspace=w)
+    actor = provision(db, "cabinet-owner", pw, key, workspace=w)
+    empty = db.execute("INSERT INTO workspace(name) VALUES ('Polling control') RETURNING id").fetchone()[0]
+    db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'viewer','active')", (empty, actor))
+    control = tmp_path / "poll-control"
+    witness = Path(os.environ["RS_RETENTION_LEDGER"])
+    parked = tmp_path / "parked-test-witness"
+    control.write_text("ready")
     j = tmp_path / "json-fixture"
     j.mkdir()
     positions = [
@@ -304,6 +310,8 @@ with tempfile.TemporaryFile() as stage:
             env["HOME"] = str(browser_home)
             inputs = dict(
                 account="cabinet-owner",
+                emptyWorkspace=str(empty),
+                pollControl=str(control),
                 password=pw,
                 w=str(w),
                 s=str(s),
@@ -322,7 +330,24 @@ with tempfile.TemporaryFile() as stage:
             native.stdin.write(json.dumps(inputs) + "\n")
             native.stdin.close()
             try:
+                previous = None
                 while native.poll() is None:
+                    mode = control.read_text()
+                    if mode != previous:
+                        assert mode in {"pause", "ready", "revoked", "ledger"}
+                        if mode == "ledger":
+                            witness.rename(parked)
+                        elif parked.exists():
+                            parked.rename(witness)
+                        db.execute(
+                            "UPDATE workspace_membership SET state=%s WHERE workspace_id=%s AND principal_id=%s",
+                            ("inactive" if mode == "revoked" else "active", w, actor),
+                        )
+                        control.with_suffix(".ack").write_text(mode)
+                        previous = mode
+                    if mode != "ready":
+                        time.sleep(0.05)
+                        continue
                     # Let the browser close its tab and cancel its first queued attempt before the worker starts.
                     if db.execute(
                         "SELECT count(*) FROM analysis_run WHERE status='cancelled'"
