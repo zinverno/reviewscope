@@ -60,10 +60,13 @@ CREATE TRIGGER legacy_counts BEFORE INSERT ON import_batch FOR EACH ROW
           NEW.input_count=NEW.accepted_count+NEW.rejected_count)
     EXECUTE FUNCTION legacy_receipt_counts();
 
--- Private local authorization for a verified database login, account and object directory.
+-- Object keys are workspace-scoped and must resolve to the same archive for every login and source.
+ALTER TABLE workspace ADD COLUMN delivery_object_root nonblank;
+
+-- This grant confirms permission to retain the source bytes.
 CREATE TABLE delivery_authorization (
     workspace_id uuid NOT NULL, source_id uuid NOT NULL, operator_login name NOT NULL,
-    principal_id uuid NOT NULL, object_root nonblank NOT NULL,
+    principal_id uuid NOT NULL,
     PRIMARY KEY (workspace_id,source_id,operator_login),
     FOREIGN KEY (workspace_id,source_id) REFERENCES source,
     FOREIGN KEY (workspace_id,principal_id) REFERENCES workspace_membership,

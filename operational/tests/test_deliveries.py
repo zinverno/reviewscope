@@ -43,9 +43,10 @@ def command(db, tmp_path):
     db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'analyst','active')", (w, actor))
     root = tmp_path / "objects"
     root.mkdir(mode=0o700)
+    db.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(root), w))
     db.execute(
-        "INSERT INTO delivery_authorization VALUES (%s,%s,current_user,%s,%s)",
-        (w, s, actor, str(root)),
+        "INSERT INTO delivery_authorization VALUES (%s,%s,current_user,%s)",
+        (w, s, actor),
     )
     (tmp_path / "coverage").write_text(json.dumps(COVER))
     args = [
@@ -183,7 +184,7 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
     with psycopg.connect(dbname=new) as restored:
         assert state(restored) == before
         # A restored installation must explicitly authorize the new object directory.
-        restored.execute("UPDATE delivery_authorization SET object_root=%s", (str(copy),))
+        restored.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(copy), w))
     restore_env = os.environ | {"PGDATABASE": new}
     for args, original in ((a, first), (b, second)):
         replay = [str(copy) if arg == str(root) else arg for arg in args]
@@ -372,6 +373,34 @@ def test_scope_failures_and_rollback(db, tmp_path):
             {"source": "synthetic", "source_place_id": "p1"} | {field: value},
         )
         call(base + foreign_input + ["--apply"], error="scope_denied")
+    db.execute("UPDATE workspace SET delivery_object_root=NULL WHERE id=%s", (w,))
+    call(args, error="scope_denied")
+    db.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(root), w))
+    assert not db.execute(
+        "SELECT has_column_privilege('rs_runtime','workspace','delivery_object_root','SELECT')"
+    ).fetchone()[0]
+    # A second source grant in the workspace cannot direct bytes to a different archive.
+    _, project, second = scope(db, workspace=w, source_key="second")
+    bind_place(db, w, project, second)
+    db.execute(
+        """INSERT INTO delivery_authorization SELECT workspace_id,%s,operator_login,principal_id
+                  FROM delivery_authorization WHERE workspace_id=%s AND source_id=%s""",
+        (second, w, s),
+    )
+    second_args = (
+        base
+        + json_input(
+            tmp_path,
+            [{"body": "synthetic"}],
+            {"body": "text"},
+            {"source": "second", "source_place_id": "p1"},
+        )
+        + ["--dry-run"]
+    )
+    second_args[second_args.index("--source") + 1] = str(second)
+    assert call(second_args)["outcome"] == "planned"
+    second_args[second_args.index("--object-root") + 1] = str(tmp_path)
+    call(second_args, error="scope_denied")
     assert not list(root.iterdir())
     db.execute("""CREATE FUNCTION interrupt_publish() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN RAISE EXCEPTION 'synthetic private marker'; END $$;
@@ -475,9 +504,7 @@ def test_historical_backfill_survives_upgrade(monkeypatch, tmp_path):
 def test_version_place_fk_and_receipt_seal(db, tmp_path):
     args, _, w, s = command(db, tmp_path)
     call(args + csv("a") + ["--apply"])
-    ident, batch = db.execute(
-        "SELECT identity_id,batch_id FROM import_row LIMIT 1"
-    ).fetchone()
+    ident, batch = db.execute("SELECT identity_id,batch_id FROM import_row LIMIT 1").fetchone()
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         db.execute(
             """INSERT INTO review_version(workspace_id,source_id,identity_id,batch_id,external_place_id,

@@ -126,4 +126,4 @@ python scripts/build_public_demo_dataset.py --verify
 
 ## Ревизия 0004_delivery_history
 
-Ревизия привязывает каждую review_identity к существующей source_location, добавляет привязку анонимных наблюдений, типизированные event_date/event_at и третий счётчик в import_batch. Таблицы import_row и delivery_authorization закрыты для rs_runtime. Для новых поставок существующий snapshot хранит каноническую проекцию, формат указан в filters. Состав, фактический SHA и восстановление приведены в [контракте](snapshot-contract.md) и [инструкции оператору](snapshot-operations.md).
+Ревизия привязывает каждую review_identity к существующей source_location, добавляет привязку анонимных наблюдений, типизированные event_date/event_at и третий счётчик в import_batch. Путь в workspace.delivery_object_root является общим для источников workspace. Эта колонка и таблицы import_row и delivery_authorization закрыты для rs_runtime. Для новых поставок существующий snapshot хранит каноническую проекцию, формат указан в filters. Состав, фактический SHA и восстановление приведены в [контракте](snapshot-contract.md) и [инструкции оператору](snapshot-operations.md).

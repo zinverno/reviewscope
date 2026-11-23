@@ -79,7 +79,7 @@ def coverage_passport(data):
 def authorize(conn, args):
     row = conn.execute(
         """
-        SELECT coalesce(s.external_source_id,s.source_key),a.object_root,a.principal_id
+        SELECT coalesce(s.external_source_id,s.source_key),w.delivery_object_root,a.principal_id
         FROM delivery_authorization a JOIN source s ON (s.workspace_id,s.id)=(a.workspace_id,a.source_id)
         JOIN workspace w ON w.id=a.workspace_id
         JOIN workspace_membership m ON (m.workspace_id,m.principal_id)=(a.workspace_id,a.principal_id)
@@ -92,7 +92,7 @@ def authorize(conn, args):
     """,
         (args.workspace, args.source),
     ).fetchone()
-    if row is None or args.object_root != Path(row[1]):
+    if row is None or str(args.object_root) != row[1]:
         raise DeliveryError("scope_denied")
     private_directory(args.object_root)
     return row[0], row[2]

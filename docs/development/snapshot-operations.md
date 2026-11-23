@@ -22,7 +22,7 @@ GROUP BY i.workspace_id,i.source_id,i.id
 HAVING count(DISTINCT v.external_place_id)<>1 OR bool_or(v.external_place_id IS NULL);
 ```
 
-4. Используйте существующие workspace/source/source_location. Ожидаемое значение PR-09 source берётся из source.external_source_id, а при NULL из source.source_key. Укажите подтверждённого principal с активным членством owner/analyst. В приватном окружении задайте переменные ниже. OBJECT_ROOT — абсолютный канонический путь на локальной файловой системе с hard link и fsync, в доверенном родительском каталоге, вне путей публичных артефактов. Пустой новый каталог создаёт оператор с режимом 0700. Все компоненты под корнем принадлежат оператору. БД хранит разрешённый путь только в приватной таблице.
+4. Используйте существующие workspace/source/source_location. Ожидаемое значение PR-09 source берётся из source.external_source_id, а при NULL из source.source_key. Укажите подтверждённого principal с активным членством owner/analyst. В приватном окружении задайте переменные ниже. OBJECT_ROOT — абсолютный канонический путь на локальной файловой системе с hard link и fsync, в доверенном родительском каталоге, вне путей публичных артефактов. Пустой новый каталог создаёт оператор с режимом 0700. Все компоненты под корнем принадлежат оператору. Приватная колонка workspace.delivery_object_root задаёт один архив всем источникам и операторам workspace. Привязанный каталог меняют только при подтверждённом переносе полного архива.
 
 ```bash
 mkdir -m 700 -- "$OBJECT_ROOT"
@@ -32,8 +32,11 @@ psql -X -q -v ON_ERROR_STOP=1 <<'SQL'
 \getenv s SOURCE_ID
 \getenv p PRINCIPAL_ID
 \getenv root OBJECT_ROOT
-INSERT INTO delivery_authorization(workspace_id,source_id,operator_login,principal_id,object_root)
-VALUES (:'w',:'s',session_user,:'p',:'root');
+BEGIN;
+UPDATE workspace SET delivery_object_root=:'root' WHERE id=:'w' AND delivery_object_root IS NULL;
+INSERT INTO delivery_authorization(workspace_id,source_id,operator_login,principal_id)
+SELECT id,:'s',session_user,:'p' FROM workspace WHERE id=:'w' AND delivery_object_root=:'root';
+COMMIT;
 SQL
 ```
 
@@ -94,8 +97,7 @@ psql -X -q -v ON_ERROR_STOP=1 <<'SQL'
 \getenv root RESTORED_ROOT
 SELECT format('REVOKE TEMP ON DATABASE %I FROM PUBLIC',current_database()) \gexec
 UPDATE access_session SET revoked_at=clock_timestamp() WHERE revoked_at IS NULL;
-UPDATE delivery_authorization SET object_root=:'root'
-WHERE workspace_id=:'w' AND source_id=:'s' AND operator_login=session_user;
+UPDATE workspace SET delivery_object_root=:'root' WHERE id=:'w';
 SQL
 ```
 
