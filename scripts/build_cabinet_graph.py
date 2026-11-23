@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 
 from reviewscope.config import CONFIG
-from scripts.build_cabinet_demo import DEMO_SHA, ROOT, public_engine, result_id
+from scripts.build_cabinet_demo import DEMO_SHA, ROOT, public_engine, public_review, result_id
 
 OUT = ROOT / "prototypes/reviewscope-ui/src/demo-graph"
 SCHEMA = "public-demo-direct-pairs-v1"
@@ -27,11 +27,7 @@ def project(result):
     reviews = {}
     for r in result.reviews:
         if r.review_id in members:
-            row = {"text": r.text, "rating": r.rating, "date": r.published_at}
-            reviews[r.review_id] = {
-                **row,
-                "version": result_id([DEMO_SHA, result.place_id, r.review_id, row]),
-            }
+            reviews[r.review_id] = public_review(r)
     return {
         "schema": SCHEMA,
         "snapshot": DEMO_SHA,
