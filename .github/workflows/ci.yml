@@ -18,9 +18,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install -e ".[operational,dev]"
+      - run: python -m pip install -e ".[operational,access,dev]"
       - name: Migrate, backfill and restore on disposable PostgreSQL
-        run: bash operational/test-postgres.sh
+        run: |
+          python -VV
+          python -m pytest -q tests/test_access.py
+          bash operational/test-postgres.sh
 
   test:
     runs-on: ubuntu-latest
@@ -42,7 +45,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install -r requirements.txt
-          python -m pip install -e ".[api,dev]"
+          python -m pip install -e ".[api,access,dev]"
 
       - name: Verify demo artifact
         run: python scripts/build_public_demo_dataset.py --verify

@@ -1,0 +1,113 @@
+"""Parameterized, transaction-scoped runtime queries. The pool belongs to one ASGI lifespan."""
+
+from contextlib import contextmanager
+from uuid import UUID
+
+import psycopg
+from fastapi import HTTPException
+from psycopg.rows import dict_row
+from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
+
+from .security import ROLES, permits
+
+METADATA = {
+    "sources": ("source", "id,kind"),
+    "snapshots": ("snapshot", "id,source_id,created_at"),
+    "runs": ("analysis_run", "id,snapshot_id,status"),
+}
+SCOPED = """workspace workspace_membership client_project location source source_location import_batch
+review_identity review_version snapshot snapshot_member analysis_run artifact membership_event""".split()
+
+
+def pool():
+    # libpq handles the operator's service/passfile. Always authenticate as this exact login.
+    return create_engine(
+        "postgresql+psycopg://",
+        connect_args={
+            "user": "rs_runtime",
+            "connect_timeout": 3,
+            "options": "-c search_path=pg_catalog,public",
+        },
+        pool_size=2,
+        max_overflow=0,
+        pool_timeout=4,
+        hide_parameters=True,
+    )
+
+
+@contextmanager
+def transaction(engine):
+    try:
+        with engine.begin() as connection:
+            with connection.connection.driver_connection.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """SELECT (current_user=session_user AND current_user='rs_runtime'
+                    AND NOT (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication)
+                    AND NOT EXISTS (SELECT FROM pg_auth_members WHERE member=r.oid)
+                    AND NOT has_schema_privilege(current_user,'public','CREATE')
+                    AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
+                    AND (SELECT array_agg(version_num) FROM public.alembic_version)
+                        = ARRAY['0003_workspace_access']::varchar[]
+                    AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
+                    AND to_regclass('public.password_credential') IS NOT NULL
+                    AND to_regclass('public.access_session') IS NOT NULL
+                    AND to_regclass('public.principal') IS NOT NULL) AS ready
+                    FROM pg_roles r WHERE rolname=current_user""",
+                    (SCOPED,),
+                )
+                if not cur.fetchone()["ready"]:
+                    raise HTTPException(503)
+                yield cur
+    except (psycopg.Error, SQLAlchemyError):
+        raise HTTPException(503) from None
+
+
+def identify(cur, proof: str):
+    cur.execute("SELECT set_config('rs.session_proof',%s,true)", (proof,))
+    cur.execute("SELECT access_actor() AS id")
+    principal = cur.fetchone()["id"]
+    if principal is None:
+        raise HTTPException(401)
+    return principal
+
+
+def workspaces(cur, principal, offset):
+    cur.execute(
+        """SELECT w.id,w.name,w.state,m.role FROM workspace w
+        JOIN workspace_membership m ON w.id=m.workspace_id
+        WHERE m.principal_id=%s AND m.state='active' AND m.role=ANY(%s) ORDER BY w.id LIMIT 50 OFFSET %s""",
+        (principal, sorted(ROLES["read"]), offset),
+    )
+    return cur.fetchall()
+
+
+def authorize(cur, principal, workspace, action):
+    cur.execute(
+        """SELECT role FROM workspace_membership
+        WHERE workspace_id=%s AND principal_id=%s AND state='active'""",
+        (workspace, principal),
+    )
+    member = cur.fetchone()
+    if member is None:
+        raise HTTPException(404)
+    if not permits(member["role"], action):
+        raise HTTPException(403)
+    cur.execute("SELECT set_config('rs.workspace',%s,true)", (str(workspace),))
+
+
+def metadata(cur, resource, workspace, object_id: UUID | None, offset):
+    table, fields = METADATA[resource]  # Static identifiers, selected by registered endpoint.
+    if object_id is None:
+        cur.execute(
+            f"SELECT {fields} FROM {table} WHERE workspace_id=%s ORDER BY id LIMIT 50 OFFSET %s",
+            (workspace, offset),
+        )
+        return cur.fetchall()
+    cur.execute(
+        f"SELECT {fields} FROM {table} WHERE workspace_id=%s AND id=%s", (workspace, object_id)
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise HTTPException(404)
+    return row
