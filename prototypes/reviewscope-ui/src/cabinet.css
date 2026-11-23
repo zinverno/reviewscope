@@ -165,3 +165,9 @@
 .evidence dd { margin:0; }
 
 .overview-count strong { font: 2.5rem var(--serif); }
+.direct-map { margin:1rem 0; max-width:36rem; }
+.direct-map svg { display:block; width:100%; background:var(--surface); border:1px solid var(--border); }
+.direct-map line { stroke:var(--blue); stroke-width:2; }
+.direct-map circle { fill:var(--text); }
+.direct-map text { fill:var(--base); font:8px var(--mono); }
+.duplicate-investigation caption { text-align:left; font-weight:bold; }
