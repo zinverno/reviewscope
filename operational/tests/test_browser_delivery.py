@@ -132,6 +132,9 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
     with ZipFile(handoff / (req["id"] + ".zip")) as zipped:
         row = zipped.read("rows/browser_delivery.jsonl")
         assert b"diagnostics" in row and b"approval" not in row and b"session" not in row
+    db.execute("UPDATE browser_admission SET evidence_allowed=true WHERE workspace_id=%s", (w,))
+    evidence_url = path + f"/snapshots/{snapshot}/reviews"
+    assert web.get(evidence_url).json()["total"] == 3
     archive = tmp_path / "old.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
     frozen = freeze_objects(root, tmp_path, [w])
@@ -150,7 +153,12 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
         "--root",
         root,
     )
-    assert web.get(draft_url).status_code == web.get(metrics_url).status_code == 404
+    assert (
+        web.get(draft_url).status_code
+        == web.get(metrics_url).status_code
+        == web.get(evidence_url).status_code
+        == 404
+    )
     assert db.execute("SELECT count(*) FROM browser_summary").fetchone() == (0,)
     assert operator("purge", "--request", erase["id"], "--root", root) == "completed"
     proof, access = read_witness()["sha256"], capture_access(db)
@@ -168,6 +176,9 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
             "SELECT (SELECT count(*) FROM browser_delivery),(SELECT count(*) FROM browser_admission)"
         ).fetchone() == (0, 0)
         assert operator("purge", "--request", erase["id"], "--root", restored) == "completed"
+        with TestClient(create_app(), base_url=ORIGIN) as recovered_api:
+            recovered_api.cookies.update(web.cookies)
+            assert recovered_api.get(evidence_url).status_code == 401
 
 
 def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
@@ -175,9 +186,9 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
     import json
     from pathlib import Path
 
-    from operational.tests.test_deliveries import json_input
+    from operational.tests.test_deliveries import call, json_input
 
-    _, object_root, w, s = command(db, tmp_path)
+    registration, object_root, w, s = command(db, tmp_path)
     db.execute(
         "UPDATE location SET name=sl.external_place_id FROM source_location sl WHERE location.id=sl.location_id"
     )
@@ -205,11 +216,35 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
         {"id": "source_review_id", "place": "source_place_id", "body": "text"},
         {"source": "synthetic"},
     )
-    for file in (FIX / "a.csv", FIX / "b.csv", j / "data"):
+    long_fixture = tmp_path / "long-review"
+    long_fixture.mkdir()
+    history_input = json_input(
+        long_fixture,
+        [
+            {
+                "id": "long",
+                "body": "<b>Синтетический текст</b> " * 120,
+                "url": "https://example.test/review/long",
+            }
+        ]
+        + [{"id": f"example-{n}", "body": "Синтетическая запись"} for n in range(2, 29)],
+        {"id": "source_review_id", "body": "text", "url": "source_url"},
+    )
+    long_snapshot = call(registration + history_input + ["--apply"])["snapshot_id"]
+    for file in (FIX / "a.csv", FIX / "b.csv", j / "data", long_fixture / "data"):
         db.execute(
-            "INSERT INTO browser_admission VALUES (%s,%s,%s)",
+            "INSERT INTO browser_admission VALUES (%s,%s,%s,true)",
             (w, s, hashlib.sha256(file.read_bytes()).hexdigest()),
         )
+    db.execute(
+        "UPDATE browser_admission SET evidence_link_hashes=ARRAY[%s]::sha256_hex[] WHERE workspace_id=%s AND source_id=%s AND checksum=%s",
+        (
+            hashlib.sha256(b"https://example.test/review/long").hexdigest(),
+            w,
+            s,
+            hashlib.sha256((long_fixture / "data").read_bytes()).hexdigest(),
+        ),
+    )
     cert, tls = tmp_path / "cert.pem", tmp_path / "tls.pem"
     subprocess.run(
         [
@@ -309,6 +344,7 @@ with tempfile.TemporaryFile() as stage:
                 s=str(s),
                 csv=str(FIX.resolve()),
                 json=str(j),
+                longSnapshot=long_snapshot,
             )
             native = subprocess.Popen(
                 ["node", "scripts/cabinet-acceptance.mjs"],
@@ -345,7 +381,7 @@ with tempfile.TemporaryFile() as stage:
         db.execute(
             "SELECT input_count,accepted_count,rejected_count,confirmed_duplicate_count FROM import_batch"
         ).fetchall()
-    ) == [(3, 3, 0, 0), (6, 6, 0, 0), (12, 6, 5, 1)]
+    ) == [(3, 3, 0, 0), (6, 6, 0, 0), (12, 6, 5, 1), (28, 28, 0, 0)]
 
 
 def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811
@@ -497,6 +533,21 @@ def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, ca
         )
         assert applied.status_code == 200, applied.status_code
         assert db.execute("SELECT count(*) FROM review_version").fetchone() == (MAX_ROWS,)
+        confirmed_seconds = time.monotonic() - started
+        db.execute(
+            "UPDATE browser_admission SET evidence_allowed=true WHERE workspace_id=%s AND source_id=%s",
+            (w, s),
+        )
+        since = time.monotonic()
+        bounded_evidence = web.get(
+            f"{ROOT}/workspaces/{w}/snapshots/{applied.json()['snapshot_id']}/reviews",
+            params={"position": MAX_ROWS},
+        )
+        assert (
+            bounded_evidence.status_code == 200
+            and bounded_evidence.json()["rows"][0]["position"] == MAX_ROWS
+        )
+        print(f"Evidence lookup over {MAX_ROWS} positions: {time.monotonic() - since:.3f}s")
         print(
-            f"Browser confirmation: {MAX_BYTES} bytes, {MAX_ROWS} positions, {time.monotonic() - started:.2f}s"
+            f"Browser confirmation: {MAX_BYTES} bytes, {MAX_ROWS} positions, {confirmed_seconds:.2f}s"
         )

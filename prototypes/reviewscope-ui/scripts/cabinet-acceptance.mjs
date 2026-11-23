@@ -10,6 +10,7 @@ const media = process.env.RS_TEST_BROWSER_OUT;
 if (media) await mkdir(media, { recursive: true, mode: 0o700 });
 let stage = "launch";
 const observed = [];
+const snapshots = new Map();
 async function test(type) {
 	stage = type.name() + " launch";
 	const browser = await type.launch();
@@ -137,6 +138,10 @@ async function test(type) {
 				.getByRole("button", { name: "Подтвердить и создать снимок" })
 				.click();
 			await page.getByRole("link", { name: "Открыть снимок" }).waitFor();
+			const target = await page
+				.getByRole("link", { name: "Открыть снимок" })
+				.getAttribute("href");
+			snapshots.set(name, new URL(target, origin).searchParams.get("snapshot"));
 		}
 		if (type === chromium) {
 			await submit("a", 3, 3, 0, 0);
@@ -193,6 +198,85 @@ async function test(type) {
 				await page.screenshot({
 					path: join(media, type.name() + "-" + width + ".png"),
 					fullPage: true,
+				});
+		}
+		const evidence = async (snapshot, position) => {
+			const dest = new URL("/cabinet/", origin);
+			for (const [name, value] of Object.entries({
+				view: "reviews",
+				workspace: fixture.w,
+				source: fixture.s,
+				snapshot,
+			}))
+				dest.searchParams.set(name, value);
+			if (position) dest.searchParams.set("position", String(position));
+			await page.goto(dest.href);
+			await page
+				.getByRole("heading", { name: "Отзывы и доказательства" })
+				.waitFor();
+		};
+		stage = type.name() + " historical review";
+		for (const [delivery, version, beginning] of [
+			["a", 1, "На табло"],
+			["b", 2, "Уточню"],
+		]) {
+			await evidence(snapshots.get(delivery), 1);
+			await page
+				.getByRole("link", { name: `Позиция 1 · r1 · версия ${version}` })
+				.click();
+			await page.locator("blockquote").waitFor();
+			assert.ok(
+				(await page.locator("blockquote").innerText()).startsWith(beginning),
+			);
+			if (delivery === "a")
+				await page.getByText(/Исторический снимок/).waitFor();
+			await page.goBack();
+			assert.equal(new URL(page.url()).searchParams.get("position"), "1");
+		}
+		await evidence(snapshots.get("b"), 5);
+		await page
+			.getByRole("link", { name: /Позиция 5 · без внешнего ID/ })
+			.click();
+		await page.getByText("Точный фрагмент не размечен.").waitFor();
+		await evidence(snapshots.get("json"), 1);
+		await page
+			.getByText("Подтверждённых отзывов по выбранным условиям нет.")
+			.waitFor();
+		stage = type.name() + " long review";
+		await evidence(fixture.longSnapshot);
+		await page.getByRole("link", { name: "Следующая страница" }).click();
+		await page.getByRole("link", { name: /Позиция 26 ·/ }).waitFor();
+		await page.goBack();
+		await page.getByRole("link", { name: /Позиция 1 · long/ }).click();
+		await page.locator("blockquote").waitFor();
+		assert.ok(
+			(await page.locator("blockquote").innerText()).includes(
+				"<b>Синтетический текст</b>",
+			),
+		);
+		assert.equal(await page.locator("blockquote b").count(), 0);
+		assert.equal(
+			await page
+				.getByRole("link", { name: "Открыть проверенную ссылку источника" })
+				.getAttribute("href"),
+			"https://example.test/review/long",
+		);
+		for (const width of [1920, 1366, 390, 320]) {
+			await page.setViewportSize({
+				width,
+				height: width === 1920 ? 1000 : 768,
+			});
+			await page
+				.getByRole("heading", { name: "Полный текст" })
+				.scrollIntoViewIfNeeded();
+			assert.ok(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth <= innerWidth,
+				),
+			);
+			if (media)
+				await page.screenshot({
+					path: join(media, "evidence-" + type.name() + "-" + width + ".png"),
 				});
 		}
 		stage = type.name() + " finish recording";
