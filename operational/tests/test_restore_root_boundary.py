@@ -4,6 +4,7 @@ import hashlib
 import os
 import subprocess
 from contextlib import contextmanager
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -11,9 +12,9 @@ from psycopg import sql
 
 from operational import restore_copy, retention
 from operational.retention import access_seal, recover
-from operational.tests.conftest import freeze_objects, prepare_copy
+from operational.tests.conftest import freeze_objects, generation, prepare_copy
 from operational.tests.test_retention import fresh_restore_cluster
-from reviewscope.access.ledger import LedgerError, gate, ledger_path, read_witness
+from reviewscope.access.ledger import LedgerError, certified_space, gate, ledger_path, read_witness
 
 
 @contextmanager
@@ -44,7 +45,7 @@ def restoration(db, tmp_path, monkeypatch):
 
 def test_rejected_activation_preserves_original_root_for_retry(db, tmp_path, monkeypatch):
     with restoration(db, tmp_path, monkeypatch) as (target, w, obj, frozen, proof, access):
-        copied = tmp_path / "prepared"
+        copied = generation("prepared")
         token = prepare_copy(target, frozen, copied, proof, access)
         for change, undo in (
             (
@@ -68,7 +69,7 @@ def test_rejected_activation_preserves_original_root_for_retry(db, tmp_path, mon
         registered = "SELECT delivery_object_root FROM workspace WHERE id=%s"
         initial = str(obj.parents[2])
         assert target.execute(registered, (w,)).fetchone() == (initial,)
-        other = prepare_copy(target, frozen, tmp_path / "other", proof, access)
+        other = prepare_copy(target, frozen, generation("other"), proof, access)
         with pytest.raises(ValueError, match="unverified_recovery_roots"):
             recover(target, proof, [other], access)
         saved = copied.rename(tmp_path / "saved")
@@ -125,7 +126,7 @@ def test_live_storage_attestation_changes_when_archive_moves(db, tmp_path, monke
         assert (proof, access) == (read_witness()["sha256"], access_seal(db))
         contents = next(moved.glob("*/sha256/*"))
         before = contents.stat(), contents.read_bytes()
-        with pytest.raises(FileExistsError):
+        with pytest.raises(ValueError, match="destination_scope"):
             prepare_copy(target, frozen, moved, proof, access)
         with pytest.raises(ValueError, match="restore_receipt_required"):
             recover(target, proof, {w: moved}, access)
@@ -135,7 +136,7 @@ def test_live_storage_attestation_changes_when_archive_moves(db, tmp_path, monke
 
 def test_preexisting_unfinished_recovery_requires_fresh_copy(db, tmp_path, monkeypatch):
     with restoration(db, tmp_path, monkeypatch) as (target, _, _, frozen, proof, access):
-        token = prepare_copy(target, frozen, tmp_path / "prepared", proof, access)
+        token = prepare_copy(target, frozen, generation("prepared"), proof, access)
         target.execute(
             "UPDATE retention_control SET checkpoint=NULL,recovery_binding=%s", ("a" * 64,)
         )
@@ -151,8 +152,12 @@ def test_refused_and_interrupted_materialization(db, tmp_path, monkeypatch):
         obj = next(source.glob("*/sha256/*"))
         original = obj.read_bytes()
 
+        destinations = {}
+
         def attempt(name, archive=frozen):
-            return prepare_copy(target, archive, tmp_path / name, proof, access)
+            return prepare_copy(
+                target, archive, destinations.setdefault(name, generation(name)), proof, access
+            )
 
         with pytest.raises(ValueError, match="inventory_unverified"):
             attempt("wrong-manifest", (source, manifest, "0" * 64))
@@ -160,6 +165,16 @@ def test_refused_and_interrupted_materialization(db, tmp_path, monkeypatch):
         with pytest.raises(FileNotFoundError):
             attempt("absent")
         alternate.rename(manifest)
+        untrusted = generation("without-authority")
+        with monkeypatch.context() as patch:
+            patch.delenv("RS_RESTORE_VOLUME_SHA256")
+            with pytest.raises(ValueError, match="mount_authority_unavailable"):
+                prepare_copy(target, frozen, untrusted, proof, access)
+        assert not untrusted.exists()
+        working_child = live.parents[2] / "new-child"
+        with pytest.raises(ValueError, match="destination_scope"):
+            prepare_copy(target, frozen, working_child, proof, access)
+        assert not working_child.exists()
         saved = obj.rename(tmp_path / "object-aside")
         with pytest.raises(ValueError, match="inventory_mismatch"):
             attempt("missing")
@@ -193,7 +208,11 @@ def test_refused_and_interrupted_materialization(db, tmp_path, monkeypatch):
         assert live.read_bytes() == original and obj.read_bytes() == original
         token = attempt("complete")
         assert token and read_witness()["sha256"] == proof
-        copied = next((tmp_path / "complete").glob("*/sha256/*"))
+        with pytest.raises(LedgerError):
+            certified_space(read_witness(), live.parent.parent.name, destinations["complete"])
+        with pytest.raises(FileExistsError):
+            attempt("complete")
+        copied = next(destinations["complete"].glob("*/sha256/*"))
         copied.chmod(0o600)
         copied.write_bytes(b"x" * len(original))
         with pytest.raises(ValueError, match="inventory_mismatch"):
@@ -203,53 +222,18 @@ def test_refused_and_interrupted_materialization(db, tmp_path, monkeypatch):
         )
 
 
-def test_actual_bind_alias_rejected(tmp_path):
-    # The only mount in this test is in a private namespace which dies with the subprocess.
-    namespace = ["unshare", "--user", "--map-root-user", "--mount", "--propagation", "private"]
-    if subprocess.run([*namespace, "true"], capture_output=True).returncode:
-        namespace = ["sudo", "-n", "unshare", "--mount", "--propagation", "private"]
-    import sys
+def test_actual_bind_alias_rejected():
+    from reviewscope.access.restore import check_mount, unique_mount, volume_authority
 
-    a, b = tmp_path / "one", tmp_path / "alias"
-    a.mkdir(mode=0o700)
-    b.mkdir(mode=0o700)
-    code = """
-import os, sys
-sys.path.insert(0, "src")
-from reviewscope.access.restore import check_mount, RestoreError
-assert os.path.samefile(sys.argv[1], sys.argv[2])
-fd = os.open(sys.argv[2], os.O_DIRECTORY)
-try:
-    check_mount(fd)
-except RestoreError as exc:
-    assert str(exc) == "mount_unverified"
-else:
-    raise AssertionError("alias accepted")
-finally:
-    os.close(fd)
-"""
-    probe = [sys.executable, "-c", code, str(a), str(b)]
-    if namespace[0] == "sudo":
-        probe = [
-            "setpriv",
-            "--reuid",
-            str(os.getuid()),
-            "--regid",
-            str(os.getgid()),
-            "--clear-groups",
-            *probe,
-        ]
-    subprocess.run(
-        [
-            *namespace,
-            "sh",
-            "-ec",
-            'mount --bind "$1" "$2"; shift 2; exec "$@"',
-            "fixture",
-            str(a),
-            str(b),
-            *probe,
-        ],
-        check=True,
-        capture_output=True,
-    )
+    base = Path("/mnt")
+    assert (base / "probe-native").samefile(base / "probe-bind")
+    authority = volume_authority()["native_mounts"]
+    for name in ("probe-native", "probe-bind", "probe-unregistered"):
+        fd = os.open(base / name, os.O_DIRECTORY)
+        try:
+            assert (unique_mount(fd) in authority) == (name == "probe-native")
+            # A second visible mount invalidates the original too. The third FS has only one mount.
+            with pytest.raises(ValueError, match="mount_unverified"):
+                check_mount(fd)
+        finally:
+            os.close(fd)

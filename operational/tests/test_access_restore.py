@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from psycopg import sql
 
 from operational.retention import access_seal, recover
-from operational.tests.conftest import freeze_objects, new_db, prepare_copy
+from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, ORIGIN, ROOT, login
 from operational.tests.test_deliveries import call, command, csv
 from operational.tests.test_schema import scope
@@ -27,7 +27,7 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
     base, root, w, own = command(db, tmp_path)
     call(base + csv("a") + ["--apply"])
     other, _, foreign = scope(db)
-    restored_root = tmp_path / "copied-objects"
+    restored_root = generation("copied-objects")
     frozen = freeze_objects(root, tmp_path, [w])
     password = secrets.token_urlsafe(32)
     actor = provision(db, "restored", password, key, workspace=w)

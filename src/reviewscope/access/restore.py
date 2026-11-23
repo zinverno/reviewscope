@@ -1,10 +1,12 @@
 """Local Linux restore receipts. Only the offline operator writes the authority directory."""
 
+import ctypes
 import hashlib
 import json
 import os
 import re
 import stat
+import struct
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
@@ -44,11 +46,47 @@ def mount_id(fd):
 
 def identity(fd):
     st = os.fstat(fd)
-    return [st.st_dev, st.st_ino, mount_id(fd)]
+    return [st.st_dev, st.st_ino, unique_mount(fd)]
+
+
+def unique_mount(fd):
+    # Linux statx UAPI: stx_mask at 0, stx_mnt_id at 0x90. The unique ID lasts until reboot.
+    statx = getattr(ctypes.CDLL(None), "statx", None)
+    output = ctypes.create_string_buffer(256)
+    mask = 0x4000  # STATX_MNT_ID_UNIQUE, Linux 6.8+
+    require(
+        statx is not None
+        and statx(fd, b"", 0x1000, mask, ctypes.byref(output)) == 0
+        and struct.unpack_from("=I", output)[0] & mask,
+        "mount_authority_unavailable",
+    )
+    return struct.unpack_from("=Q", output, 0x90)[0]
+
+
+def volume_authority():
+    # The independent storage custodian pins this record at native mount creation.
+    try:
+        expected = os.environ["RS_RESTORE_VOLUME_SHA256"]
+        raw = private_bytes(Path(os.environ["RS_RESTORE_VOLUME_RECORD"]), storage=False)
+        require(sha(expected) and hashlib.sha256(raw).hexdigest() == expected)
+        record = json.loads(raw)
+        require(
+            record["version"] == 1
+            and record["boot"] == Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+            and isinstance(record["native_mounts"], list)
+            and 0 < len(record["native_mounts"]) <= 64
+            and all(type(i) is int and i > 0 for i in record["native_mounts"])
+            and isinstance(record["destination_parent"], list)
+            and len(record["destination_parent"]) == 3
+        )
+        return record
+    except (KeyError, OSError, TypeError, ValueError, RecursionError):
+        raise RestoreError("mount_authority_unavailable") from None
 
 
 def check_mount(fd):
     """Conservative local profile. Refuse submount aliases and multiply mounted devices."""
+    require(unique_mount(fd) in volume_authority()["native_mounts"], "mount_unverified")
     mid = str(mount_id(fd))
     mounts = [row.split() for row in Path("/proc/self/mountinfo").read_text().splitlines()]
     records = [r for r in mounts if r[0] == mid]
@@ -73,7 +111,7 @@ def private(fd, *, directory=False):
 
 
 @contextmanager
-def directory(path):
+def directory(path, *, storage=True):
     require(path.is_absolute() and path != Path("/") and ".." not in path.parts, "invalid_store")
     fd = os.open("/", DIR)
     try:
@@ -94,7 +132,8 @@ def directory(path):
                 "untrusted_parent",
             )
         private(fd, directory=True)
-        check_mount(fd)
+        if storage:
+            check_mount(fd)
         yield fd
     finally:
         os.close(fd)
@@ -114,9 +153,9 @@ def child_dir(parent, name, *, create=False):
         os.close(fd)
 
 
-def private_bytes(path):
+def private_bytes(path, *, storage=False):
     with (
-        directory(path.parent) as parent,
+        directory(path.parent, storage=storage) as parent,
         os.fdopen(os.open(path.name, READ, dir_fd=parent), "rb") as f,
     ):
         st = private(f.fileno())
@@ -135,7 +174,9 @@ def receipt(authority, key):
         require(hashlib.sha256(raw).hexdigest() == key)
         doc = json.loads(raw)
         require(
-            doc["version"] == 1
+            doc["version"] == 2
+            and sha(doc["volume_authority"])
+            and doc["volume_authority"] == os.environ.get("RS_RESTORE_VOLUME_SHA256")
             and uuid_string(doc["nonce"])
             and sha(doc["inventory"])
             and sha(doc["tree"])

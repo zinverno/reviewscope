@@ -17,7 +17,7 @@ from psycopg import sql
 
 from operational.backfill_demo import DEMO_SHA, import_demo
 from operational.retention import access_seal, initialize, recover
-from operational.tests.conftest import ALEMBIC, freeze_objects, new_db, prepare_copy
+from operational.tests.conftest import ALEMBIC, freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_schema import bind_place, receipt, run, scope
 from reviewscope.access.ledger import read_witness
 from reviewscope.import_preview import preview
@@ -177,7 +177,7 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
     archive = tmp_path / "db.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
     new = new_db()
-    copy = tmp_path / "independent"
+    copy = generation("independent")
     frozen = freeze_objects(root, tmp_path, [w])
     subprocess.run(
         ["pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "-d", new, archive],

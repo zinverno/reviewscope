@@ -20,7 +20,7 @@ from psycopg import sql
 from operational import worker
 from operational.delivery_objects import encoded
 from operational.retention import access_seal, recover
-from operational.tests.conftest import freeze_objects, new_db, prepare_copy
+from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, dataset, key, login
 from operational.tests.test_deliveries import call, command, csv, json_input
 from reviewscope.access.http import create_app
@@ -245,7 +245,7 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
     assert db.execute("SELECT count(*) FROM artifact").fetchone() == (3,)
     dump = tmp_path / "jobs.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", dump], check=True)
-    restored_root = tmp_path / "copy"
+    restored_root = generation("copy")
     frozen = freeze_objects(root, tmp_path, [w])
     name = new_db()
     subprocess.run(

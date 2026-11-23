@@ -1,5 +1,6 @@
 """Read-only witness outside PostgreSQL and its object backups (local operator profile)."""
 
+import errno
 import fcntl
 import hashlib
 import json
@@ -9,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
-from .restore import RestoreError, receipt, sha
+from .restore import NONCE, RestoreError, receipt, sha
 
 SCOPED = """workspace workspace_membership client_project location source source_location import_batch
 review_identity review_version snapshot snapshot_member analysis_run artifact membership_event import_row delivery_authorization
@@ -116,7 +117,13 @@ def active_receipts(data):
 def certified_space(data, workspace, root):
     docs = active_receipts(data)
     if not docs:
-        return None
+        # The previous live DB cannot adopt a generation still quarantined for replay.
+        try:
+            os.getxattr(root, NONCE, follow_symlinks=False)
+        except OSError as exc:
+            if exc.errno in (errno.ENODATA, errno.ENOTSUP):
+                return None
+        raise LedgerError()
     matches = [doc for doc in docs if str(workspace) in doc["spaces"] and str(root) == doc["root"]]
     if len(matches) != 1:
         raise LedgerError()

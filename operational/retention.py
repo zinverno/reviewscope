@@ -30,7 +30,7 @@ from reviewscope.access.ledger import (
     ledger_path,
     read_witness,
 )
-from reviewscope.access.restore import RestoreError, mount_id
+from reviewscope.access.restore import RestoreError, mount_id, unique_mount
 
 GRACE_SECONDS = 60
 
@@ -214,7 +214,7 @@ def objects(root, workspace, identity, certified=None):
                 if certified is not None:
                     expected = certified[1 if part == "sha256" else 0]
                     require(
-                        [info.st_dev, info.st_ino, mount_id(fd)] == expected,
+                        [info.st_dev, info.st_ino, unique_mount(fd)] == expected,
                         "object_root_unverified",
                     )
                 require(

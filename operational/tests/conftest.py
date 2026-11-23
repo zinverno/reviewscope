@@ -73,3 +73,8 @@ def prepare_copy(target, frozen, dest, witness, access, **kwargs):
 
     source, manifest, digest = frozen
     return prepare(target, source, dest, manifest, digest, witness, access, **kwargs)
+
+
+def generation(name):
+    # The custodian reserved this parent before creating the synthetic workspaces.
+    return Path(os.environ["RS_TEST_GENERATIONS"]) / (uuid4().hex + "-" + name)

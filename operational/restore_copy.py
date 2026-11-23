@@ -22,6 +22,7 @@ from reviewscope.access.restore import (
     require,
     sha,
     uuid_string,
+    volume_authority,
 )
 
 MAX_FILES = 20_000
@@ -125,7 +126,7 @@ def walk(src, spaces, dst=None):
 
 def exclusive_record(path, data):
     # Only the operator holds the exclusive authority lock. Publish a complete record.
-    with directory(path.parent) as parent:
+    with directory(path.parent, storage=False) as parent:
         try:
             existing = private_bytes(path)
         except FileNotFoundError:
@@ -181,6 +182,9 @@ def prepare(conn, source, destination, manifest, inventory_sha, expected, access
             require(not names(src, 256).intersection(ledger_only), "inventory_mismatch")
             spaces.update({w: {} for w in ledger_only})
             require(destination.name not in {"", ".", ".."}, "invalid_store")
+            # A mistaken child of a relocated live archive is outside the allocated parent.
+            parent_id = identity(parent)
+            require(parent_id == volume_authority()["destination_parent"], "destination_scope")
             with child_dir(parent, destination.name, create=True) as dst:
                 nonce = str(uuid4())
                 os.setxattr(dst, NONCE, nonce.encode(), os.XATTR_CREATE)
@@ -188,7 +192,8 @@ def prepare(conn, source, destination, manifest, inventory_sha, expected, access
                 require(walk(dst, spaces) == (tree, dirs), "copy_changed")
                 os.fsync(dst)
                 doc = {
-                    "version": 1,
+                    "version": 2,
+                    "volume_authority": os.environ["RS_RESTORE_VOLUME_SHA256"],
                     "nonce": nonce,
                     "root": str(destination),
                     "identity": identity(dst),

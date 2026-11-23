@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from operational import worker
 from operational.retention import access_seal, recover
-from operational.tests.conftest import freeze_objects, new_db, prepare_copy
+from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, key, login
 from operational.tests.test_deliveries import call, command, csv
 from operational.tests.test_schema import bind_place, scope
@@ -221,7 +221,7 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
                 assert z.read("objects/" + hashlib.sha256(raw).hexdigest()) == raw
             archive = tmp_path / "before.dump"
             subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
-            copied = tmp_path / "independent"
+            copied = generation("independent")
             frozen = freeze_objects(root, tmp_path, [w, b])
             # A surviving source gains real objects after the backup.
             later = [str(s2) if arg == str(s) else arg for arg in base]
@@ -353,7 +353,7 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
                     before_db = restored.execute(state_query).fetchone()
                     with pytest.raises(ValueError, match="restore_receipt_required"):
                         recover(restored, proof, {w: moved, b: moved}, live_access)
-                    with pytest.raises(FileExistsError):
+                    with pytest.raises(ValueError, match="destination_scope"):
                         prepare_copy(restored, frozen, moved, proof, live_access)
                     token = prepare_copy(
                         restored, frozen, copied, proof, live_access, erased=[later_w]
