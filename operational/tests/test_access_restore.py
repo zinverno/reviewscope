@@ -7,7 +7,7 @@ import psycopg
 from fastapi.testclient import TestClient
 from psycopg import sql
 
-from operational.retention import access_seal, recover
+from operational.retention import capture_access, recover
 from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, ORIGIN, ROOT, login
 from operational.tests.test_deliveries import call, command, csv
@@ -54,7 +54,7 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
-        proof, access = read_witness()["sha256"], access_seal(db)
+        proof, access = read_witness()["sha256"], capture_access(db)
         token = prepare_copy(restored, frozen, restored_root, proof, access)
         recover(restored, proof, [token], access)
         restored.execute(

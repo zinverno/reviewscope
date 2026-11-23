@@ -144,7 +144,7 @@ def exclusive_record(path, data):
 
 
 def prepare(conn, source, destination, manifest, inventory_sha, expected, access, erased=()):
-    from operational.retention import exclusive, stamp
+    from operational.retention import exclusive, stamp, verify_access_permissions
 
     with exclusive(conn):
         witness = read_witness()
@@ -156,6 +156,7 @@ def prepare(conn, source, destination, manifest, inventory_sha, expected, access
             and target != witness["body"]["binding"],
             "restore_target_unverified",
         )
+        verify_access_permissions(conn, access)
         authority = ledger_path().parent
         for other in (source, destination, manifest):
             require(

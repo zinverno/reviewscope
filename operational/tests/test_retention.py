@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from operational import worker
-from operational.retention import access_seal, recover
+from operational.retention import capture_access, recover
 from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, key, login
 from operational.tests.test_deliveries import call, command, csv
@@ -300,7 +300,7 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
         ).fetchall()
         assert owner.get(url + f"/sources/{s2}").status_code == 200
         old = owner.cookies[COOKIE]
-        live_access = access_seal(db)
+        live_access = capture_access(db)
         proof = read_witness()["sha256"]
 
         def storage_evidence(directory):
@@ -322,7 +322,7 @@ def test_owner_lifecycle_restore(db, key, tmp_path, monkeypatch, caplog):
             "UPDATE workspace SET delivery_object_root=%s WHERE id IN (%s,%s)", (str(moved), w, b)
         )
         assert before_move == storage_evidence(moved)
-        assert (proof, live_access) == (read_witness()["sha256"], access_seal(db))
+        assert (proof, live_access) == (read_witness()["sha256"], capture_access(db))
         with fresh_restore_cluster(monkeypatch, archive) as (env, target):
             with psycopg.connect("", autocommit=True) as restored:
                 from psycopg import sql

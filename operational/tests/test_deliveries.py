@@ -16,7 +16,7 @@ import pytest
 from psycopg import sql
 
 from operational.backfill_demo import DEMO_SHA, import_demo
-from operational.retention import access_seal, initialize, recover
+from operational.retention import capture_access, initialize, recover
 from operational.tests.conftest import ALEMBIC, freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_schema import bind_place, receipt, run, scope
 from reviewscope.access.ledger import read_witness
@@ -189,7 +189,7 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
         restored.commit()
         restored.autocommit = True
         restored.execute(sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(new)))
-        proof, access = read_witness()["sha256"], access_seal(db)
+        proof, access = read_witness()["sha256"], capture_access(db)
         token = prepare_copy(restored, frozen, copy, proof, access)
         recover(restored, proof, [token], access)
     restore_env = os.environ | {"PGDATABASE": new}

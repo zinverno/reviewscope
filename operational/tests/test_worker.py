@@ -19,7 +19,7 @@ from psycopg import sql
 
 from operational import worker
 from operational.delivery_objects import encoded
-from operational.retention import access_seal, recover
+from operational.retention import capture_access, recover
 from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, dataset, key, login
 from operational.tests.test_deliveries import call, command, csv, json_input
@@ -257,7 +257,7 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
-        proof, access = read_witness()["sha256"], access_seal(db)
+        proof, access = read_witness()["sha256"], capture_access(db)
         token = prepare_copy(restored, frozen, restored_root, proof, access)
         recover(restored, proof, [token], access)
         restored.execute(

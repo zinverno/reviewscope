@@ -18,7 +18,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from operational.delivery_objects import DeliveryError, encoded, private_directory, sync_directory
-from operational.restore_copy import activate_roots, prepare
+from operational.restore_copy import activate_roots, exclusive_record, prepare
 from reviewscope.access.ledger import (
     LIMIT,
     SCOPED,
@@ -30,7 +30,7 @@ from reviewscope.access.ledger import (
     ledger_path,
     read_witness,
 )
-from reviewscope.access.restore import RestoreError, mount_id, unique_mount
+from reviewscope.access.restore import RestoreError, mount_id, private_bytes, sha, unique_mount
 
 GRACE_SECONDS = 60
 
@@ -378,8 +378,49 @@ def purge(conn, rid, root):
         return state
 
 
+ACCESS_PERMISSIONS = Path(__file__).with_name("restore_access.sql").read_text()
+
+
+def access_record(conn):
+    # One statement gives both catalog and business authority the same MVCC snapshot.
+    catalog, business = conn.execute(
+        "SELECT (" + ACCESS_PERMISSIONS + "), retention_access_seal()"
+    ).fetchone()
+    return {"version": 2, "permissions": catalog, "access": business}
+
+
 def access_seal(conn):
-    return one(conn, "SELECT retention_access_seal()")
+    return hashlib.sha256(encoded(access_record(conn))).hexdigest()
+
+
+def capture_access(conn):
+    with exclusive(conn):
+        witness = read_witness()
+        checkpoint, binding = stamp(conn)
+        require(
+            checkpoint == witness["sha256"] and binding == witness["body"]["binding"],
+            "access_review_required",
+        )
+        if witness["body"]["version"] == 2:
+            active_receipts(witness)
+        verify_restore_roles(conn)
+        data = encoded(access_record(conn))
+        key = hashlib.sha256(data).hexdigest()
+        exclusive_record(ledger_path().parent / ("access-" + key), data)
+        return key
+
+
+def verify_access_permissions(conn, approved):
+    try:
+        require(sha(approved), "access_review_required")
+        raw = private_bytes(ledger_path().parent / ("access-" + approved))
+        require(hashlib.sha256(raw).hexdigest() == approved, "access_review_required")
+        require(
+            json.loads(raw)["permissions"] == one(conn, ACCESS_PERMISSIONS),
+            "access_review_required",
+        )
+    except (KeyError, OSError, RestoreError, json.JSONDecodeError):
+        raise DeliveryError("access_review_required") from None
 
 
 def verify_catalog(conn):
@@ -442,6 +483,7 @@ def recover(admin, expected, receipts, access_sha):
             data["body"].get("receipts") == sorted(receipts) and binding == data["body"]["binding"]
         )
         verify_restore_roles(admin)
+        verify_access_permissions(admin, access_sha)
         if already_sealed and checkpoint == expected:
             require(access_sha == access_seal(admin), "access_review_required")
             active_receipts(data)
@@ -634,9 +676,7 @@ def main(argv=None):
                     args.erased_workspace,
                 )
             elif args.command == "access-seal":
-                with conn.transaction(), conn.cursor() as cur:
-                    gate(cur)
-                    result = access_seal(conn)
+                result = capture_access(conn)
             elif args.command == "confirm":
                 result = confirm(conn, args.request, args.preview_sha256, args.root)
             elif args.command == "purge":

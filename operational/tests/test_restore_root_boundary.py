@@ -11,7 +11,7 @@ import pytest
 from psycopg import sql
 
 from operational import restore_copy, retention
-from operational.retention import access_seal, recover
+from operational.retention import access_seal, capture_access, recover
 from operational.tests.conftest import freeze_objects, generation, prepare_copy
 from operational.tests.test_retention import fresh_restore_cluster
 from reviewscope.access.ledger import LedgerError, certified_space, gate, ledger_path, read_witness
@@ -40,7 +40,7 @@ def restoration(db, tmp_path, monkeypatch):
             restored.execute(
                 sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(target))
             )
-            yield restored, w, obj, frozen, read_witness()["sha256"], access_seal(db)
+            yield restored, w, obj, frozen, read_witness()["sha256"], capture_access(db)
 
 
 def test_rejected_activation_preserves_original_root_for_retry(db, tmp_path, monkeypatch):
@@ -123,7 +123,7 @@ def test_live_storage_attestation_changes_when_archive_moves(db, tmp_path, monke
     with restoration(db, tmp_path, monkeypatch) as (target, w, obj, frozen, proof, access):
         moved = obj.parents[2].rename(tmp_path / "relocated")
         db.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(moved), w))
-        assert (proof, access) == (read_witness()["sha256"], access_seal(db))
+        assert (proof, access) == (read_witness()["sha256"], capture_access(db))
         contents = next(moved.glob("*/sha256/*"))
         before = contents.stat(), contents.read_bytes()
         with pytest.raises(ValueError, match="destination_scope"):
@@ -237,3 +237,22 @@ def test_actual_bind_alias_rejected():
                 check_mount(fd)
         finally:
             os.close(fd)
+
+
+def test_access_authority_covers_function_grants_and_policy_predicates(db, tmp_path, monkeypatch):
+    with restoration(db, tmp_path, monkeypatch) as (target, w, obj, frozen, proof, access):
+        assert access_seal(target) == access
+        key = prepare_copy(target, frozen, generation("acl"), proof, access)
+        # A harmless *narrower* privilege must still differ from the independent access authority.
+        target.execute("REVOKE EXECUTE ON FUNCTION login_salt(text) FROM rs_runtime")
+        assert access_seal(target) != access, "function privilege drift missing from access seal"
+        with pytest.raises(ValueError, match="access_review_required"):
+            recover(target, proof, [key], access)
+        target.execute("GRANT EXECUTE ON FUNCTION login_salt(text) TO rs_runtime")
+        assert access_seal(target) == access
+        target.execute("ALTER POLICY self_membership ON workspace_membership USING (false)")
+        assert access_seal(target) != access, "RLS predicate drift missing from access seal"
+        with pytest.raises(ValueError, match="access_review_required"):
+            recover(target, proof, [key], access)
+        assert read_witness()["sha256"] == proof
+        assert obj.exists()
