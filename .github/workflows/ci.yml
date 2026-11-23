@@ -15,6 +15,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check patch whitespace
+        run: git diff --check HEAD^1 HEAD
 
       - uses: actions/setup-python@v5
         with:

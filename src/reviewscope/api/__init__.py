@@ -2,12 +2,15 @@
 
 import hashlib
 import json
+import logging
 import os
 from contextlib import ExitStack, asynccontextmanager
 from datetime import UTC
 from pathlib import Path
 from threading import Lock
+from time import perf_counter
 from typing import Annotated
+from uuid import uuid4
 
 import duckdb
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -24,6 +27,7 @@ from reviewscope.storage import DuckDBStore
 
 MAX_DATASET_REVIEWS = 5000
 MAX_ANALYSIS_REVIEWS = 256
+request_logger = logging.getLogger("reviewscope.api.requests")
 
 ERRORS = {
     400: "invalid_host",
@@ -111,14 +115,32 @@ def create_app(*, db_path: Path | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def private_response(request: Request, call_next):
+        started = perf_counter()
+        request_id = str(uuid4())
         try:
-            if request.url.hostname not in {"127.0.0.1", "localhost"}:
-                return _error(400)
-            response = await call_next(request)
+            if request.url.hostname in {"127.0.0.1", "localhost"}:
+                response = await call_next(request)
+            else:
+                response = _error(400)
         except Exception:
             # ASGI servers otherwise log exception messages containing paths or raw input.
-            return _error(500)
+            response = _error(500)
+        execution_id = getattr(request.state, "analysis_execution_id", None)
+        if execution_id is not None:
+            response.headers["X-Analysis-Execution-ID"] = execution_id
+        response.headers["X-Request-ID"] = request_id
         response.headers["Cache-Control"] = "no-store"
+        status = response.status_code
+        event = {
+            "event": "http_request_completed",
+            "request_id": request_id,
+            "analysis_execution_id": execution_id,
+            "route_template": route_templates.get(request.scope.get("endpoint")),
+            "status": status,
+            "duration_ms": round((perf_counter() - started) * 1000, 3),
+            "error": ERRORS.get(status),
+        }
+        request_logger.log(logging.ERROR if status >= 500 else logging.INFO, json.dumps(event))
         return response
 
     @app.exception_handler(StarletteHTTPException)
@@ -180,11 +202,14 @@ def create_app(*, db_path: Path | None = None) -> FastAPI:
         )
 
     @app.get("/api/v1/places/{place_id}/analysis")
-    def analysis(place_id: str, _: Annotated[NoQuery, Query()]) -> Analysis:
+    def analysis(request: Request, place_id: str, _: Annotated[NoQuery, Query()]) -> Analysis:
         with lock:
             if count(place_id) > MAX_ANALYSIS_REVIEWS:
                 raise HTTPException(413)
             assert engine is not None  # source and engine are published together
+            request.state.analysis_execution_id = str(uuid4())
             return Analysis.from_core(engine.analyze(place_id))
 
+    # Only registered templates can enter the log, including the built-in OpenAPI route.
+    route_templates = {route.endpoint: route.path for route in app.routes}
     return app

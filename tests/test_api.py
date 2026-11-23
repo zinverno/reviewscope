@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
+from uuid import UUID
 
 import duckdb
 import numpy as np
@@ -148,6 +150,68 @@ def test_request_boundary(snapshot):
             assert "access-control-allow-origin" not in response.headers
         assert http.get(url, headers={"Host": "example.invalid"}).status_code == 400
         assert http.get(url).json()["total"] == 3
+
+
+def test_request_headers_and_private_structured_events(snapshot, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="reviewscope.api.requests")
+    supplied_id = "18831adc-e7b9-475d-bf48-b609934f7c10"
+    headers = {"X-Request-ID": supplied_id, "X-Analysis-Execution-ID": supplied_id,
+               "Authorization": "Bearer synthetic-secret"}
+    analysis = ROOT + "/places/p/analysis"
+    analysis_template = ROOT + "/places/{place_id}/analysis"
+    review_template = ROOT + "/places/{place_id}/reviews"
+    seen_ids = {supplied_id}
+    before = digest(snapshot)
+
+    def check(response, status, template, error=None, *, executed=False):
+        assert response.status_code == status
+        assert response.headers["Cache-Control"] == "no-store"
+        request_id = response.headers["X-Request-ID"]
+        execution_id = response.headers.get("X-Analysis-Execution-ID")
+        assert (execution_id is not None) == executed
+        for issued in [request_id] + ([execution_id] if executed else []):
+            assert UUID(issued).version == 4 and issued not in seen_ids
+            seen_ids.add(issued)
+        if error:
+            assert response.json() == {"error": error}
+        [record] = [r for r in caplog.records if r.name == "reviewscope.api.requests"]
+        event = json.loads(record.getMessage())
+        elapsed = event.pop("duration_ms")
+        assert isinstance(elapsed, (int, float)) and elapsed >= 0
+        assert event == {
+            "event": "http_request_completed", "request_id": request_id,
+            "analysis_execution_id": execution_id, "route_template": template,
+            "status": status, "error": error,
+        }
+        assert record.exc_info is None
+        for marker in (str(snapshot), "синтетический мост", "лимон", "synthetic-secret",
+                       "private-place", "private-query", "private-host", supplied_id, LOCAL):
+            assert marker not in caplog.text
+        caplog.clear()
+
+    with client(snapshot) as http:
+        http.headers.update(headers)
+        for route in (ROOT + "/health", ROOT + "/places", "/openapi.json"):
+            check(http.get(route), 200, route)
+        check(http.get(ROOT + "/places/p/reviews"), 200, review_template)
+        check(http.get(analysis), 200, analysis_template, executed=True)
+        check(http.get(analysis), 200, analysis_template, executed=True)
+        check(http.get("/private-place"), 404, None, "not_found")
+        check(http.get(ROOT + "/places/private-place/analysis"), 404, analysis_template, "not_found")
+        check(http.get(analysis + "?x=private-query"), 422, analysis_template, "invalid_request")
+        check(http.post(analysis), 405, analysis_template, "method_not_allowed")
+        check(http.get(analysis, headers={"Host": "private-host.invalid"}), 400, None, "invalid_host")
+
+        def broken(*args):
+            raise RuntimeError(f"{snapshot} синтетический мост synthetic-secret")
+
+        monkeypatch.setattr(AnalysisEngine, "analyze", broken)
+        check(http.get(analysis), 500, analysis_template, "internal_error", executed=True)
+        monkeypatch.setattr(api, "MAX_ANALYSIS_REVIEWS", 2)
+        check(http.get(analysis), 413, analysis_template, "analysis_limit")
+    with client(snapshot.parent / "absent.duckdb") as http:
+        check(http.get(analysis), 503, analysis_template, "dataset_unavailable")
+    assert digest(snapshot) == before
 
 
 @pytest.mark.parametrize("failure", ["absent", "corrupt", "schema", "vector", "invalid_vector"])
@@ -303,7 +367,10 @@ def test_serial_analysis_cleanup_and_redacted_failure(snapshot, monkeypatch, cap
         assert first.wait(5)
         two = pool.submit(http.get, path)
         release.set()
-        assert one.result().status_code == two.result().status_code == 200
+        responses = [one.result(), two.result()]
+        assert all(response.status_code == 200 for response in responses)
+        assert len({response.headers[key] for response in responses
+                    for key in ("X-Request-ID", "X-Analysis-Execution-ID")}) == 4
         assert calls == ["p", "p"]
 
         def broken(*args):
