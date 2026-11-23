@@ -384,6 +384,151 @@ async function test(type) {
 			await page.screenshot({
 				path: join(media, "discover-" + type.name() + "-320.png"),
 			});
+		stage = type.name() + " canonical graph scope";
+		const cabinet = (params) =>
+			origin + "/cabinet/?" + new URLSearchParams(params);
+		const chosen = {
+			view: "graph",
+			workspace: fixture.w,
+			snapshot: snapshots.get("a"),
+			source: fixture.s,
+		};
+		await page.goto(cabinet(chosen));
+		await page.getByText(/CANONICAL_GRAPH_NOT_AVAILABLE/).waitFor();
+		assert.equal(await page.locator(".direct-map").count(), 0);
+		const foreignPath =
+			"/api/v1/workspaces/" +
+			fixture.otherWorkspace +
+			"/snapshots/" +
+			snapshots.get("a");
+		const foreign = await review.request.get(origin + foreignPath);
+		const unknown = await review.request.get(
+			origin + foreignPath.replace(fixture.otherWorkspace, crypto.randomUUID()),
+		);
+		assert.equal(foreign.status(), 404);
+		assert.deepEqual(await foreign.json(), await unknown.json());
+		await page.goto(cabinet({ ...chosen, run: crypto.randomUUID() }));
+		await page.getByText("Снимок или запуск недоступны.").waitFor();
+		await page.goto(cabinet(chosen));
+		await page
+			.getByRole("link", { name: "Исследовать повторы публичной синтетики" })
+			.click();
+		const graphBase = page.url();
+		const p1 = JSON.parse(await readFile("src/demo-graph/p1.json", "utf8"));
+		const resolveGroup = (id) => p1.groups.find((g) => g.id === id);
+		const getPair = async (family, left, right) => {
+			const url = new URL(graphBase);
+			for (const [key, value] of Object.entries({ family, a: left, b: right }))
+				url.searchParams.set(key, String(value));
+			await page.goto(url.href);
+			await page
+				.getByRole("heading", { name: "Отзыв " + left, exact: true })
+				.waitFor();
+			assert.deepEqual(
+				await page
+					.locator(".duplicate-investigation blockquote")
+					.allTextContents(),
+				[p1.reviews[left].text, p1.reviews[right].text],
+			);
+		};
+		stage = type.name() + " graph evidence";
+		for (const [kind, g, l, r] of [
+			["exact", 9, "rbp032", "rbp038"],
+			["fuzzy", 4, "rbp008", "rbp007"],
+			["near", 4, "rbp001", "rbp017"],
+			["semantic", 4, "rbp000", "rbp001"],
+		]) {
+			await getPair(g, l, r);
+			await page
+				.getByRole("status")
+				.filter({ hasText: "Прямая связь: " + kind })
+				.waitFor();
+		}
+		for (const [l, r, direct] of [
+			["rbp011", "rbp013", true],
+			["rbp013", "rbp018", true],
+			["rbp011", "rbp018", false],
+		]) {
+			await getPair(4, l, r);
+			await page
+				.getByRole("status")
+				.filter({
+					hasText: direct
+						? "Прямая связь:"
+						: "Прямой связи между выбранными отзывами в результате нет.",
+				})
+				.waitFor();
+		}
+		const long = p1.groups.find((g) => g.members.includes("r00065"));
+		const peer = long.members.find((id) => id !== "r00065");
+		await getPair(long.id, "r00065", peer);
+		assert.ok(
+			(await page.locator("blockquote").first().innerText()).length >= 350,
+		);
+		await page.goto(graphBase);
+		const table = page.getByRole("table", { name: "Прямые пары" });
+		await table.waitFor();
+		assert.equal(await page.locator(".direct-map svg").count(), 0);
+		assert.equal(await table.locator("tbody tr").count(), 20);
+		await page.getByLabel("Показать карту этой страницы").check();
+		assert.equal(await page.locator(".direct-map line").count(), 10);
+		const actualEdges = resolveGroup(4).edges;
+		const displayed = await page
+			.locator(".direct-map svg a")
+			.evaluateAll((links) =>
+				links.map((a) => {
+					const u = new URL(a.getAttribute("href"), location.href);
+					return [u.searchParams.get("a"), u.searchParams.get("b")];
+				}),
+			);
+		assert.deepEqual(
+			displayed,
+			actualEdges.slice(0, 10).map((e) => e.slice(0, 2)),
+		);
+		for (const width of [1920, 1366, 390, 320]) {
+			await page.setViewportSize({ width, height: 768 });
+			await page.locator(".direct-map").scrollIntoViewIfNeeded();
+			assert.ok(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth <= innerWidth,
+				),
+			);
+			if (media)
+				await page.screenshot({
+					path: join(media, "graph-" + type.name() + "-" + width + ".png"),
+				});
+		}
+		await page.getByRole("link", { name: "Следующие пары" }).click();
+		await page.getByRole("link", { name: "Предыдущие пары" }).waitFor();
+		assert.equal(
+			await table.locator("tbody tr").first().locator("a").innerText(),
+			actualEdges[20].slice(0, 2).join(" · "),
+		);
+		await page.goBack();
+		await table.waitFor();
+		await page.getByLabel("Тип прямой связи").selectOption("near");
+		await page.waitForURL((u) => u.searchParams.get("kind") === "near");
+		await table.waitFor();
+		const kinds = await table
+			.locator("tbody tr td:nth-child(2)")
+			.allTextContents();
+		assert.ok(kinds.length > 0 && kinds.every((k) => k === "near"));
+		await page.getByLabel("Точка графа").selectOption("p2");
+		await page
+			.getByText("Детектор не выделил семейств в этой точке.")
+			.waitFor();
+		const wrong = new URL(graphBase);
+		wrong.searchParams.set("result", "0".repeat(64));
+		await page.goto(wrong.href);
+		await page
+			.getByText("Для выбранного снимка и результата граф недоступен.")
+			.waitFor();
+		const mixed = new URL(graphBase);
+		mixed.searchParams.set("snapshot", snapshots.get("a"));
+		await page.goto(mixed.href);
+		await page
+			.getByText("Для выбранного снимка и результата граф недоступен.")
+			.waitFor();
 		stage = type.name() + " finish recording";
 		await review.close();
 	} finally {
