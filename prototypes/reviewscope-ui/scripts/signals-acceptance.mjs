@@ -9,6 +9,7 @@ export async function checkSignals(
 	snapshots,
 	step,
 	media,
+	storageState,
 ) {
 	const cabinet = (params) =>
 		origin + "/cabinet/?" + new URLSearchParams(params);
@@ -65,38 +66,56 @@ export async function checkSignals(
 	await page.getByRole("link", { name: "Снять фильтры" }).click();
 	step("keyboard explanation and widths");
 	for (const width of [320, 390, 1366, 1920]) {
-		await page.setViewportSize({ width, height: 800 });
-		const row = page
-			.locator("summary")
-			.filter({ hasText: /· вес / })
-			.first();
-		if (
-			!(await page
-				.getByText("Расчёт веса", { exact: true })
-				.first()
-				.isVisible())
-		)
-			await row.press("Enter");
-		const explain = page.getByText("Расчёт веса", { exact: true }).first();
-		if (!(await explain.locator("..").evaluate((e) => e.open)))
-			await explain.press("Enter");
-		assert(
-			await page.evaluate(
-				() => document.documentElement.scrollWidth <= window.innerWidth,
-			),
-		);
-		if (media) {
-			await explain.scrollIntoViewIfNeeded();
-			await page.screenshot({
-				path: join(
-					media,
-					"signals-" +
-						page.context().browser().browserType().name() +
-						"-" +
-						width +
-						".png",
-				),
+		// Set the viewport before navigation. Firefox can block a live resize during history restoration.
+		step("explanation " + width);
+		const tab = await page
+			.context()
+			.browser()
+			.newPage({
+				storageState,
+				ignoreHTTPSErrors: true,
+				locale: "ru-RU",
+				reducedMotion: "reduce",
+				viewport: { width, height: 800 },
 			});
+		try {
+			tab.setDefaultTimeout(10000);
+			await tab.route("**/*", (route) =>
+				new URL(route.request().url()).origin === origin
+					? route.continue()
+					: route.abort(),
+			);
+			await tab.goto(base);
+			await tab
+				.locator("summary")
+				.filter({ hasText: /· вес / })
+				.first()
+				.press("Enter");
+			const explain = tab.getByText("Расчёт веса", { exact: true }).first();
+			await explain.press("Enter");
+			assert(await explain.locator("..").evaluate((e) => e.open));
+			assert.deepEqual(
+				await tab.evaluate(() => [
+					innerWidth,
+					document.documentElement.scrollWidth,
+				]),
+				[width, width],
+			);
+			if (media) {
+				await explain.scrollIntoViewIfNeeded();
+				await tab.screenshot({
+					path: join(
+						media,
+						"signals-" +
+							tab.context().browser().browserType().name() +
+							"-" +
+							width +
+							".png",
+					),
+				});
+			}
+		} finally {
+			await tab.close();
 		}
 	}
 	step("paging and empty selection");

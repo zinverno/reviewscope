@@ -532,8 +532,9 @@ async function test(type) {
 			.waitFor();
 		stage = type.name() + " signal analysis";
 		// Capture only the packaged public explanation. Snapshot results use an unrecorded context.
+		await review.close();
 		const signalsContext = await browser.newContext({
-			storageState: await review.storageState(),
+			storageState: content,
 			ignoreHTTPSErrors: true,
 			locale: "ru-RU",
 			reducedMotion: "reduce",
@@ -554,10 +555,9 @@ async function test(type) {
 				stage = type.name() + " signals " + phase;
 			},
 			media,
+			content,
 		);
 		await signalsContext.close();
-		stage = type.name() + " finish recording";
-		await review.close();
 	} finally {
 		await browser.close();
 	}
