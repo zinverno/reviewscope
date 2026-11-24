@@ -639,6 +639,11 @@ function Cabinet() {
 		pendingJob.current = null;
 		go({ run: result.id });
 	}
+	async function cancelRun() {
+		const address = location.href;
+		await api<Job>(workspace + "/runs/" + run + "/cancel", { method: "POST" });
+		if (location.href === address) setRevision((v) => v + 1);
+	}
 	const locations = targets.filter((t) => t.source_id === source);
 	const projects = [...new Map(targets.map((t) => [t.project_id, t])).values()];
 	const project =
@@ -677,11 +682,14 @@ function Cabinet() {
 			<h1>
 				{["graph", "legacy-graph"].includes(query.get("view") ?? "")
 					? "Граф повторов"
-					: query.get("view") === "reviews"
-						? "Панель доказательств"
-						: query.get("view") === "overview" || query.get("view") === "legacy"
-							? "Обзор данных"
-							: "Проверка снимка и пригодности данных"}
+					: signalView || query.get("view") === "public-signals"
+						? "Сигналы и оценки"
+						: query.get("view") === "reviews"
+							? "Панель доказательств"
+							: query.get("view") === "overview" ||
+									query.get("view") === "legacy"
+								? "Обзор данных"
+								: "Проверка снимка и пригодности данных"}
 			</h1>
 			{msg && <p role="alert">{msg}</p>}
 			{!ready ? (
@@ -747,6 +755,7 @@ function Cabinet() {
 								link={link}
 								busy={busy}
 								start={() => void action(() => start(signalKind))}
+								cancel={() => void action(cancelRun)}
 							/>
 						) : (
 							<p>Нет доступа к сигналам выбранного снимка.</p>
@@ -1133,17 +1142,7 @@ function Cabinet() {
 									["queued", "running"].includes(job.status) && (
 										<button
 											type="button"
-											onClick={() =>
-												void action(async () => {
-													const address = location.href;
-													await api<Job>(
-														workspace + "/runs/" + run + "/cancel",
-														{ method: "POST" },
-													);
-													if (location.href === address)
-														setRevision((v) => v + 1);
-												})
-											}
+											onClick={() => void action(cancelRun)}
 										>
 											Отменить проверку
 										</button>

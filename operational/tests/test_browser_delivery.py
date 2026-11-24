@@ -402,7 +402,8 @@ with tempfile.TemporaryFile() as stage:
                         continue
                     # Let the browser close its tab and cancel its first queued attempt before the worker starts.
                     if db.execute(
-                        "SELECT count(*) FROM analysis_run WHERE status='cancelled'"
+                        """SELECT EXISTS(SELECT FROM analysis_run WHERE status='cancelled')
+                               AND EXISTS(SELECT FROM analysis_run WHERE status='queued')"""
                     ).fetchone()[0]:
                         subprocess.run(
                             [sys.executable, "-m", "operational.worker", "--once"],

@@ -123,7 +123,8 @@ def test_private_specificity_needs_no_legacy_engine():
             "-c",
             """import sys
 from operational.signals import projection
-row = dict(text="10 минут",reviewer_id=None,version_id="v",source_place_id="p")
+row = dict(text="10 минут",reviewer_id=None,version_id="v",source_place_id="p",
+           metadata={"event_basis": "published", "event": {"kind": "missing"}})
 assert projection(row,None,"missing_rating")["specificity"]["heuristic_score"] > 0
 assert not ({"torch","sklearn","duckdb","pandas","hdbscan","sentence_transformers"} & sys.modules.keys())
 """,

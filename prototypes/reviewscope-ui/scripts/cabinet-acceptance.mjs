@@ -531,39 +531,30 @@ async function test(type) {
 			.getByText("Для выбранного снимка и результата граф недоступен.")
 			.waitFor();
 		stage = type.name() + " signal analysis";
+		// Capture only the packaged public explanation. Snapshot results use an unrecorded context.
 		const signalsContext = await browser.newContext({
-			storageState: content,
+			storageState: await review.storageState(),
 			ignoreHTTPSErrors: true,
 			locale: "ru-RU",
 			reducedMotion: "reduce",
 		});
-		const signalsPage = await signalsContext.newPage();
-		signalsPage.setDefaultTimeout(10000);
-		signalsPage.on("response", (r) =>
-			observed.push(["signals-" + r.request().resourceType(), r.status()]),
+		await signalsContext.route("**/*", (route) =>
+			new URL(route.request().url()).origin === origin
+				? route.continue()
+				: route.abort(),
 		);
-		try {
-			await checkSignals(signalsPage, origin, fixture, snapshots, (phase) => {
+		signalsContext.setDefaultTimeout(10000);
+		const signalsPage = await signalsContext.newPage();
+		await checkSignals(
+			signalsPage,
+			origin,
+			fixture,
+			snapshots,
+			(phase) => {
 				stage = type.name() + " signals " + phase;
-			});
-		} catch (error) {
-			// Only fixed UI states, never response bodies, identities or query parameters.
-			stage +=
-				" " +
-				JSON.stringify({
-					login: await signalsPage
-						.getByRole("button", { name: "Войти", exact: true })
-						.count(),
-					overview: await signalsPage
-						.getByRole("heading", { name: "Публичная синтетика · DuckDB" })
-						.count(),
-					unknown: await signalsPage
-						.getByText(/Область или выборка публичного демо недоступна/)
-						.count(),
-					error: await signalsPage.getByRole("alert").count(),
-				});
-			throw error;
-		}
+			},
+			media,
+		);
 		await signalsContext.close();
 		stage = type.name() + " finish recording";
 		await review.close();

@@ -49,6 +49,12 @@ def test_signal_runs(db, tmp_path, monkeypatch, key):  # noqa: F811
                 obj = response.json()
                 doc = obj["result"]
                 assert doc["coverage"] == "unknown" and doc["places"]["p1"]["raw"]["value"] == mean
+                days = doc["places"]["p1"]["observed_days"]
+                assert sum(days.values()) == sum(
+                    r["observed_day"] is not None for r in doc["reviews"]
+                )
+                if name == "a":
+                    assert days == {"2026-09-08": 1, "2026-09-12": 1, "2026-09-21": 1}
                 assert doc["places"]["p1"]["events"]["reason"] == "INSUFFICIENT_COVERAGE"
                 assert doc["places"]["p1"]["weighted"]["value"] is None
                 assert all(not r["author_present"] and r["specificity"] for r in doc["reviews"])

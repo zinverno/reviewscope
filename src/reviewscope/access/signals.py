@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -32,6 +33,7 @@ class SignalReview(BaseModel):
     place: str
     rating: int | None
     rating_exclusion: str | None
+    observed_day: date | None
     author_present: bool
     text_present: bool
     specificity: Strength | None
@@ -48,6 +50,7 @@ class Availability(BaseModel):
 class Place(BaseModel):
     raw: Availability
     weighted: Availability
+    observed_days: dict[date, int]
     distribution: dict[str, int] | None
     specificity: Availability
     relevance: Availability
@@ -76,7 +79,12 @@ class SignalDocument(BaseModel):
     batch_id: UUID
     result_sha256: str
     manifest_sha256: str
-    coverage: str
+    coverage: str | None
+    coverage_mode: str | None
+    covered_from: str | None
+    covered_until: str | None
+    event_basis: str | None
+    rating_scale: list[int] | None
     parameters: dict
     observations: dict[str, int]
     quarantined: dict[str, int]

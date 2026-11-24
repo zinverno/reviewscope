@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 
-export async function checkSignals(page, origin, fixture, snapshots, step) {
+export async function checkSignals(
+	page,
+	origin,
+	fixture,
+	snapshots,
+	step,
+	media,
+) {
 	const cabinet = (params) =>
 		origin + "/cabinet/?" + new URLSearchParams(params);
 	step("public overview");
@@ -10,6 +19,7 @@ export async function checkSignals(page, origin, fixture, snapshots, step) {
 		.getByRole("link", { name: "Сигналы и оценки точки" })
 		.press("Enter");
 	step("public ratings");
+	await page.waitForURL((u) => u.searchParams.get("view") === "public-signals");
 	const base = page.url();
 	await page.getByText(/Среднее исходных оценок 4,19/).waitFor();
 	await page
@@ -19,6 +29,30 @@ export async function checkSignals(page, origin, fixture, snapshots, step) {
 	await page.getByRole("link", { name: "Состав события" }).first().click();
 	step("event cohort");
 	await page.getByText(/FILTER_NOT_COMPUTED/).waitFor();
+	const p1 = JSON.parse(
+		await readFile(
+			new URL("../src/demo-signals/p1.json", import.meta.url),
+			"utf8",
+		),
+	);
+	const ids = new Set(p1.bursts[0].event.ids);
+	const cohort = p1.reviews.filter((r) => ids.has(r.id) && r.rating !== null);
+	const den = cohort.reduce((sum, r) => sum + r.weight.weight, 0);
+	const mean =
+		cohort.reduce((sum, r) => sum + r.rating * r.weight.weight, 0) / den;
+	await page
+		.getByText("Оценено " + cohort.length + " из " + ids.size + ".", {
+			exact: false,
+		})
+		.waitFor();
+	await page
+		.getByText(
+			"взвешенное среднее " +
+				mean.toLocaleString("ru", { maximumFractionDigits: 2 }) +
+				" ★",
+			{ exact: false },
+		)
+		.waitFor();
 	const first = page
 		.locator("summary")
 		.filter({ hasText: /· вес / })
@@ -51,6 +85,19 @@ export async function checkSignals(page, origin, fixture, snapshots, step) {
 				() => document.documentElement.scrollWidth <= window.innerWidth,
 			),
 		);
+		if (media) {
+			await explain.scrollIntoViewIfNeeded();
+			await page.screenshot({
+				path: join(
+					media,
+					"signals-" +
+						page.context().browser().browserType().name() +
+						"-" +
+						width +
+						".png",
+				),
+			});
+		}
 	}
 	step("paging and empty selection");
 	await page.getByRole("link", { name: "Следующая страница" }).click();

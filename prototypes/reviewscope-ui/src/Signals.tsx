@@ -336,8 +336,8 @@ export function PublicSignals({ search }: { search: string }) {
 			/>
 			<h3>Рейтинг выборки</h3>
 			<p>
-				Среднее исходных оценок {fmt(raw)} ★ · взвешенное среднее{" "}
-				{fmt(weighted)} ★
+				Среднее исходных оценок {fmt(raw, 2)} ★ · взвешенное среднее{" "}
+				{fmt(weighted, 2)} ★
 			</p>
 			<p>
 				Оценено {rated.length} из {selected.length}. Сумма весов {fmt(den)}.
@@ -476,6 +476,7 @@ type Result = {
 	places: Record<
 		string,
 		{
+			observed_days: Record<string, number>;
 			raw: Metric;
 			events: Metric;
 			weighted: Metric;
@@ -507,6 +508,7 @@ export function CanonicalSignals({
 	job,
 	busy,
 	start,
+	cancel,
 	api,
 	link,
 	search,
@@ -518,6 +520,7 @@ export function CanonicalSignals({
 	job?: { status: string; reason: string | null; job_kind?: string } | null;
 	busy: boolean;
 	start: () => void;
+	cancel: () => void;
 	api: <T>(path: string) => Promise<T>;
 	link: (changes: Record<string, string>) => string;
 	search: string;
@@ -627,6 +630,11 @@ export function CanonicalSignals({
 					>
 						Рассчитать сигналы снимка
 					</button>
+					{job && ["queued", "running"].includes(job.status) && (
+						<button type="button" disabled={busy} onClick={cancel}>
+							Отменить расчёт
+						</button>
+					)}
 					{run && (
 						<p role="status">
 							Состояние запуска · {job?.status} {job?.reason}
@@ -693,6 +701,16 @@ export function CanonicalSignals({
 									</p>
 									<details>
 										<summary>Доступность сигналов</summary>
+										{!rating && (
+											<p>
+												Наблюдаемые дни ·{" "}
+												{Object.entries(metrics.observed_days)
+													.map(([day, count]) => day + " — " + count)
+													.join(" · ") || "даты отсутствуют"}
+												. Календарные даты сохранены, моменты времени приведены
+												к UTC.
+											</p>
+										)}
 										{(
 											[
 												"weighted",

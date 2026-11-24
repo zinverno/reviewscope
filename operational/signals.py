@@ -16,7 +16,17 @@ LIMIT = 65536  # Existing publication limit in step_ready_job.
 def projection(row, rating, issue):
     text = row["text"]
     spec = specificity_score(text) if text and text.strip() else None
+    meta = row["metadata"]
+    event = meta["event"]
+    # The canonical normalizer stores date-only values verbatim and offset instants in UTC.
+    day = (
+        event["value"][:10]
+        if meta["event_basis"] in ("published", "submitted")
+        and event["kind"] in ("date", "instant")
+        else None
+    )
     return dict(
+        observed_day=day,
         version_id=row["version_id"],
         place=row["source_place_id"],
         rating=rating,
@@ -47,6 +57,9 @@ def place_metrics(rows, cover):
         raw=metric(sum(k * v for k, v in ratings.items()) / n, n, total)
         if n
         else metric(None, 0, total, "insufficient_data", "NO_ELIGIBLE_RATINGS"),
+        observed_days=dict(
+            sorted(Counter(r["observed_day"] for r in rows if r["observed_day"]).items())
+        ),
         distribution={str(i): ratings[i] for i in range(1, 6)} if n else None,
         specificity=metric(texts, texts, total)
         if texts
