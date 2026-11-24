@@ -10,6 +10,7 @@ from pathlib import Path
 from argon2.low_level import Type, hash_secret_raw
 
 ROLES = {
+    "review_evidence": {"owner", "analyst"},
     "read": {"owner", "analyst", "viewer"},
     "members": {"owner"},
     "register_delivery": {"owner", "analyst"},

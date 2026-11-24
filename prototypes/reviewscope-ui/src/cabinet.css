@@ -156,3 +156,10 @@
 		font-size: 2.05rem;
 	}
 }
+
+.evidence { overflow-wrap: anywhere; }
+.evidence .evidence-rows { list-style:none; padding:0; }
+.evidence-rows li,.evidence-detail { padding:1rem 0; border-top:1px solid var(--line,#484848); }
+.evidence-detail blockquote { margin:1em 0; padding:0 1em; border-left:3px solid currentColor; white-space:pre-wrap; }
+.evidence .evidence-detail dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(16em,100%),1fr)); }
+.evidence dd { margin:0; }
