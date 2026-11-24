@@ -1,0 +1,114 @@
+import assert from "node:assert/strict";
+
+export async function checkSignals(page, origin, fixture, snapshots, step) {
+	const cabinet = (params) =>
+		origin + "/cabinet/?" + new URLSearchParams(params);
+	step("public overview");
+	await page.goto(cabinet({ view: "legacy", place: "p1" }));
+	step("public overview link");
+	await page
+		.getByRole("link", { name: "Сигналы и оценки точки" })
+		.press("Enter");
+	step("public ratings");
+	const base = page.url();
+	await page.getByText(/Среднее исходных оценок 4,19/).waitFor();
+	await page
+		.getByText(/^Всплеск ·/)
+		.first()
+		.click();
+	await page.getByRole("link", { name: "Состав события" }).first().click();
+	step("event cohort");
+	await page.getByText(/FILTER_NOT_COMPUTED/).waitFor();
+	const first = page
+		.locator("summary")
+		.filter({ hasText: /· вес / })
+		.first();
+	await first.press("Enter");
+	const detail = page.getByRole("link", { name: /^Исходный отзыв/ }).first();
+	await detail.click();
+	await page.getByRole("heading", { name: /Исходный отзыв/ }).waitFor();
+	await page.getByRole("link", { name: "Вернуться к вкладам" }).click();
+	await page.getByRole("link", { name: "Снять фильтры" }).click();
+	step("keyboard explanation and widths");
+	for (const width of [320, 390, 1366, 1920]) {
+		await page.setViewportSize({ width, height: 800 });
+		const row = page
+			.locator("summary")
+			.filter({ hasText: /· вес / })
+			.first();
+		if (
+			!(await page
+				.getByText("Расчёт веса", { exact: true })
+				.first()
+				.isVisible())
+		)
+			await row.press("Enter");
+		const explain = page.getByText("Расчёт веса", { exact: true }).first();
+		if (!(await explain.locator("..").evaluate((e) => e.open)))
+			await explain.press("Enter");
+		assert(
+			await page.evaluate(
+				() => document.documentElement.scrollWidth <= window.innerWidth,
+			),
+		);
+	}
+	step("paging and empty selection");
+	await page.getByRole("link", { name: "Следующая страница" }).click();
+	await page.getByText(/Страница 2 из/).waitFor();
+	await page.getByLabel("Фильтр оценки").selectOption("missing");
+	await page.getByText("В выборке нет записей.").waitFor();
+	await page.getByLabel("Точка расчёта").selectOption("p2");
+	await page.getByRole("heading", { name: "События" }).waitFor();
+	const invalid = new URL(base);
+	invalid.searchParams.set("result", "0".repeat(64));
+	await page.goto(invalid.href);
+	await page.getByRole("alert").waitFor();
+	for (const name of ["a", "json"]) {
+		step("snapshot " + name);
+		const scope = {
+			workspace: fixture.w,
+			source: fixture.s,
+			snapshot: snapshots.get(name),
+		};
+		await page.goto(cabinet({ view: "overview", ...scope }));
+		await page.getByRole("link", { name: "Сигналы и оценки снимка" }).click();
+		await page
+			.getByRole("button", { name: "Рассчитать сигналы снимка" })
+			.press("Enter");
+		step("read " + name);
+		await page.getByText(/Взвешенное среднее Н\/Д/).waitFor({ timeout: 30000 });
+		const run = new URL(page.url()).searchParams.get("run");
+		assert(run);
+		if (name === "json") {
+			await page
+				.getByText(/Принято 6 из 12. Карантин 5, подтверждённые повторы 1/)
+				.waitFor();
+			await page.getByLabel("Точка расчёта").selectOption("p2");
+			await page.getByText(/оценено 0 из 1/).waitFor();
+		} else {
+			await page.getByText(/Среднее исходных оценок 3,6667/).waitFor();
+			await page.getByLabel("Фильтр оценки").selectOption("5");
+			await page.getByText(/оценено 1 из 1/).waitFor();
+		}
+		await page
+			.getByRole("link", { name: /^Исходная версия/ })
+			.first()
+			.click();
+		await page.getByText("Вернуться к сигналам запуска").click();
+		assert.equal(new URL(page.url()).searchParams.get("run"), run);
+		await page.getByText(/Взвешенное среднее Н\/Д/).waitFor();
+		await page.goto(
+			cabinet({ view: "signals", ...scope, run: crypto.randomUUID() }),
+		);
+		await page.getByText("Проверка недоступна в выбранной области.").waitFor();
+	}
+	await page.goto(
+		cabinet({
+			view: "signals",
+			workspace: fixture.emptyWorkspace,
+			source: fixture.s,
+			snapshot: snapshots.get("a"),
+		}),
+	);
+	await page.getByText("Проверка недоступна в выбранной области.").waitFor();
+}

@@ -669,6 +669,25 @@ sys.exit(status)
     assert cli("10k-4MiB") == "succeeded"
     assert db.execute("SELECT attempt,processed,total FROM analysis_run").fetchone() == (1,MAX_ROWS,MAX_ROWS)
 
+    from operational.signals import KIND
+    from operational.tests.test_worker import admit_signal_fixture
+
+    workspace = db.execute("SELECT workspace_id FROM snapshot WHERE id=%s", (snapshot,)).fetchone()[
+        0
+    ]
+    admit_signal_fixture(db, workspace, snapshot, KIND)
+    db.execute(
+        """INSERT INTO analysis_run(workspace_id,snapshot_id,job_kind,engine_version,model_version,
+        definition_version,requested_by,request_key,stage,ready_at)
+        SELECT workspace_id,%s,%s,'1','unused','signals-1',registered_by,gen_random_uuid(),'queued',now()
+        FROM import_batch""",
+        (snapshot, KIND),
+    )
+    assert cli("signals-10k-4MiB") == "failed"
+    assert db.execute(
+        "SELECT reason,output_artifact_id FROM analysis_run WHERE job_kind=%s", (KIND,)
+    ).fetchone() == ("RESOURCE_LIMIT", None)
+
     from operational.tests.test_retention import check_bounded_owner_operations
 
     check_bounded_owner_operations(db,tmp_path,monkeypatch)

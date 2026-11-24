@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 
 class ConfidenceLevel(StrEnum):
-    """Interpretable confidence bands used across all scores."""
+    """Legacy field for heuristic evidence bands. The levels are not calibrated probabilities."""
 
     LOW = "LOW"
     MEDIUM = "MEDIUM"

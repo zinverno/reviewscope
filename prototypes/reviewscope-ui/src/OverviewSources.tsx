@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import demo from "./overview.synthetic.json";
 
-const sources = import.meta.glob<{ default: Sources }>(
+export const sources = import.meta.glob<{ default: Sources }>(
 	"./overview-sources/*.json",
 );
 const pageSize = 12;
@@ -112,33 +112,15 @@ export function OverviewSources({
 		if (!r.version || query.get("version") !== r.version)
 			return <UnknownSelection />;
 		return (
-			<article>
-				<a href={address(page)}>Вернуться к составу · страница {page}</a>
-				<h2>Исходный отзыв {id}</h2>
-				<p>
-					{heading} · публичная синтетика · точка {place}
-				</p>
-				<p>
-					Оценка: {r.rating ?? "неизвестно"} · Дата: {r.date ?? "неизвестно"}
-				</p>
-				<p className="source-text">{r.text ?? "Текст отсутствует"}</p>
-				<p>Точный фрагмент не размечен.</p>
-				<details>
-					<summary>Версия и источник</summary>
-					<p>Версия публичного отзыва {r.version}</p>
-					<p>
-						Набор {data.snapshot} · результат обзора {demo.run}
-					</p>
-					<p>
-						Источник: {r.source ?? "неизвестно"} · Исходный URL:{" "}
-						{r.source_url ?? "отсутствует"}
-					</p>
-					<p>
-						Автор в демо: {r.reviewer_name ?? "имя неизвестно"} ·{" "}
-						{r.reviewer_id}
-					</p>
-				</details>
-			</article>
+			<PublicReviewDetail
+				r={r}
+				id={id}
+				place={place}
+				heading={heading}
+				result={demo.run}
+				back={address(page)}
+				backLabel={`Вернуться к составу · страница ${page}`}
+			/>
 		);
 	}
 	const cohort =
@@ -187,5 +169,52 @@ export function OverviewSources({
 				)}
 			</nav>
 		</section>
+	);
+}
+
+export function PublicReviewDetail({
+	r,
+	id,
+	place,
+	heading,
+	result,
+	back,
+	backLabel,
+}: {
+	r: Review;
+	id: string;
+	place: string;
+	heading: string;
+	result: string;
+	back: string;
+	backLabel: string;
+}) {
+	return (
+		<article>
+			<a href={back}>{backLabel}</a>
+			<h2>Исходный отзыв {id}</h2>
+			<p>
+				{heading} · публичная синтетика · точка {place}
+			</p>
+			<p>
+				Оценка: {r.rating ?? "неизвестно"} · Дата: {r.date ?? "неизвестно"}
+			</p>
+			<p className="source-text">{r.text ?? "Текст отсутствует"}</p>
+			<p>Точный фрагмент не размечен.</p>
+			<details>
+				<summary>Версия и источник</summary>
+				<p>Версия публичного отзыва {r.version}</p>
+				<p>
+					Набор {demo.snapshot} · результат {result}
+				</p>
+				<p>
+					Источник: {r.source ?? "неизвестно"} · Исходный URL:{" "}
+					{r.source_url ?? "отсутствует"}
+				</p>
+				<p>
+					Автор в демо: {r.reviewer_name ?? "имя неизвестно"} · {r.reviewer_id}
+				</p>
+			</details>
+		</article>
 	);
 }

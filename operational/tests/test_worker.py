@@ -52,8 +52,8 @@ def jobs(db, tmp_path, key):
         yield client, ROOT + f"/workspaces/{w}/runs", w, a, b, root, password
 
 
-def enqueue(client, path, snap):
-    body = request_for(snap)
+def enqueue(client, path, snap, *, kind=worker.KIND):
+    body = request_for(snap) | {"job_kind": kind}
     reply = client.post(path, json=body, headers=CSRF)
     assert reply.status_code == 202, reply.content
     return reply.json()["id"], body
@@ -305,9 +305,22 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
         ) == value | {"run_id": fresh_id}
 
 
-def test_claim_crash_orphan_stale_and_recovery(db, jobs):
+def admit_signal_fixture(db, w, snapshot, kind):
+    if kind == worker.signals.KIND:
+        db.execute(
+            """INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed)
+            SELECT b.workspace_id,b.source_id,b.file_sha256,true FROM import_batch b JOIN snapshot s ON
+            (b.workspace_id,b.source_id,b.id)=(s.workspace_id,s.source_id,s.batch_id)
+            WHERE (s.workspace_id,s.id)=(%s,%s)""",
+            (w, snapshot),
+        )
+
+
+@pytest.mark.parametrize("kind", [worker.KIND, worker.signals.KIND])
+def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind):
     client, path, w, a, _, root, _ = jobs
-    run, _ = enqueue(client, path, a)
+    admit_signal_fixture(db, w, a, kind)
+    run, _ = enqueue(client, path, a, kind=kind)
     # Capture a real live generation without placing its nonce in logs.
     with worker.connect() as one, worker.connect() as two, ThreadPoolExecutor(2) as pool:
         barrier = Barrier(2)
@@ -384,9 +397,11 @@ with worker.connect() as conn: worker.process(conn,job,Event())
         assert final["attempt"] == 2 and final["sha256"] == orphan.name
 
 
-def test_cancellation_publication_race_and_failure(db, jobs, monkeypatch):
+@pytest.mark.parametrize("kind", [worker.KIND, worker.signals.KIND])
+def test_cancellation_publication_race_and_failure(db, jobs, monkeypatch, kind):
     client, path, w, a, _, root, _ = jobs
-    rid, _ = enqueue(client, path, a)
+    admit_signal_fixture(db, w, a, kind)
+    rid, _ = enqueue(client, path, a, kind=kind)
     with worker.connect() as conn:
         job = take(conn)
         publish = worker.publish
@@ -402,7 +417,7 @@ def test_cancellation_publication_race_and_failure(db, jobs, monkeypatch):
         assert client.get(path + f"/{rid}/status").json()["artifact_id"] is None
         assert db.execute("SELECT count(*) FROM artifact").fetchone() == (0,)
         monkeypatch.setattr(worker, "publish", publish)
-        rid, _ = enqueue(client, path, a)
+        rid, _ = enqueue(client, path, a, kind=kind)
         job = take(conn)
 
         def damage(directory, chunks):
@@ -417,7 +432,7 @@ def test_cancellation_publication_race_and_failure(db, jobs, monkeypatch):
         assert client.get(path + f"/{rid}/status").json()["reason"] == "INTEGRITY_ERROR"
         assert db.execute("SELECT count(*) FROM artifact").fetchone() == (0,)
         monkeypatch.setattr(worker, "publish", publish)
-        rid, _ = enqueue(client, path, a)
+        rid, _ = enqueue(client, path, a, kind=kind)
         # A DB failure after artifact INSERT rolls both statements back.
         db.execute("""CREATE FUNCTION refuse_finish() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN RAISE EXCEPTION 'synthetic interruption'; END $$;

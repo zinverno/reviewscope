@@ -57,7 +57,7 @@ def _distribution(reviews: list[NormalizedReview]) -> dict[int, float]:
     total = sum(counts.values())
     if total == 0:
         return {}
-    return {r: round(cnt / total, 4) for r, cnt in counts.items()}
+    return {r: round(cnt / total, 4) for r, cnt in sorted(counts.items())}
 
 
 @dataclass

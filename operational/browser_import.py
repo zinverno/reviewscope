@@ -12,8 +12,15 @@ from uuid import UUID
 
 import psycopg
 
-from operational.delivery_objects import DeliveryError, encoded, private_directory
+from operational.delivery_objects import (
+    DeliveryError,
+    encoded,
+    object_directory,
+    open_object,
+    private_directory,
+)
 from operational.import_delivery import register_bytes
+from operational.signals import LIMIT, SCHEMA
 from reviewscope.access.ledger import certified_space, publishing
 from reviewscope.access.restore import sha
 from reviewscope.access.upload_wire import UploadError, read_json, sizes, socket_path, write_json
@@ -44,15 +51,7 @@ def apply(message, parts):
     mapping, passport, data = parts
     if hashlib.sha256(data).hexdigest() != message["checksum"]:
         raise UploadError("scope_denied")
-    host = os.environ.get("PGHOST", "")
-    if not host.startswith("/") or "," in host or os.getenv("PGHOSTADDR") or os.getenv("PGSERVICE"):
-        raise UploadError("importer_unavailable")
-    with psycopg.connect(
-        user="rs_upload",
-        host=host,
-        connect_timeout=3,
-        options="-c search_path=pg_catalog,public -c statement_timeout=90000 -c jit=off",
-    ) as conn:
+    with connection() as conn:
         with conn.cursor() as cur, publishing(cur) as witness:
             (ready,) = conn.execute(
                 "SELECT current_user=session_user AND current_user='rs_upload' AND browser_role_safe()"
@@ -94,23 +93,71 @@ def apply(message, parts):
             return {"snapshot_id": snapshot}
 
 
+def connection():
+    host = os.environ.get("PGHOST", "")
+    if not host.startswith("/") or "," in host or os.getenv("PGHOSTADDR") or os.getenv("PGSERVICE"):
+        raise UploadError("importer_unavailable")
+    return psycopg.connect(
+        user="rs_upload",
+        host=host,
+        connect_timeout=3,
+        options="-c search_path=pg_catalog,public -c statement_timeout=90000 -c jit=off",
+    )
+
+
+def read_signals(msg):
+    if set(msg) != {"op", "workspace", "source", "snapshot", "run", "actor", "expires", "ticket"}:
+        raise UploadError("scope_denied")
+    ids = [UUID(msg[k]) for k in ("workspace", "source", "snapshot", "run", "actor")]
+    with connection() as conn, conn.cursor() as cur, publishing(cur) as witness:
+        if not conn.execute(
+            "SELECT browser_role_safe() AND current_user=session_user AND current_user='rs_upload'"
+        ).fetchone()[0]:
+            raise UploadError("importer_unavailable")
+        row = conn.execute(
+            "SELECT * FROM signal_object(%s,%s,%s,%s,%s,%s,%s)",
+            (*ids, msg["expires"], msg["ticket"]),
+        ).fetchone()
+        if row is None:
+            raise UploadError("scope_denied")
+        root, digest, size, manifest = row
+        certified_space(witness, ids[0], root)
+        directory = object_directory(Path(root), ids[0], create=False)
+        with open_object(directory, digest) as stream:
+            raw = stream.read(LIMIT + 1)
+        if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+            raise UploadError("importer_unavailable")
+        doc = json.loads(raw)
+        if (
+            doc["schema"] != SCHEMA
+            or doc["manifest_sha256"] != manifest
+            or [doc[k] for k in ("workspace_id", "source_id", "snapshot_id", "run_id")]
+            != list(map(str, ids[:4]))
+        ):
+            raise UploadError("importer_unavailable")
+        return doc
+
+
 class Handler(socketserver.StreamRequestHandler):
     timeout = 20
 
     def handle(self):
+        limit = 4096
         try:
             msg = read_json(self.rfile)
-            parts = tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
+            signal_read = isinstance(msg, dict) and msg.get("op") == "read_signals"
+            parts = () if signal_read else tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
             if self.rfile.read(1):
                 raise UploadError("invalid_upload")
-            reply = apply(msg, parts)
+            reply = read_signals(msg) if signal_read else apply(msg, parts)
+            limit = LIMIT if signal_read else 4096
         except (DeliveryError, UploadError) as exc:
             reply = {
                 "error": "scope_denied" if str(exc) == "scope_denied" else "importer_unavailable"
             }
         except (ValueError, OSError, TypeError, KeyError, psycopg.Error):
             reply = {"error": "importer_unavailable"}
-        write_json(self.wfile, reply)
+        write_json(self.wfile, reply, limit)
 
 
 class Server(socketserver.UnixStreamServer):

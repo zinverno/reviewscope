@@ -18,6 +18,7 @@ Design notes:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 import numpy as np
 
@@ -71,6 +72,10 @@ class AnalyzedPlace:
     negative_keywords: list[tuple[str, float]] = field(default_factory=list)
     reviewer_overview: object | None = None
 
+    weight_explanations: dict[str, dict[str, float]] = field(default_factory=dict)
+    score_explanations: dict[str, dict[str, ScoreResult]] = field(default_factory=dict)
+    coordinated_components: dict[str, float] = field(default_factory=dict)
+
     @property
     def review_count(self) -> int:
         return len(self.reviews)
@@ -117,7 +122,7 @@ class AnalysisEngine:
         idx = [index[r.review_id] for r in reviews]
         return all_emb[np.array(idx)]
 
-    def analyze(self, place_id: PlaceId) -> AnalyzedPlace:
+    def analyze(self, place_id: PlaceId, *, as_of: date | None = None, explain: bool = False) -> AnalyzedPlace:
         reviews = self._store.fetch_reviews(place_id=place_id)
         embeddings = self._place_embeddings(reviews)
 
@@ -129,6 +134,7 @@ class AnalysisEngine:
         templated = TemplatedTextScorer().score(reviews, embeddings)
 
         # --- coordinated activity -------------------------------------------
+        components = {}
         coordinated = coordinated_activity_score(
             reviews,
             burst_events=bursts,
@@ -136,10 +142,13 @@ class AnalysisEngine:
             clusters=clusters,
             dup_groups=dup_groups,
             templated_results=templated,
+            exact_components=components if explain else None,
         )
 
         # --- per-review weights ---------------------------------------------
-        specs = {r.review_id: specificity_score(r.text_or_empty()).value for r in reviews}
+        specs = {}
+        score_explanations = {}
+        weight_explanations = {}
         cat_map: dict[str, float] = {}
         rel_map: dict[str, float] = {}
         history_by_reviewer = self._history_by_reviewer()
@@ -149,12 +158,14 @@ class AnalysisEngine:
             rel = reviewer_relevance_score(
                 history, r.place_category, r.city, r.region
             )
+            spec = specificity_score(r.text_or_empty())
+            specs[r.review_id] = spec.value
+            if explain:
+                score_explanations[r.review_id] = dict(specificity=spec, relevance=rel, category=cat)
             cat_map[r.review_id] = cat.value
             rel_map[r.review_id] = rel.value
 
-        # Graded probabilities for the §22 penalties (audit §22): duplicate
-        # coverage and templated strength are probabilities, and coordinated
-        # participation is a graded 0..1 signal, not a binary flag.
+        # The legacy probability fields carry heuristic strengths in 0..1.
         dup_prob: dict[str, float] = {}
         for g in dup_groups:
             if len(g.review_ids) >= 3:
@@ -183,6 +194,8 @@ class AnalysisEngine:
             duplicate_probability=dup_prob,
             templated_probability=tpl_prob,
             coordinated_probability=coord_prob,
+            as_of=as_of,
+            explanations=weight_explanations if explain else None,
         )
         raw, weighted, w_result = weighted_rating(reviews, weights)
 
@@ -211,6 +224,9 @@ class AnalysisEngine:
             duplicate_groups=dup_groups,
             templated_scores=templated,
             review_weights=weights,
+            weight_explanations=weight_explanations,
+            score_explanations=score_explanations,
+            coordinated_components=components,
             coordinated=coordinated,
             raw_rating=raw,
             weighted_rating_value=weighted,

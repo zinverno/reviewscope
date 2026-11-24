@@ -18,6 +18,8 @@ from reviewscope.access.operator import provision
 def test_two_upload_workspaces(db, tmp_path, monkeypatch, key):  # noqa: F811
     data = [(FIX / f).read_bytes() for f in ("mapping.json", "a.passport.json", "a.csv")]
     checksum = hashlib.sha256(data[-1]).hexdigest()
+    actors = []
+    scopes=[]
     credentials = []
     targets = []
     delivery = uuid4()
@@ -36,7 +38,8 @@ def test_two_upload_workspaces(db, tmp_path, monkeypatch, key):  # noqa: F811
         root.mkdir(mode=0o700)
         db.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(root), w))
         password = secrets.token_urlsafe(20)
-        provision(db, name, password, key, workspace=w)
+        actors.append(provision(db, name, password, key, workspace=w))
+        scopes.append((w,source))
         credentials.append((name, password))
         db.execute("INSERT INTO browser_admission VALUES(%s,%s,%s)", (w, source, checksum))
         path = f"{ROOT}/workspaces/{w}/sources/{source}/uploads/{delivery}"
@@ -74,6 +77,32 @@ def test_two_upload_workspaces(db, tmp_path, monkeypatch, key):  # noqa: F811
             assert other.get(path).status_code == 404
             assert own.get(path).json()["snapshot_id"] == snapshot
         assert snapshots[0] != snapshots[1]
+        from operational.tests.test_signals import signal_job
+        from operational.tests.test_worker import cli
+
+        db.execute("UPDATE browser_admission SET evidence_allowed=true")
+        db.execute(
+            "INSERT INTO workspace_membership VALUES(%s,%s,'viewer','active')",
+            (scopes[1][0], actors[0]),
+        )
+        results = []
+        for client, (space, source_id), snapshot in zip(
+            (left, right), scopes, snapshots, strict=True
+        ):
+            scope_path = f"{ROOT}/workspaces/{space}"
+            run = signal_job(client, scope_path, snapshot)
+            assert cli("isolated-signals") == "succeeded"
+            endpoint = scope_path + f"/snapshots/{snapshot}/signals"
+            params = {"source_id": source_id, "run_id": run}
+            response = client.get(endpoint, params=params)
+            assert response.status_code == 200
+            results.append(
+                (endpoint, params, {r["version_id"] for r in response.json()["result"]["reviews"]})
+            )
+        assert results[0][2].isdisjoint(results[1][2])
+        assert left.get(results[1][0], params=results[1][1]).status_code == 403
+        assert right.get(results[0][0], params=results[0][1]).status_code == 404
+        assert left.get(results[0][0],params=results[0][1]|{"run_id":results[1][1]["run_id"]}).status_code==404
         db.execute("UPDATE workspace_membership SET role='viewer' WHERE workspace_id=%s", (w,))
         path, headers = targets[1]
         viewer_preview = right.post(path + "/preview", headers=headers, content=b"".join(data))

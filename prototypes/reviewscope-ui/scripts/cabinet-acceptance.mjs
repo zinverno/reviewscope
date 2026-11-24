@@ -1,3 +1,4 @@
+import { checkSignals } from "./signals-acceptance.mjs";
 import { checkSources } from "./overview-sources-acceptance.mjs";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
@@ -529,6 +530,41 @@ async function test(type) {
 		await page
 			.getByText("Для выбранного снимка и результата граф недоступен.")
 			.waitFor();
+		stage = type.name() + " signal analysis";
+		const signalsContext = await browser.newContext({
+			storageState: content,
+			ignoreHTTPSErrors: true,
+			locale: "ru-RU",
+			reducedMotion: "reduce",
+		});
+		const signalsPage = await signalsContext.newPage();
+		signalsPage.setDefaultTimeout(10000);
+		signalsPage.on("response", (r) =>
+			observed.push(["signals-" + r.request().resourceType(), r.status()]),
+		);
+		try {
+			await checkSignals(signalsPage, origin, fixture, snapshots, (phase) => {
+				stage = type.name() + " signals " + phase;
+			});
+		} catch (error) {
+			// Only fixed UI states, never response bodies, identities or query parameters.
+			stage +=
+				" " +
+				JSON.stringify({
+					login: await signalsPage
+						.getByRole("button", { name: "Войти", exact: true })
+						.count(),
+					overview: await signalsPage
+						.getByRole("heading", { name: "Публичная синтетика · DuckDB" })
+						.count(),
+					unknown: await signalsPage
+						.getByText(/Область или выборка публичного демо недоступна/)
+						.count(),
+					error: await signalsPage.getByRole("alert").count(),
+				});
+			throw error;
+		}
+		await signalsContext.close();
 		stage = type.name() + " finish recording";
 		await review.close();
 	} finally {

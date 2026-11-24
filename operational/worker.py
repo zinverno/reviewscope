@@ -14,6 +14,7 @@ from time import monotonic
 
 import psycopg
 
+from operational import signals
 from operational.delivery_objects import (
     DeliveryError,
     encoded,
@@ -67,7 +68,7 @@ def connect():
             AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview')
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -103,9 +104,13 @@ def summarize(conn, claim, info, directory, pulse):
     w, r, _token = claim
     filters = info["filters"]
     require(filters.get("format") == FORMAT, "UNSUPPORTED_FORMAT")
+    is_signals = info["kind"] == signals.KIND
     require(
         (info["kind"], info["version"], info["definition"], info["model"], info["procedure"])
-        == (KIND, "1", "summary-1", "unused", VERSION),
+        in {
+            (KIND, "1", "summary-1", "unused", VERSION),
+            (signals.KIND, "1", "signals-1", "unused", VERSION),
+        },
         "UNSUPPORTED_VERSION",
     )
     ids = info["ids"]
@@ -145,6 +150,8 @@ def summarize(conn, claim, info, directory, pulse):
         and cover == filters["coverage_passport"] == receipt["coverage_passport"]
         and cover["coverage"] == info["coverage"]
     )
+    projected = []
+    projection_bytes = 0
     counts = Counter()
     ratings = Counter()
     exclusions = Counter()
@@ -200,12 +207,19 @@ def summarize(conn, claim, info, directory, pulse):
                         if kind in ("local", "invalid", "missing")
                         else "ineligible_event_basis"
                     ] += 1
+                if is_signals:
+                    item = signals.projection(row, rate, issue)
+                    projection_bytes += len(encoded(item))
+                    if projection_bytes > signals.LIMIT:
+                        pulse("summarize", n + 1, total)
+                        raise JobError("RESOURCE_LIMIT")
+                    projected.append(item)
                 n += 1
         require(not stream.read(1) and actual.hexdigest() == info["snapshot_sha256"])
     pulse("publish", total, total)
     exclusions["missing_reviewer"] = counts["unknown_author"]
     exclusions["missing_text"] = total - counts["usable_text"]
-    return {
+    summary = {
         "schema": "snapshot-summary-1",
         "workspace_id": str(w),
         "run_id": str(r),
@@ -248,6 +262,7 @@ def summarize(conn, claim, info, directory, pulse):
             "NO_PERIOD_COMPARISON",
         ],
     }
+    return signals.result(summary, projected, info["as_of"]) if is_signals else summary
 
 
 def linux_peak_kib(pid):
@@ -313,6 +328,7 @@ def process(conn, job, stopping):
         directory = object_directory(Path(info["root"]), claim[0], create=False)
         value = summarize(conn, claim, info, directory, pulse)
         data = encoded(value) + b"\n"
+        require(len(data) <= signals.LIMIT, "RESOURCE_LIMIT")
         with conn.transaction(), conn.cursor() as cur, publishing(cur) as witness:
             certified_space(witness, claim[0], info["root"])
             if not conn.execute("SELECT job_input(%s,%s,%s) IS NOT NULL", claim).fetchone()[0]:
@@ -320,7 +336,13 @@ def process(conn, job, stopping):
             digest = publish(directory, (data,))
             verify_file(directory, digest, len(data))
             conn.execute(
-                "SELECT set_config('rs.summary_projection',%s,true)", (data.decode("utf-8"),)
+                "SELECT set_config(%s,%s,true)",
+                (
+                    "rs.signals_projection"
+                    if info["kind"] == signals.KIND
+                    else "rs.summary_projection",
+                    data.decode("utf-8"),
+                ),
             )
             outcome = step(
                 "WORKER_STOPPED" if stopping.is_set() else None, digest, len(data), info["manifest"]
