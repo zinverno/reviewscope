@@ -295,6 +295,32 @@ def test_reviewer_context_scope_permissions_and_versions(db, tmp_path, key, capl
             ).fetchone() == (allowed, False)
 
 
+def test_incompatible_non_anchor_member_closes_whole_snapshot(db, tmp_path, key):  # noqa: F811
+    base, _, w, s = command(db, tmp_path)
+    # Model another writer's schema at insert time, before the ordinary hash and seal.
+    db.execute("""
+        CREATE FUNCTION fixture_normalization() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN NEW.normalization_version:='other-normalizer'; RETURN NEW; END $$;
+        CREATE TRIGGER fixture_schema BEFORE INSERT ON review_version
+        FOR EACH ROW WHEN (NEW.external_place_id='p2') EXECUTE FUNCTION fixture_normalization();
+    """)
+    snap, versions = reviewer_fixture(db, tmp_path / "mixed", base, w, s)
+    labels = dict(
+        db.execute("SELECT id::text,normalization_version FROM review_version").fetchall()
+    )
+    assert labels[versions[0]] == labels[versions[2]] == "canonical-preview-1"
+    assert labels[versions[1]] == "other-normalizer"
+    password = secrets.token_urlsafe(24)
+    provision(db, "mixed-reader", password, key, workspace=w)
+    with TestClient(create_app(), base_url=ORIGIN) as web:
+        assert login(web, "mixed-reader", password).status_code == 204
+        for index in (0, 2):
+            denied = web.get(
+                context_url(w, snap, versions[index]), params={"source_id": s, "limit": 1}
+            )
+            assert denied.status_code == 404 and "metrics" not in denied.json()
+
+
 def test_unknown_reviewers_keep_exact_evidence_and_signals(db, tmp_path, key, monkeypatch):  # noqa: F811
     from operational.tests.test_browser_delivery import importer
     from operational.tests.test_deliveries import conflicting_json

@@ -32,8 +32,15 @@ BEGIN
  JOIN snapshot_member sm ON (sm.workspace_id,sm.source_id,sm.snapshot_id,sm.version_id)=(w,src,snap,v.id)
  JOIN import_row r ON (r.workspace_id,r.source_id,r.batch_id,r.version_id)=(w,src,ctx.batch_id,v.id)
  WHERE (v.workspace_id,v.source_id,v.id)=(w,src,anchor)
- AND r.status='accepted' AND v.normalization_version='canonical-preview-1';
+ AND r.status='accepted';
  IF NOT FOUND THEN RETURN NULL; END IF;
+ -- An incompatible member invalidates the method for the entire pinned selection.
+ IF EXISTS (
+  SELECT FROM snapshot_member sm JOIN review_version member
+   ON (member.workspace_id,member.source_id,member.id)=(sm.workspace_id,sm.source_id,sm.version_id)
+  WHERE (sm.workspace_id,sm.source_id,sm.snapshot_id)=(w,src,snap)
+  AND member.normalization_version<>'canonical-preview-1'
+ ) THEN RETURN NULL; END IF;
  result:=jsonb_build_object('method','snapshot-reviewer-context-v1','workspace_id',w,'source_id',src,
  'snapshot_id',snap,'anchor_version_id',anchor,'manifest_sha256',ctx.manifest_sha256,
  'offset',off_n,'limit',page_n);
