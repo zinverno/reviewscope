@@ -208,7 +208,7 @@ def test_candidate_search(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811
         assert web.get(route, params=params).status_code == 404
 
 
-def measure_boundary(db, tmp_path, monkeypatch, w, source, snapshot, password):
+def measure_boundary(db, web, w, source, snapshot):
     import json
     import os
     import subprocess
@@ -216,71 +216,72 @@ def measure_boundary(db, tmp_path, monkeypatch, w, source, snapshot, password):
     from time import monotonic
 
     db.execute(
-        "UPDATE browser_admission SET candidate_allowed=true WHERE workspace_id=%s AND source_id=%s",
-        (w, source),
+        """UPDATE browser_admission a SET candidate_allowed=true FROM snapshot sn, import_batch b
+        WHERE (sn.workspace_id,sn.source_id,sn.id)=(%s,%s,%s)
+        AND (b.workspace_id,b.source_id,b.id)=(sn.workspace_id,sn.source_id,sn.batch_id)
+        AND (a.workspace_id,a.source_id,a.checksum)=(b.workspace_id,b.source_id,b.file_sha256)""",
+        (w, source, snapshot),
     )
     route = f"{ROOT}/workspaces/{w}/snapshots/{snapshot}/candidates"
-    with importer(tmp_path, monkeypatch), TestClient(create_app(), base_url=ORIGIN) as web:
-        assert login(web, "context-boundary", password).status_code == 204
-        modes = (
-            ["lexical", "dense", "hybrid"]
-            if os.environ.get("RS_MEASURE_DENSE") == "1"
-            else ["lexical"]
+    modes = (
+        ["lexical", "dense", "hybrid"]
+        if os.environ.get("RS_MEASURE_DENSE") == "1"
+        else ["lexical"]
+    )
+    for mode in modes:
+        body = dict(
+            source_id=str(source),
+            query="tttttttt",
+            idempotency_key=str(uuid4()),
+            role="query_to_passage",
+            mode=mode,
+            k=10,
         )
-        for mode in modes:
-            body = dict(
-                source_id=str(source),
-                query="xxxxxxxx",
-                idempotency_key=str(uuid4()),
-                role="query_to_passage",
-                mode=mode,
-                k=10,
-            )
-            job = web.post(route, json=body, headers=CSRF)
-            assert job.status_code == 202
-            start = monotonic()
-            worker = subprocess.run(
-                [sys.executable, "-m", "operational.worker", "--once"],
-                capture_output=True,
-                timeout=240,
-                check=True,
-            )
-            events = [json.loads(line) for line in worker.stdout.splitlines()]
-            args = dict(source_id=source, run_id=job.json()["id"])
-            status = web.get(f"{ROOT}/workspaces/{w}/runs/{args['run_id']}/status").json()
-            print(
-                json.dumps(
-                    dict(
-                        probe="candidate-10k",
-                        mode=mode,
-                        seconds=monotonic() - start,
-                        events=events,
-                        status=status["status"],
-                        reason=status["reason"],
-                    )
+        job = web.post(route, json=body, headers=CSRF)
+        assert job.status_code == 202
+        start = monotonic()
+        worker = subprocess.run(
+            [sys.executable, "-m", "operational.worker", "--once"],
+            capture_output=True,
+            timeout=240,
+            check=True,
+        )
+        events = [json.loads(line) for line in worker.stdout.splitlines()]
+        args = dict(source_id=source, run_id=job.json()["id"])
+        status = web.get(f"{ROOT}/workspaces/{w}/runs/{args['run_id']}/status").json()
+        print(
+            json.dumps(
+                dict(
+                    probe="candidate-10k",
+                    mode=mode,
+                    seconds=monotonic() - start,
+                    events=events,
+                    status=status["status"],
+                    reason=status["reason"],
                 )
             )
-            if mode != "lexical" and status["reason"] == "RESOURCE_LIMIT":
-                assert not status["artifact_id"]
-                continue
-            assert status["status"] == "succeeded"
-            reply = web.get(route, params=args)
-            assert reply.status_code == 200, reply.status_code
-            result = reply.json()
-            doc = result["result"]
-            size = db.execute(
-                "SELECT size_bytes FROM artifact WHERE checksum=%s", (result["artifact_sha256"],)
-            ).fetchone()[0]
-            print(
-                json.dumps(
-                    dict(
-                        probe="candidate-10k-result",
-                        mode=mode,
-                        bytes=size,
-                        diagnostics=next(e for e in events if e["event"] == "candidate_resources"),
-                        fragments=doc["fragment_count"],
-                    )
+        )
+        if mode != "lexical" and status["reason"] == "RESOURCE_LIMIT":
+            assert not status["artifact_id"]
+            continue
+        assert status["status"] == "succeeded"
+        reply = web.get(route, params=args)
+        assert reply.status_code == 200, reply.status_code
+        result = reply.json()
+        doc = result["result"]
+        size = db.execute(
+            "SELECT size_bytes FROM artifact WHERE checksum=%s", (result["artifact_sha256"],)
+        ).fetchone()[0]
+        print(
+            json.dumps(
+                dict(
+                    probe="candidate-10k-result",
+                    mode=mode,
+                    bytes=size,
+                    diagnostics=next(e for e in events if e["event"] == "candidate_resources"),
+                    fragments=doc["fragment_count"],
                 )
             )
-            assert doc["reviewed_count"] == doc["eligible_review_count"] == 10000
-            assert doc["retrieved_review_count"] == 10 and size <= 65536
+        )
+        assert doc["reviewed_count"] == doc["eligible_review_count"] == 10000
+        assert doc["retrieved_review_count"] == 10 and size <= 65536

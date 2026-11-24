@@ -678,3 +678,7 @@ def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, ca
         print(
             f"Browser confirmation: {MAX_BYTES} bytes, {MAX_ROWS} positions, {confirmed_seconds:.2f}s"
         )
+
+        from operational.tests.test_candidate_search import measure_boundary
+
+        measure_boundary(db, web, w, s, applied.json()["snapshot_id"])
