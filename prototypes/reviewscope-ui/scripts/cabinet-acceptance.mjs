@@ -1,3 +1,4 @@
+import { checkAspects } from "./aspect-acceptance.mjs";
 import {
 	checkPublicReviewer,
 	checkReviewerWidths,
@@ -676,6 +677,10 @@ async function test(type) {
 				.screenshot({
 					path: join(media, "candidates-" + type.name() + ".png"),
 				});
+		stage = type.name() + " versioned aspect";
+		await checkAspects(browser, content, originalDetail.href, media, (phase) => {
+			stage = type.name() + " aspect " + phase;
+		});
 		stage = type.name() + " invalid fragment";
 		const invalidFragment = new URL(originalDetail);
 		invalidFragment.searchParams.set("fragment", "0".repeat(64));

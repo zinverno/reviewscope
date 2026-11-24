@@ -290,7 +290,13 @@ export function SnapshotOverview({
 		</section>
 	);
 }
-export function LegacyOverview({ search }: { search: string }) {
+export function LegacyOverview({
+	search,
+	workspace,
+}: {
+	search: string;
+	workspace?: string;
+}) {
 	const q = new URLSearchParams(search),
 		id = q.get("place") ?? "p1";
 	const valid = [
@@ -416,7 +422,25 @@ export function LegacyOverview({ search }: { search: string }) {
 									>
 										Тема {t.id} · {t.count} отзывов
 									</a>{" "}
-									— {t.phrases.join(" · ") || "Без выделенных фраз"}
+									— {t.phrases.join(" · ") || "Без выделенных фраз"}{" "}
+									<a
+										href={
+											"/cabinet/?" +
+											new URLSearchParams({
+												view: "aspects",
+												...(workspace ? { workspace } : {}),
+												proposal: [
+													demo.snapshot,
+													demo.run,
+													place.source_result,
+													place.id,
+													t.id,
+												].join(":"),
+											})
+										}
+									>
+										Предложить аспект из темы {t.id}
+									</a>
 								</li>
 							))}
 						</ul>
