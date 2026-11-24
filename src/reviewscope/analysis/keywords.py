@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -111,6 +111,39 @@ def _utc_naive(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None) if value.tzinfo else value
 
 
+def keyword_periods(
+    reviews: Sequence[NormalizedReview],
+    reference_days: int = 90,
+    recent_days: int = 30,
+    reference_date: datetime | None = None,
+) -> tuple[list[NormalizedReview], list[NormalizedReview]]:
+    """Return the inclusive reference and recent samples used by emerging keywords."""
+    if not reviews:
+        return [], []
+    dates: list[datetime] = []
+    for r in reviews:
+        try:
+            dates.append(_utc_naive(datetime.fromisoformat(r.published_at)))
+        except (TypeError, ValueError):
+            pass
+    if not dates:
+        return [], []
+    anchor = _utc_naive(reference_date) if reference_date is not None else max(dates)
+
+    def within(published_iso: str, start: datetime, end: datetime) -> bool:
+        try:
+            dt = _utc_naive(datetime.fromisoformat(published_iso))
+        except (TypeError, ValueError):
+            return False
+        return start <= dt <= end
+
+    ref_window = (anchor - timedelta(days=reference_days + recent_days), anchor - timedelta(days=recent_days))
+    recent_window = (anchor - timedelta(days=recent_days), anchor)
+    reference = [r for r in reviews if r.published_at and within(r.published_at, ref_window[0], ref_window[1])]
+    recent = [r for r in reviews if r.published_at and within(r.published_at, recent_window[0], recent_window[1])]
+    return reference, recent
+
+
 def emerging_keywords(
     reviews: Sequence[NormalizedReview],
     reference_days: int = 90,
@@ -124,31 +157,9 @@ def emerging_keywords(
     set.  Words are ranked by the ratio of average TF-IDF (recent / reference);
     ratios above 1.0 indicate emerging terms.
     """
-    if not reviews:
-        return []
-    dates: list[datetime] = []
-    for r in reviews:
-        try:
-            dates.append(_utc_naive(datetime.fromisoformat(r.published_at)))
-        except (TypeError, ValueError):
-            pass
-    if not dates:
-        return []
-    anchor = _utc_naive(reference_date) if reference_date is not None else max(dates)
-
-    def within(published_iso: str, start: datetime, end: datetime) -> bool:
-        try:
-            dt = _utc_naive(datetime.fromisoformat(published_iso))
-        except (TypeError, ValueError):
-            return False
-        return start <= dt <= end
-
-    from datetime import timedelta
-
-    ref_window = (anchor - timedelta(days=reference_days + recent_days), anchor - timedelta(days=recent_days))
-    recent_window = (anchor - timedelta(days=recent_days), anchor)
-    ref_texts = [r.text or "" for r in reviews if r.published_at and within(r.published_at, ref_window[0], ref_window[1])]
-    recent_texts = [r.text or "" for r in reviews if r.published_at and within(r.published_at, recent_window[0], recent_window[1])]
+    reference, recent = keyword_periods(reviews, reference_days, recent_days, reference_date)
+    ref_texts = [r.text or "" for r in reference]
+    recent_texts = [r.text or "" for r in recent]
     if not recent_texts or not ref_texts:
         return []
 

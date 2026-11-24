@@ -172,8 +172,25 @@ class Metrics(Strict):
     rating_distribution: dict[str, Count] | None
 
 
+class SummarySelection(Strict):
+    run_id: UUID | None = None
+    source_id: UUID | None = None
+
+
+class SummaryContext(Strict):
+    source_id: UUID
+    batch_id: UUID
+    coverage: Literal["partial", "full", "unknown"] | None
+    covered_from: datetime | None
+    covered_until: datetime | None
+    selection: Literal["accepted_in_delivery"]
+    delivery_exclusions: dict[str, Count]
+    metric_exclusions: dict[str, Count]
+
+
 class JobSummary(JobStatus):
     metrics: Metrics | None
+    context: SummaryContext | None = None
 
 
 class JobErrorResponse(Strict):
@@ -462,22 +479,31 @@ def create_app():
         openapi_extra=read_contract,
     )
     def summary_metrics(
-        workspace: UUID, snapshot_id: UUID, request: Request, _: Annotated[Strict, Query()]
+        workspace: UUID, snapshot_id: UUID, request: Request, selection: Annotated[SummarySelection, Query()]
     ) -> JobSummary:
         with authenticated(request) as (cur, principal):
             store.authorize(cur, principal, workspace, "read")
-            job = store.job_status(cur, workspace, snapshot=snapshot_id)
-            cur.execute("SELECT version_num FROM alembic_version")
-            metrics = None
-            if cur.fetchone()["version_num"] != "0006_retention":
+            job = store.job_status(cur, workspace, snapshot=snapshot_id, run=selection.run_id)
+            if job["snapshot_id"] != snapshot_id:
+                raise HTTPException(404)
+            if selection.source_id is not None:
                 cur.execute(
-                    "SELECT metrics FROM browser_summary WHERE workspace_id=%s AND artifact_id=%s",
-                    (workspace, job["artifact_id"]),
+                    "SELECT 1 FROM snapshot WHERE workspace_id=%s AND id=%s AND source_id=%s",
+                    (workspace, snapshot_id, selection.source_id),
                 )
-                artifact = cur.fetchone()
-                if artifact:
-                    metrics = artifact["metrics"]
-            return job | {"metrics": metrics}
+                if cur.fetchone() is None:
+                    raise HTTPException(404)
+            cur.execute("SELECT version_num FROM alembic_version")
+            revision = cur.fetchone()["version_num"]
+            projection = {"metrics": None, "context": None}
+            if revision != "0006_retention" and job["artifact_id"] is not None:
+                columns = "metrics, context" if revision == "0009_overview" else "metrics"
+                cur.execute(
+                    f"SELECT {columns} FROM browser_summary WHERE workspace_id=%s AND run_id=%s AND artifact_id=%s",
+                    (workspace, job["id"], job["artifact_id"]),
+                )
+                projection.update(cur.fetchone() or {})
+            return job | projection
 
     retention_path = ROOT + "/workspaces/{workspace}/retention"
 

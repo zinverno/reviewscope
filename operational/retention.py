@@ -464,7 +464,7 @@ def verify_restore_roles(admin):
         (SCOPED, SCOPED),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 
