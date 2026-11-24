@@ -159,7 +159,7 @@ GRANT EXECUTE ON FUNCTION candidate_object(uuid,uuid,uuid,uuid,uuid,bigint,text)
 
 CREATE FUNCTION check_candidate_publication() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE j analysis_run; sn snapshot; raw text; doc jsonb;
+DECLARE j analysis_run; sn snapshot; raw text; doc jsonb; hit jsonb; vid uuid; original record;
 BEGIN
  SELECT * INTO j FROM analysis_run WHERE (workspace_id,id)=(NEW.workspace_id,NEW.run_id);
  IF j.job_kind IS DISTINCT FROM 'snapshot_candidate_search_v1' THEN RETURN NEW; END IF;
@@ -178,16 +178,21 @@ BEGIN
  OR jsonb_array_length(doc->'candidates') > 4*(j.candidate_params->>'k')::int
  OR (doc->>'reviewed_count')::int IS DISTINCT FROM cardinality(sn.version_ids)
  THEN RAISE EXCEPTION 'invalid_candidate_counts'; END IF;
- IF EXISTS(SELECT FROM jsonb_array_elements(doc->'candidates') hit
- LEFT JOIN snapshot_member sm ON (sm.workspace_id,sm.source_id,sm.snapshot_id,sm.version_id)=
- (sn.workspace_id,sn.source_id,sn.id,(hit->>'version_id')::uuid)
- LEFT JOIN review_version v ON (v.workspace_id,v.source_id,v.id)=(sm.workspace_id,sm.source_id,sm.version_id)
- WHERE v.id IS NULL OR v.content_sha256 IS DISTINCT FROM hit->>'content_sha256'
- OR encode(sha256(convert_to(v.text_content,'UTF8')),'hex') IS DISTINCT FROM hit->>'text_sha256'
- OR ((hit->>'context_start')::int>=0 AND (hit->>'context_start')::int<=(hit->>'start')::int
- AND (hit->>'start')::int<(hit->>'end')::int AND (hit->>'end')::int<=(hit->>'context_end')::int
- AND (hit->>'context_end')::int<=length(v.text_content)) IS NOT TRUE)
- THEN RAISE EXCEPTION 'invalid_candidate_span'; END IF;
+ -- At most 40 hits. Resolve their primary keys individually before fresh tables have statistics.
+ FOR hit IN SELECT value FROM jsonb_array_elements(doc->'candidates') LOOP
+   vid := (hit->>'version_id')::uuid;
+   IF NOT EXISTS(SELECT FROM snapshot_member m
+     WHERE (m.workspace_id,m.snapshot_id,m.version_id,m.source_id)=(sn.workspace_id,sn.id,vid,sn.source_id))
+   THEN RAISE EXCEPTION 'invalid_candidate_span'; END IF;
+   SELECT v.content_sha256,v.text_content INTO original FROM review_version v
+     WHERE (v.workspace_id,v.source_id,v.id)=(sn.workspace_id,sn.source_id,vid);
+   IF NOT FOUND OR original.content_sha256 IS DISTINCT FROM hit->>'content_sha256'
+   OR encode(sha256(convert_to(original.text_content,'UTF8')),'hex') IS DISTINCT FROM hit->>'text_sha256'
+   OR ((hit->>'context_start')::int>=0 AND (hit->>'context_start')::int<=(hit->>'start')::int
+     AND (hit->>'start')::int<(hit->>'end')::int AND (hit->>'end')::int<=(hit->>'context_end')::int
+     AND (hit->>'context_end')::int<=length(original.text_content)) IS NOT TRUE
+   THEN RAISE EXCEPTION 'invalid_candidate_span'; END IF;
+ END LOOP;
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION check_candidate_publication() FROM PUBLIC;
