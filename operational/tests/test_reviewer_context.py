@@ -397,7 +397,7 @@ def measure_page():
     route, source_id, password = json.load(sys.stdin)
     with TestClient(create_app(), base_url=ORIGIN) as web, psycopg.connect() as inspect:
         assert login(web, "context-boundary", password).status_code == 204
-        for offset in (0, 9950):
+        for observation, offset in (("first", 0), ("repeat", 0), ("last_page", 9950)):
             start = perf_counter()
             response = web.get(
                 route, params={"source_id": source_id, "offset": offset, "limit": 50}
@@ -415,6 +415,7 @@ def measure_page():
                 json.dumps(
                     dict(
                         probe="reviewer-context-10k",
+                        observation=observation,
                         offset=offset,
                         processed=doc["total"],
                         excluded=0,

@@ -1,4 +1,4 @@
-import { checkPublicReviewer, checkSnapshotReviewer } from "./reviewer-context-acceptance.mjs";
+import { checkPublicReviewer, checkReviewerWidths, checkSnapshotReviewer } from "./reviewer-context-acceptance.mjs";
 import { checkSignals } from "./signals-acceptance.mjs";
 import { checkSources } from "./overview-sources-acceptance.mjs";
 import assert from "node:assert/strict";
@@ -533,9 +533,11 @@ async function test(type) {
 			.waitFor();
 		stage = type.name() + " public reviewer navigation";
 		const reviewerTab = await review.newPage();
-		await checkPublicReviewer(reviewerTab, origin);
+		const reviewerProfile = await checkPublicReviewer(reviewerTab, origin, media);
 		await reviewerTab.close();
 		if (media) await reviewerTab.video().saveAs(join(media, "reviewer-context-" + type.name() + ".webm"));
+		stage = type.name() + " reviewer widths";
+		await checkReviewerWidths(browser, origin, reviewerProfile, content);
 		stage = type.name() + " signal analysis";
 		// Capture only the packaged public explanation. Snapshot results use an unrecorded context.
 		await review.close();

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { setTimeout as pause } from "node:timers/promises";
 
-export async function checkPublicReviewer(page, origin) {
+export async function checkPublicReviewer(page, origin, media) {
+	const readingTime = () => media && pause(1600);
 	const link = (name) => page.getByRole("link", { name, exact: true });
 	const history = page.getByRole("heading", {
 		name: "История отзывов",
@@ -18,12 +20,15 @@ export async function checkPublicReviewer(page, origin) {
 	await link("Отзыв r00027").click();
 	await page.locator(".source-text").waitFor();
 	const initial = page.url();
+	await readingTime();
 	await link("Контекст автора в этом наборе").press("Enter");
 	await history.waitFor();
 	const profile = page.url();
+	await readingTime();
 	await page
 		.getByRole("img", { name: "Координаты точек из таблицы" })
 		.scrollIntoViewIfNeeded();
+	await readingTime();
 	await link("Исходный отзыв r00157").press("Enter");
 	await page.locator(".source-text").waitFor();
 	assert.equal(
@@ -36,6 +41,7 @@ export async function checkPublicReviewer(page, origin) {
 	);
 	assert.equal(new URL(page.url()).searchParams.get("evidencePlace"), "p2");
 	const evidence = page.url();
+	await readingTime();
 	await page.goBack();
 	await history.waitFor();
 	assert.equal(page.url(), profile);
@@ -46,6 +52,51 @@ export async function checkPublicReviewer(page, origin) {
 	await link("Вернуться к исходному экрану").click();
 	await page.locator(".source-text").waitFor();
 	assert.equal(page.url(), initial);
+	return profile;
+}
+
+export async function checkReviewerWidths(
+	browser,
+	origin,
+	profile,
+	storageState,
+) {
+	for (const width of [320, 390, 1366, 1920]) {
+		// A fresh viewport also exercises loading a deep link after authentication.
+		const tab = await browser.newPage({
+			storageState,
+			ignoreHTTPSErrors: true,
+			reducedMotion: "reduce",
+			viewport: { width, height: 800 },
+		});
+		try {
+			await tab.route("**/*", (route) =>
+				new URL(route.request().url()).origin === origin
+					? route.continue()
+					: route.abort(),
+			);
+			await tab.goto(profile);
+			await tab
+				.getByRole("img", { name: "Координаты точек из таблицы" })
+				.waitFor();
+			await tab
+				.getByText("Метрики, метод и основания", { exact: true })
+				.press("Enter");
+			await tab
+				.getByRole("heading", { name: "Индекс локального контекста" })
+				.waitFor();
+			assert.deepEqual(
+				await tab.evaluate(() => [
+					innerWidth,
+					document.documentElement.scrollWidth,
+					matchMedia("(prefers-reduced-motion: reduce)").matches,
+				]),
+				[width, width, true],
+			);
+		} finally {
+			await tab.close();
+		}
+	}
 }
 
 export async function checkSnapshotReviewer(page, origin, fixture, snapshots) {
