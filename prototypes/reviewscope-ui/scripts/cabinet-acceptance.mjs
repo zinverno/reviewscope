@@ -666,6 +666,57 @@ async function test(type) {
 		await candidatePage
 			.getByRole("link", { name: "Фрагмент 1 · отзыв 1", exact: true })
 			.waitFor();
+		const originalLink = await candidatePage
+			.getByRole("link", { name: "Фрагмент 1 · отзыв 1", exact: true })
+			.getAttribute("href");
+		const originalDetail = new URL(originalLink, origin);
+		if (media)
+			await candidatePage
+				.getByRole("table", { name: "Ранжированные кандидаты" })
+				.screenshot({
+					path: join(media, "candidates-" + type.name() + ".png"),
+				});
+		stage = type.name() + " invalid fragment";
+		const invalidFragment = new URL(originalDetail);
+		invalidFragment.searchParams.set("fragment", "0".repeat(64));
+		await candidatePage.goto(invalidFragment.href);
+		await candidatePage.getByRole("alert").first().waitFor();
+		assert.equal(await candidatePage.locator("mark").count(), 0);
+		await candidatePage.goto(originalDetail.href);
+		await candidatePage.locator("mark").waitFor();
+		stage = type.name() + " empty lexical result";
+		await candidatePage.getByLabel("Формулировка или пример").fill("鯨鯨鯨");
+		await candidatePage
+			.getByRole("button", { name: "Найти кандидатов" })
+			.click();
+		await candidatePage
+			.getByText(/В выдаче 0 разных отзывов и 0 фрагментов/)
+			.waitFor({ timeout: 30000 });
+		stage = type.name() + " missing offline model";
+		await candidatePage
+			.getByLabel("Формулировка или пример")
+			.fill("Готовый заказ");
+		await candidatePage.getByLabel("Метод поиска").selectOption("dense");
+		await candidatePage
+			.getByRole("button", { name: "Найти кандидатов" })
+			.click();
+		await candidatePage
+			.getByText(/NOT_RUN_MISSING_(WEIGHTS|BACKEND)/)
+			.waitFor({ timeout: 30000 });
+		stage = type.name() + " session revocation";
+		await candidatePage.goto(originalDetail.href);
+		await candidatePage.locator("mark").waitFor();
+		const logoutTab = await signalsContext.newPage();
+		await logoutTab.goto(origin + "/cabinet/");
+		await logoutTab.getByRole("button", { name: "Выйти" }).click();
+		await logoutTab.getByRole("button", { name: "Войти" }).waitFor();
+		await candidatePage.bringToFront();
+		await candidatePage
+			.locator("mark")
+			.waitFor({ state: "detached", timeout: 15000 });
+		await candidatePage.reload();
+		await candidatePage.getByRole("button", { name: "Войти" }).waitFor();
+		assert.equal(await candidatePage.locator("mark").count(), 0);
 		await signalsContext.close();
 	} finally {
 		await browser.close();

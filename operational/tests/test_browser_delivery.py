@@ -452,6 +452,8 @@ with tempfile.TemporaryFile() as stage:
                 authorVersions=author_versions[:2],
                 otherWorkspace=str(other),
             )
+            # Exercise the offline-unavailable state in both browsers with a fresh cache.
+            worker_env = os.environ | {"HF_HUB_CACHE": str(tmp_path / "empty-model-cache")}
             native = subprocess.Popen(
                 ["node", "scripts/cabinet-acceptance.mjs"],
                 cwd=ui,
@@ -489,6 +491,7 @@ with tempfile.TemporaryFile() as stage:
                     ).fetchone()[0]:
                         subprocess.run(
                             [sys.executable, "-m", "operational.worker", "--once"],
+                            env=worker_env,
                             check=True,
                             capture_output=True,
                         )
