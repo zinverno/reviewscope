@@ -68,7 +68,10 @@ def connect():
             AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan')
+            AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
+                AND c.relname IN ('aspect','aspect_version') AND (NOT row_security_active(c.oid)
+                OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE')))
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -336,6 +339,8 @@ def process(conn, job, stopping):
             certified_space(gate(cur), claim[0], info["root"])
         directory = object_directory(Path(info["root"]), claim[0], create=False)
         value = summarize(conn, claim, info, directory, pulse)
+        if info["kind"] == candidate_worker.KIND:
+            require(value.get("aspect") == info["candidate"].get("aspect"))
         data = encoded(value) + b"\n"
         require(len(data) <= signals.LIMIT, "RESOURCE_LIMIT")
         with conn.transaction(), conn.cursor() as cur, publishing(cur) as witness:

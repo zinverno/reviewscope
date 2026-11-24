@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import signals, store
+from . import aspects, signals, store
 from .evidence import EvidencePage, Filters, evidence_page
 
 KIND = "snapshot_candidate_search_v1"
@@ -17,6 +17,7 @@ Role = Literal["query_to_passage", "text_to_text"]
 
 class CandidateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    aspect: aspects.Saved | None = None
     source_id: UUID
     idempotency_key: UUID
     query: str = Field(min_length=1, max_length=2048)
@@ -94,6 +95,23 @@ class Listing(BaseModel):
     result: CandidateResult | None
 
 
+class Binding(aspects.Saved):
+    project_id: UUID
+    source_id: UUID
+    digest: str = Field(pattern="^[0-9a-f]{64}$")
+
+
+class BoundResult(CandidateResult):
+    aspect: Binding
+    query_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+
+
+class BoundListing(Listing):
+    result: BoundResult
+    definition: aspects.Frozen
+    query: str
+
+
 def install(app, authenticated, key, cookie, local, read_contract, write_contract, errors):
     from .http import JobStatus, Strict
 
@@ -124,17 +142,10 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
             raise HTTPException(422)
         with authenticated(request) as (cur, actor):
             store.authorize(cur, actor, workspace, "start_analysis")
-            # Check before sending the private bind value to PostgreSQL.
-            cur.execute("""SELECT current_setting('log_parameter_max_length_on_error')='0'
-                AND (current_setting('log_parameter_max_length')='0' OR (
-                  current_setting('log_statement')='none' AND current_setting('log_min_duration_statement')='-1'
-                  AND current_setting('log_min_duration_sample')='-1'
-                  AND current_setting('log_transaction_sample_rate')::float=0))
-                AND coalesce(current_setting('pgaudit.log_parameter',true),'off')='off' AS safe""")
-            if not cur.fetchone()["safe"]:
-                raise HTTPException(503)
+            store.private_binds(cur)
+            binding = (data.aspect.aspect_id, data.aspect.version_id) if data.aspect else ()
             cur.execute(
-                "SELECT * FROM enqueue_candidate(%s,%s,%s,%s,%s,%s,%s,%s)",
+                "SELECT * FROM enqueue_candidate(" + ",".join(["%s"] * (8 + len(binding))) + ")",
                 (
                     workspace,
                     data.source_id,
@@ -144,6 +155,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                     data.mode,
                     data.role,
                     data.k,
+                    *binding,
                 ),
             )
             row = cur.fetchone()
@@ -155,7 +167,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     @app.get(route, openapi_extra=read_contract, responses=errors)
     def selection(
         workspace: UUID, snapshot: UUID, request: Request, q: Annotated[Selection, Query()]
-    ) -> Listing:
+    ) -> BoundListing | Listing:
         if local or request.url.scheme != "https":
             raise HTTPException(403)
         with authenticated(request) as (cur, actor):
@@ -179,6 +191,34 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                 "read_candidates",
                 "candidate-search-1",
             )
+            if q.run_id is not None:
+                doc = listing["result"]
+                # Older schemas have no binding function and can only serve ad hoc artifacts.
+                cur.execute(
+                    "SELECT to_regprocedure('candidate_definition(uuid,uuid,uuid,uuid)') IS NOT NULL AS supported"
+                )
+                metadata = None
+                if cur.fetchone()["supported"]:
+                    cur.execute(
+                        "SELECT candidate_definition(%s,%s,%s,%s) AS data",
+                        (workspace, q.source_id, snapshot, q.run_id),
+                    )
+                    metadata = cur.fetchone()["data"]
+                    if not metadata:
+                        raise HTTPException(404)
+                    if doc.get("query_sha256") != metadata["query_sha256"]:
+                        raise HTTPException(503)
+                binding = metadata["aspect"] if metadata else None
+                if binding != doc.get("aspect"):
+                    raise HTTPException(503)
+                if binding is not None:
+                    detail = metadata["definition"]
+                    if not detail or any(
+                        detail[k] != binding[k]
+                        for k in ("project_id", "aspect_id", "version_id", "digest")
+                    ):
+                        raise HTTPException(404)
+                    listing.update(definition=detail, query=metadata["query"])
             if q.fragment_id is not None:
                 doc = listing["result"]
                 hit = (
@@ -206,4 +246,4 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                 ):
                     raise HTTPException(503)
                 listing["evidence"] = detail
-            return listing
+            return BoundListing.model_validate(listing) if "definition" in listing else listing

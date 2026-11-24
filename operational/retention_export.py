@@ -120,6 +120,11 @@ def export(conn, rid, root, handoff):
                 omissions.extend(
                     ["browser_admission_authorizations", "browser_confirmation_credentials"]
                 )
+            if one(conn, "SELECT to_regclass('public.aspect_version') IS NOT NULL"):
+                manifest["version"] = "owner-export-2"
+                tables.update(aspect="project_id,aspect_id", aspect_version="project_id,aspect_id,version_no")
+                if k == "source":
+                    omissions.append("project_definitions_outside_source_scope")
             for table, order in tables.items():
                 run_fields = RUN_FIELDS
                 if table == "analysis_run" and one(
@@ -130,6 +135,8 @@ def export(conn, rid, root, handoff):
                 fields = {
                     "workspace": "id,name,state,created_at",
                     "analysis_run": run_fields,
+                    "aspect": "workspace_id,project_id,aspect_id,current_no,created_by,created_at,archived_by,archived_at",
+                    "aspect_version": "workspace_id,project_id,aspect_id,version_id,version_no,payload,digest,origin,created_by,created_at",
                     "browser_delivery": "workspace_id,id,source_id,fmt,locations,checksum,fingerprint,diagnostics,expires_at,snapshot_id",
                 }.get(table, "*")
                 with conn.cursor(name="export_rows") as cur:
