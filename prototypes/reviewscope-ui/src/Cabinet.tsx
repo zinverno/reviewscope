@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
 import { SnapshotOverview, LegacyOverview } from "./Overview";
+import { CanonicalGraph, LegacyGraph, demoGraphHref } from "./DuplicateGraph";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
 type Space = { id: string; name: string; role: string };
@@ -655,11 +656,13 @@ function Cabinet() {
 				)}
 			</header>
 			<h1>
-				{query.get("view") === "reviews"
-					? "Панель доказательств"
-					: query.get("view") === "overview" || query.get("view") === "legacy"
-						? "Обзор данных"
-						: "Проверка снимка и пригодности данных"}
+				{["graph", "legacy-graph"].includes(query.get("view") ?? "")
+					? "Граф повторов"
+					: query.get("view") === "reviews"
+						? "Панель доказательств"
+						: query.get("view") === "overview" || query.get("view") === "legacy"
+							? "Обзор данных"
+							: "Проверка снимка и пригодности данных"}
 			</h1>
 			{msg && <p role="alert">{msg}</p>}
 			{!ready ? (
@@ -709,6 +712,21 @@ function Cabinet() {
 				>
 					{!w ? (
 						<p>Рабочая область недоступна.</p>
+					) : query.get("view") === "graph" ? (
+						snapshot ? (
+							<CanonicalGraph
+								key={workspace + search}
+								workspace={w}
+								snapshot={snapshot}
+								search={search}
+								api={api}
+								link={link}
+							/>
+						) : (
+							<p>Выберите снимок.</p>
+						)
+					) : query.get("view") === "legacy-graph" ? (
+						<LegacyGraph key={search} search={search} />
 					) : query.get("view") === "overview" ? (
 						snapshot ? (
 							<SnapshotOverview
@@ -1034,6 +1052,18 @@ function Cabinet() {
 									</p>
 								)}
 								<a href="/cabinet/?view=legacy">Обзор публичной синтетики</a>
+								{snapshot && (
+									<p>
+										<a href={link({ view: "graph" })}>
+											Повторы выбранного снимка
+										</a>
+									</p>
+								)}
+								<p>
+									<a href={demoGraphHref()}>
+										Исследовать повторы публичной синтетики
+									</a>
+								</p>
 								<h2>Фоновые проверки</h2>
 								<p>
 									Доступна проверка целостности и пригодности. Анализ жалоб пока

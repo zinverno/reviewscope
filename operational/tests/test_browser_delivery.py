@@ -187,8 +187,10 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
     from pathlib import Path
 
     from operational.tests.test_deliveries import call, json_input
+    from operational.tests.test_schema import scope
 
     registration, object_root, w, s = command(db, tmp_path)
+    other, _, _ = scope(db, source_key="synthetic")
     db.execute(
         "UPDATE location SET name=sl.external_place_id FROM source_location sl WHERE location.id=sl.location_id"
     )
@@ -353,6 +355,7 @@ with tempfile.TemporaryFile() as stage:
                 csv=str(FIX.resolve()),
                 json=str(j),
                 longSnapshot=long_snapshot,
+                otherWorkspace=str(other),
             )
             native = subprocess.Popen(
                 ["node", "scripts/cabinet-acceptance.mjs"],

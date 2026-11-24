@@ -6,6 +6,7 @@ import {
 } from "./OverviewSources";
 import demo from "./overview.synthetic.json";
 import { evidenceFields } from "./ReviewEvidence";
+import { demoGraphHref } from "./DuplicateGraph";
 
 type Pair = { numerator: number; denominator: number };
 type Counts = Record<string, Pair>;
@@ -259,6 +260,9 @@ export function SnapshotOverview({
 					<a href={link({ view: "reviews" })}>Открыть отзывы этой выборки</a>
 				</p>
 			)}
+			<p>
+				<a href={link({ view: "graph" })}>Повторы выбранного снимка</a>
+			</p>
 			<h3>Темы и динамика</h3>
 			<p>
 				ANALYSIS_NOT_AVAILABLE. Worker проверяет целостность и пригодность. Для
@@ -364,6 +368,9 @@ export function LegacyOverview({ search }: { search: string }) {
 			{place ? (
 				<>
 					<h3>{place.name}</h3>
+					<p>
+						<a href={demoGraphHref(place.id)}>Семейства повторов этой точки</a>
+					</p>
 					<p className="overview-count">
 						<strong>{place.count}</strong> отзывов · {place.rated} с оценкой
 					</p>
