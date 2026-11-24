@@ -10,7 +10,7 @@ BEGIN
  OR NOT coalesce(retention_online(),false) THEN RETURN NULL; END IF;
 
  -- Hold the same byte grant, session and membership through the bounded read and commit.
- SELECT s.batch_id,s.manifest_sha256,a.author_context_allowed INTO ctx FROM snapshot s
+ SELECT s.batch_id,s.manifest_sha256,s.version_ids,a.author_context_allowed INTO ctx FROM snapshot s
  JOIN import_batch b ON (b.workspace_id,b.source_id,b.id)=(w,src,s.batch_id)
  JOIN browser_admission a ON (a.workspace_id,a.source_id,a.checksum)=(w,src,b.file_sha256)
  JOIN source src_row ON (src_row.workspace_id,src_row.id)=(w,src)
@@ -34,12 +34,16 @@ BEGIN
  WHERE (v.workspace_id,v.source_id,v.id)=(w,src,anchor)
  AND r.status='accepted';
  IF NOT FOUND THEN RETURN NULL; END IF;
- -- An incompatible member invalidates the method for the entire pinned selection.
- IF EXISTS (
-  SELECT FROM snapshot_member sm JOIN review_version member
-   ON (member.workspace_id,member.source_id,member.id)=(sm.workspace_id,sm.source_id,sm.version_id)
-  WHERE (sm.workspace_id,sm.source_id,sm.snapshot_id)=(w,src,snap)
-  AND member.normalization_version<>'canonical-preview-1'
+ -- Compare both ordered sets with the seal. Full identity/version keys keep fresh imports bounded before ANALYZE.
+ IF ctx.version_ids IS DISTINCT FROM ARRAY(
+  SELECT sm.version_id FROM snapshot_member sm
+  WHERE (sm.workspace_id,sm.source_id,sm.snapshot_id)=(w,src,snap) ORDER BY sm.version_id
+ ) OR ctx.version_ids IS DISTINCT FROM ARRAY(
+  SELECT CASE WHEN (SELECT v.normalization_version FROM review_version v
+         WHERE (v.workspace_id,v.source_id,v.identity_id,v.id)=(w,src,r.identity_id,r.version_id))='canonical-preview-1'
+         THEN r.version_id END
+  FROM import_row r WHERE (r.workspace_id,r.source_id,r.batch_id)=(w,src,ctx.batch_id) AND r.status='accepted'
+  ORDER BY r.version_id
  ) THEN RETURN NULL; END IF;
  result:=jsonb_build_object('method','snapshot-reviewer-context-v1','workspace_id',w,'source_id',src,
  'snapshot_id',snap,'anchor_version_id',anchor,'manifest_sha256',ctx.manifest_sha256,
@@ -50,17 +54,18 @@ BEGIN
  END IF;
 
  WITH history AS MATERIALIZED (
-  SELECT v.id AS version_id,r.position,sl.external_place_id,sl.location_id,left(l.name,160) AS location_name,
+  SELECT r.version_id,r.identity_id,r.position,v.external_place_id,
    CASE WHEN v.metadata->>'event_basis' IN ('published','submitted')
      THEN coalesce(v.event_date,(v.event_at AT TIME ZONE 'UTC')::date) END AS day,
    v.rating,NOT ('missing_text'=ANY(r.warnings)) AS has_text
-  FROM snapshot_member sm
-  JOIN import_row r ON (r.workspace_id,r.source_id,r.batch_id,r.version_id)=(w,src,ctx.batch_id,sm.version_id)
-  JOIN review_version v ON (v.workspace_id,v.source_id,v.id)=(w,src,sm.version_id)
-  JOIN source_location sl ON (sl.workspace_id,sl.source_id,sl.external_place_id)=(w,src,v.external_place_id)
-  JOIN location l ON (l.workspace_id,l.project_id,l.id)=(w,sl.project_id,sl.location_id)
-  WHERE (sm.workspace_id,sm.source_id,sm.snapshot_id)=(w,src,snap)
-  AND r.status='accepted' AND v.source_reviewer_id COLLATE "C"=author_key COLLATE "C"
+  FROM import_row r
+  -- Preserve one keyed version lookup per accepted position regardless of fresh-table estimates.
+  CROSS JOIN LATERAL (
+   SELECT external_place_id,metadata,event_date,event_at,rating,source_reviewer_id
+   FROM review_version WHERE (workspace_id,source_id,identity_id,id)=(w,src,r.identity_id,r.version_id) OFFSET 0
+  ) v
+  WHERE (r.workspace_id,r.source_id,r.batch_id)=(w,src,ctx.batch_id) AND r.status='accepted'
+  AND v.source_reviewer_id COLLATE "C"=author_key COLLATE "C"
  ), page AS (
   SELECT * FROM history ORDER BY day DESC NULLS LAST,position,version_id OFFSET off_n LIMIT page_n
  ), ratings AS (SELECT rating,count(*) AS n FROM history WHERE rating IS NOT NULL GROUP BY rating)
@@ -69,9 +74,13 @@ BEGIN
   'last_day',max(day),'rated',count(rating),'rating_mean',avg(rating),'rating_counts',
   coalesce((SELECT jsonb_object_agg(rating,n) FROM ratings),'{}'::jsonb),
   'with_text',count(*) FILTER(WHERE has_text)),
-  'rows',coalesce((SELECT jsonb_agg((to_jsonb(p)-'external_place_id') || jsonb_build_object('body',CASE WHEN p.has_text THEN v.text_content END)
+  'rows',coalesce((SELECT jsonb_agg((to_jsonb(p)-'external_place_id'-'identity_id') || jsonb_build_object(
+  'location_id',sl.location_id,'location_name',left(l.name,160),
+  'body',CASE WHEN p.has_text THEN (SELECT v.text_content FROM review_version v
+        WHERE (v.workspace_id,v.source_id,v.identity_id,v.id)=(w,src,p.identity_id,p.version_id)) END)
   ORDER BY p.day DESC NULLS LAST,p.position,p.version_id)
-  FROM page p JOIN review_version v ON (v.workspace_id,v.source_id,v.id)=(w,src,p.version_id)),'[]'::jsonb))
+  FROM page p JOIN source_location sl ON (sl.workspace_id,sl.source_id,sl.external_place_id)=(w,src,p.external_place_id)
+  JOIN location l ON (l.workspace_id,l.project_id,l.id)=(w,sl.project_id,sl.location_id)),'[]'::jsonb))
  INTO result FROM history;
  RETURN result;
 END $$;

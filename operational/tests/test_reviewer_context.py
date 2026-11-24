@@ -320,6 +320,36 @@ def test_incompatible_non_anchor_member_closes_whole_snapshot(db, tmp_path, key)
             )
             assert denied.status_code == 404 and "metrics" not in denied.json()
 
+        db.execute("DROP TRIGGER fixture_schema ON review_version")
+        selected, corrected = reviewer_fixture(db, tmp_path / "valid", base, w, s, corrected=True)
+        route = context_url(w, selected, corrected[0])
+        params = {"source_id": s, "limit": 1}
+        page = web.get(route, params=params).json()
+        assert page["total"] == 2 and "identity_id" not in page["rows"][0]
+        # Model a damaged restored catalog after a valid import; only this disposable DB is modified.
+        with db.transaction():
+            db.execute("ALTER TABLE snapshot_member DISABLE TRIGGER immutable_rows")
+            db.execute(
+                "DELETE FROM snapshot_member WHERE snapshot_id=%s AND version_id=%s",
+                (selected, corrected[1]),
+            )
+            db.execute("ALTER TABLE snapshot_member ENABLE TRIGGER immutable_rows")
+        assert web.get(route, params=params).status_code == 404
+        db.execute(
+            "INSERT INTO snapshot_member VALUES(%s,%s,%s,%s)", (w, s, selected, corrected[1])
+        )
+        assert web.get(route, params=params).status_code == 200
+        with db.transaction():
+            db.execute("ALTER TABLE import_row DISABLE TRIGGER immutable_rows")
+            db.execute(
+                """UPDATE import_row r SET status='accepted', reasons='{}', version_id=v.id, identity_id=v.identity_id
+                FROM snapshot sn, review_version v WHERE sn.id=%s AND v.id=%s
+                AND (r.workspace_id,r.source_id,r.batch_id)=(sn.workspace_id,sn.source_id,sn.batch_id) AND r.position=7""",
+                (selected, versions[1]),
+            )
+            db.execute("ALTER TABLE import_row ENABLE TRIGGER immutable_rows")
+        assert web.get(route, params=params).status_code == 404
+
 
 def test_unknown_reviewers_keep_exact_evidence_and_signals(db, tmp_path, key, monkeypatch):  # noqa: F811
     from operational.tests.test_browser_delivery import importer
@@ -436,6 +466,9 @@ def test_reviewer_context_resource_boundary(db, tmp_path, key):  # noqa: F811
     from reviewscope.import_preview.contract import MAX_BYTES, MAX_ROWS
 
     base, _, w, s = command(db, tmp_path)
+    # An authorized read is available as soon as the delivery commits, before autoanalyze.
+    for table in ("review_version", "snapshot_member", "import_row"):
+        db.execute(f"ALTER TABLE {table} SET (autovacuum_enabled=false)")
     header = b"id,author,body\n"
     width, extra = divmod(MAX_BYTES - len(header) - MAX_ROWS * len(b"00000,same,\n"), MAX_ROWS)
     data = tmp_path / "input.csv"
@@ -494,6 +527,7 @@ def test_reviewer_context_resource_boundary(db, tmp_path, key):  # noqa: F811
     assert result.returncode == 0, result.stderr
     for line in result.stdout.splitlines():
         measured = json.loads(line)
-        assert measured["page_bytes"] < 65536
         print(line)
+        assert measured["page_bytes"] < 65536
+        assert measured["seconds"] < 12, "The cabinet request exceeded its 12-second timeout"
     assert db.execute("SELECT count(*) FROM analysis_run").fetchone() == (0,)
