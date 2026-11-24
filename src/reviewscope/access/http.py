@@ -499,7 +499,7 @@ def create_app():
             revision = cur.fetchone()["version_num"]
             projection = {"metrics": None, "context": None}
             if revision != "0006_retention" and job["artifact_id"] is not None:
-                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search"} else "metrics"
+                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan"} else "metrics"
                 cur.execute(
                     f"SELECT {columns} FROM browser_summary WHERE workspace_id=%s AND run_id=%s AND artifact_id=%s",
                     (workspace, job["id"], job["artifact_id"]),

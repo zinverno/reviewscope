@@ -436,6 +436,29 @@ def measure_page():
             assert response.status_code == 200, response.status_code
             doc = response.json()
             assert doc["total"] == doc["metrics"]["with_text"] == 10000 and len(doc["rows"]) == 50
+            expected = inspect.execute(
+                """SELECT sn.manifest_sha256,r.version_id FROM snapshot sn JOIN import_row r
+                   ON (r.workspace_id,r.source_id,r.batch_id)=(sn.workspace_id,sn.source_id,sn.batch_id)
+                   WHERE sn.id=%s AND r.status='accepted' ORDER BY r.position OFFSET %s LIMIT 50""",
+                (doc["snapshot_id"], offset),
+            ).fetchall()
+            assert doc["manifest_sha256"] == expected[0][0] and len(expected) == 50
+            assert route == context_url(
+                doc["workspace_id"], doc["snapshot_id"], doc["anchor_version_id"]
+            )
+            assert doc["source_id"] == source_id and [row["version_id"] for row in doc["rows"]] == [
+                str(version) for _, version in expected
+            ]
+            assert doc["metrics"] == dict(
+                places=1,
+                dated=0,
+                first_day=None,
+                last_day=None,
+                rated=0,
+                rating_mean=None,
+                rating_counts={},
+                with_text=10000,
+            )
             assert [row["position"] for row in doc["rows"]] == list(range(offset + 1, offset + 51))
             assert all(row["specificity"] is not None for row in doc["rows"])
             (pid,) = inspect.execute(
@@ -458,7 +481,8 @@ def measure_page():
             )
 
 
-def test_reviewer_context_resource_boundary(db, tmp_path, key):  # noqa: F811
+@pytest.mark.parametrize("series", [1, 2, 3])
+def test_reviewer_context_resource_boundary(db, tmp_path, key, series):  # noqa: F811
     import subprocess
     import sys
 
@@ -527,7 +551,21 @@ def test_reviewer_context_resource_boundary(db, tmp_path, key):  # noqa: F811
     assert result.returncode == 0, result.stderr
     for line in result.stdout.splitlines():
         measured = json.loads(line)
-        print(line)
+        print(json.dumps(measured | {"series": series}))
         assert measured["page_bytes"] < 65536
         assert measured["seconds"] < 12, "The cabinet request exceeded its 12-second timeout"
     assert db.execute("SELECT count(*) FROM analysis_run").fetchone() == (0,)
+
+    if series == 3:
+        from operational.tests.reviewer_plan_probe import enable_client_plans, plan_observation
+
+        with TestClient(create_app(), base_url=ORIGIN) as web:
+            assert login(web, "context-boundary", password).status_code == 204
+            proof = session_proof(web.cookies[COOKIE], key)
+        enable_client_plans(db)
+        for stage in ("fresh", "analyzed"):
+            if stage == "analyzed":
+                db.execute("ANALYZE review_version, import_row, snapshot_member")
+            for mode in ("force_generic_plan", "force_custom_plan"):
+                doc = plan_observation((w, s, snap, anchor), proof, mode, stage, fixed=True)
+                assert doc["total"] == 10000 and len(doc["rows"]) == 50

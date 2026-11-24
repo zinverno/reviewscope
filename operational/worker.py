@@ -68,7 +68,7 @@ def connect():
             AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search')
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:

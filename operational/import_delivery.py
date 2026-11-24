@@ -88,7 +88,7 @@ def authorize(conn, args, witness):
         WHERE a.workspace_id=%s AND a.source_id=%s AND current_user=session_user
           AND a.operator_login=session_user AND current_user<>'rs_runtime'
           AND w.state='active' AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
-          AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search')
+          AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan')
         FOR UPDATE OF s FOR SHARE OF a,w,m,p
     """,
         (args.workspace, args.source),
