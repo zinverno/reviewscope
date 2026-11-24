@@ -566,6 +566,12 @@ def test_reviewer_context_resource_boundary(db, tmp_path, key, series):  # noqa:
         for stage in ("fresh", "analyzed"):
             if stage == "analyzed":
                 db.execute("ANALYZE review_version, import_row, snapshot_member")
-            for mode in ("force_generic_plan", "force_custom_plan"):
-                doc = plan_observation((w, s, snap, anchor), proof, mode, stage, fixed=True)
+            for mode, expensive_io in (
+                ("force_generic_plan", False),
+                ("force_custom_plan", False),
+                ("force_generic_plan", True),
+            ):
+                doc = plan_observation(
+                    (w, s, snap, anchor), proof, mode, stage, fixed=True, expensive_io=expensive_io
+                )
                 assert doc["total"] == 10000 and len(doc["rows"]) == 50

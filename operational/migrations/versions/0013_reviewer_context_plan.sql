@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION reviewer_context_page(w uuid, src uuid, snap uuid, anchor uuid, off_n integer, page_n integer)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE ctx record; result jsonb;
+DECLARE ctx record; result jsonb; first_version uuid; last_version uuid;
 BEGIN
  IF session_user <> 'rs_runtime' OR current_setting('rs.workspace',true) IS DISTINCT FROM w::text
  OR off_n IS NULL OR off_n NOT BETWEEN 0 AND 10000 OR page_n IS NULL OR page_n NOT BETWEEN 1 AND 50
@@ -30,24 +30,30 @@ BEGIN
   SELECT sm.version_id FROM snapshot_member sm
   WHERE (sm.workspace_id,sm.source_id,sm.snapshot_id)=(w,src,snap) ORDER BY sm.version_id
  ) OR anchor IS NULL OR NOT (anchor=ANY(ctx.version_ids)) THEN RETURN NULL; END IF;
+ first_version:=ctx.version_ids[1];
+ last_version:=ctx.version_ids[cardinality(ctx.version_ids)];
  result:=jsonb_build_object('method','snapshot-reviewer-context-v1','workspace_id',w,'source_id',src,
  'snapshot_id',snap,'anchor_version_id',anchor,'manifest_sha256',ctx.manifest_sha256,
  'offset',off_n,'limit',page_n);
 
- -- A full equijoin exposes missing records on either side and admits a hash or merge plan.
- -- Resolve the bounded version set once. Identity and normalization apply to every receipt row.
+ -- A full equijoin can use hash/merge even with fresh-table estimates. The barrier keeps
+ -- PostgreSQL from reducing it to a nested-loop left join when old versions are discarded.
+ -- Stream the scoped UUID range once; only accepted positions enter the materialized result.
  WITH resolved AS MATERIALIZED (
-  SELECT r.version_id,r.position,v.source_reviewer_id,v.external_place_id,
-   r.identity_id=v.identity_id AND v.normalization_version='canonical-preview-1' AS compatible,
-   CASE WHEN v.metadata->>'event_basis' IN ('published','submitted')
-     THEN coalesce(v.event_date,(v.event_at AT TIME ZONE 'UTC')::date) END AS day,
-   v.rating,NOT ('missing_text'=ANY(r.warnings)) AS has_text
-  FROM (SELECT version_id,position,identity_id,warnings FROM import_row
-        WHERE (workspace_id,source_id,batch_id)=(w,src,ctx.batch_id) AND status='accepted') r
-  FULL JOIN (SELECT id,identity_id,normalization_version,source_reviewer_id,external_place_id,
-                    metadata,event_date,event_at,rating FROM review_version
-             WHERE (workspace_id,source_id)=(w,src) AND id=ANY(ctx.version_ids)) v
-  ON v.id=r.version_id
+  SELECT * FROM (
+   SELECT r.version_id,r.position,v.source_reviewer_id,v.external_place_id,
+    r.identity_id=v.identity_id AND v.normalization_version='canonical-preview-1' AS compatible,
+    CASE WHEN v.metadata->>'event_basis' IN ('published','submitted')
+      THEN coalesce(v.event_date,(v.event_at AT TIME ZONE 'UTC')::date) END AS day,
+    v.rating,NOT ('missing_text'=ANY(r.warnings)) AS has_text
+   FROM (SELECT version_id,position,identity_id,warnings FROM import_row
+         WHERE (workspace_id,source_id,batch_id)=(w,src,ctx.batch_id) AND status='accepted') r
+   FULL JOIN (SELECT id,identity_id,normalization_version,source_reviewer_id,external_place_id,
+                     metadata,event_date,event_at,rating FROM review_version
+              WHERE (workspace_id,source_id)=(w,src)
+              AND id BETWEEN first_version AND last_version) v
+   ON v.id=r.version_id OFFSET 0
+  ) matched WHERE position IS NOT NULL
  ), checked AS (
   SELECT array_agg(CASE WHEN compatible THEN version_id END ORDER BY version_id)=ctx.version_ids AS valid,
    max(source_reviewer_id) FILTER (WHERE version_id=anchor) AS author_key

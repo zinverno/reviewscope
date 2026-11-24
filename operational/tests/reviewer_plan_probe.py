@@ -57,7 +57,7 @@ def plan_observation(scope, proof, mode, stage, *, fixed, expensive_io=False):
                     repeated = max(repeated, rows * loops)
             if node.get("Relation Name") == "review_version":
                 cond = node.get("Index Cond", "")
-                keys = re.findall(r"\b(workspace_id|source_id|identity_id|id)\s*=", cond)
+                keys = re.findall(r"\b(workspace_id|source_id|identity_id|id)\s*(?:=|>=|<=)", cond)
                 scans.append(
                     dict(
                         index=node.get("Index Name", node["Node Type"]),
@@ -103,6 +103,7 @@ def plan_observation(scope, proof, mode, stage, *, fixed, expensive_io=False):
                 probe="nested-context-plan",
                 stage=stage,
                 seconds=round(elapsed, 4),
+                random_page_cost=100 if expensive_io else "default",
                 mode=mode,
                 total=doc["total"],
                 statements=observations,
