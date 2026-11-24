@@ -16,8 +16,10 @@ import pytest
 from psycopg import sql
 
 from operational.backfill_demo import DEMO_SHA, import_demo
-from operational.tests.conftest import ALEMBIC, new_db
+from operational.retention import capture_access, initialize, recover
+from operational.tests.conftest import ALEMBIC, freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_schema import bind_place, receipt, run, scope
+from reviewscope.access.ledger import read_witness
 from reviewscope.import_preview import preview
 from reviewscope.public_demo import DEFAULT_DEMO_DB, repo_root
 
@@ -175,8 +177,8 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
     archive = tmp_path / "db.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
     new = new_db()
-    copy = tmp_path / "independent"
-    shutil.copytree(root, copy)
+    copy = generation("independent")
+    frozen = freeze_objects(root, tmp_path, [w])
     subprocess.run(
         ["pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "-d", new, archive],
         check=True,
@@ -184,7 +186,12 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
     with psycopg.connect(dbname=new) as restored:
         assert state(restored) == before
         # A restored installation must explicitly authorize the new object directory.
-        restored.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(copy), w))
+        restored.commit()
+        restored.autocommit = True
+        restored.execute(sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(new)))
+        proof, access = read_witness()["sha256"], capture_access(db)
+        token = prepare_copy(restored, frozen, copy, proof, access)
+        recover(restored, proof, [token], access)
     restore_env = os.environ | {"PGDATABASE": new}
     for args, original in ((a, first), (b, second)):
         replay = [str(copy) if arg == str(root) else arg for arg in args]
@@ -500,6 +507,7 @@ def test_historical_backfill_survives_upgrade(monkeypatch, tmp_path):
         )
         for rev in ("0002_principals", "0003_workspace_access", "0004_delivery_history", "0005_background_jobs", "head"):
             subprocess.run([*ALEMBIC, "upgrade", rev], check=True)
+        initialize(db)
         assert before == [db.execute(q).fetchall() for q in queries]
         assert db.execute(
             "SELECT confirmed_duplicate_count FROM import_batch ORDER BY input_count NULLS LAST"
@@ -612,7 +620,7 @@ def test_date_rating_only_edits_and_empty_selection(db, tmp_path):
     assert db.execute("SELECT count(*) FROM review_version").fetchone() == (4,)
 
 
-def test_bounded_delivery_resources(db, tmp_path):
+def test_bounded_delivery_resources(db, tmp_path, monkeypatch):
     from time import perf_counter
 
     from reviewscope.import_preview.contract import MAX_BYTES, MAX_ROWS
@@ -660,3 +668,7 @@ sys.exit(status)
             registered_by,gen_random_uuid(),'queued',now() FROM import_batch""", (snapshot,))
     assert cli("10k-4MiB") == "succeeded"
     assert db.execute("SELECT attempt,processed,total FROM analysis_run").fetchone() == (1,MAX_ROWS,MAX_ROWS)
+
+    from operational.tests.test_retention import check_bounded_owner_operations
+
+    check_bounded_owner_operations(db,tmp_path,monkeypatch)

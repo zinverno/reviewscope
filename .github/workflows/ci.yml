@@ -8,12 +8,17 @@ on:
 permissions:
   contents: read
 
+env:
+  EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   operational:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -23,6 +28,8 @@ jobs:
         env:
           RS_TEST_PG_MAJOR: "16"
         run: |
+          git rev-parse HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           python -VV
           python -m pytest -q tests/test_access.py
           bash operational/test-postgres.sh
@@ -41,10 +48,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
       - name: Check patch whitespace
-        run: git diff --check HEAD^1 HEAD
+        run: |
+          git rev-parse HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git diff --check HEAD^1 HEAD
 
       - uses: actions/setup-python@v5
         with:

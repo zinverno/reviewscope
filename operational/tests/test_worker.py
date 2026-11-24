@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import secrets
-import shutil
 import signal
 import subprocess
 import sys
@@ -20,10 +19,12 @@ from psycopg import sql
 
 from operational import worker
 from operational.delivery_objects import encoded
-from operational.tests.conftest import new_db
+from operational.retention import capture_access, recover
+from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, CSRF, ORIGIN, ROOT, dataset, key, login
 from operational.tests.test_deliveries import call, command, csv, json_input
 from reviewscope.access.http import create_app
+from reviewscope.access.ledger import read_witness
 from reviewscope.access.operator import provision
 from reviewscope.access.security import session_proof
 
@@ -244,18 +245,21 @@ def test_summary_disconnect_replay_parallel_restore(db, jobs, key, tmp_path, mon
     assert db.execute("SELECT count(*) FROM artifact").fetchone() == (3,)
     dump = tmp_path / "jobs.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", dump], check=True)
-    restored_root = tmp_path / "copy"
-    shutil.copytree(root, restored_root)
+    restored_root = generation("copy")
+    frozen = freeze_objects(root, tmp_path, [w])
     name = new_db()
     subprocess.run(
         ["pg_restore", "--no-owner", "--single-transaction", "--exit-on-error", "-d", name, dump],
         check=True,
     )
     monkeypatch.setenv("PGDATABASE", name)
-    with psycopg.connect("") as restored:
+    with psycopg.connect("", autocommit=True) as restored:
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
+        proof, access = read_witness()["sha256"], capture_access(db)
+        token = prepare_copy(restored, frozen, restored_root, proof, access)
+        recover(restored, proof, [token], access)
         restored.execute(
             "UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(restored_root), w)
         )

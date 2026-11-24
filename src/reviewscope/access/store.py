@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from .ledger import SCOPED, LedgerError, gate
 from .security import ROLES, permits
 
 METADATA = {
@@ -16,8 +17,7 @@ METADATA = {
     "snapshots": ("snapshot", "id,source_id,created_at"),
     "runs": ("analysis_run", "id,snapshot_id,status"),
 }
-SCOPED = """workspace workspace_membership client_project location source source_location import_batch
-review_identity review_version snapshot snapshot_member analysis_run artifact membership_event import_row delivery_authorization""".split()
+
 
 
 def pool():
@@ -48,7 +48,7 @@ def transaction(engine):
                     AND NOT has_schema_privilege(current_user,'public','CREATE')
                     AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
                     AND (SELECT array_agg(version_num) FROM public.alembic_version)
-                        = ARRAY['0005_background_jobs']::varchar[]
+                        = ARRAY['0006_retention']::varchar[]
                     AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
                     AND to_regclass('public.password_credential') IS NOT NULL
                     AND to_regclass('public.access_session') IS NOT NULL
@@ -58,8 +58,9 @@ def transaction(engine):
                 )
                 if not cur.fetchone()["ready"]:
                     raise HTTPException(503)
+                gate(cur)
                 yield cur
-    except (psycopg.Error, SQLAlchemyError):
+    except (psycopg.Error, SQLAlchemyError, LedgerError):
         raise HTTPException(503) from None
 
 

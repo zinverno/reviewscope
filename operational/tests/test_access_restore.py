@@ -7,9 +7,13 @@ import psycopg
 from fastapi.testclient import TestClient
 from psycopg import sql
 
-from operational.tests.conftest import new_db
-from operational.tests.test_access import COOKIE, ORIGIN, ROOT, dataset, login
+from operational.retention import capture_access, recover
+from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
+from operational.tests.test_access import COOKIE, ORIGIN, ROOT, login
+from operational.tests.test_deliveries import call, command, csv
+from operational.tests.test_schema import scope
 from reviewscope.access.http import create_app
+from reviewscope.access.ledger import read_witness
 from reviewscope.access.operator import provision
 
 
@@ -20,8 +24,11 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
     path.chmod(0o600)
     monkeypatch.setenv("RS_ACCESS_KEY_FILE", str(path))
     monkeypatch.delenv("RS_ACCESS_HTTP_LOOPBACK", raising=False)
-    w, own = dataset(db, "synthetic restore")
-    other, foreign = dataset(db, "synthetic other")
+    base, root, w, own = command(db, tmp_path)
+    call(base + csv("a") + ["--apply"])
+    other, _, foreign = scope(db)
+    restored_root = generation("copied-objects")
+    frozen = freeze_objects(root, tmp_path, [w])
     password = secrets.token_urlsafe(32)
     actor = provision(db, "restored", password, key, workspace=w)
     with TestClient(create_app(), base_url=ORIGIN) as http:
@@ -43,10 +50,13 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
         check=True,
     )
     monkeypatch.setenv("PGDATABASE", name)
-    with psycopg.connect("") as restored:
+    with psycopg.connect("", autocommit=True) as restored:
         restored.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
         )
+        proof, access = read_witness()["sha256"], capture_access(db)
+        token = prepare_copy(restored, frozen, restored_root, proof, access)
+        recover(restored, proof, [token], access)
         restored.execute(
             "UPDATE access_session SET revoked_at=clock_timestamp() WHERE revoked_at IS NULL"
         )
@@ -66,7 +76,5 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
         )
         assert login(http, "restored", password).status_code == 204
         assert http.get(ROOT + "/session").json()["principal_id"] == str(actor)
-        assert http.get(ROOT + f"/workspaces/{w}/sources/{own['sources']}").status_code == 200
-        assert (
-            http.get(ROOT + f"/workspaces/{other}/sources/{foreign['sources']}").status_code == 404
-        )
+        assert http.get(ROOT + f"/workspaces/{w}/sources/{own}").status_code == 200
+        assert http.get(ROOT + f"/workspaces/{other}/sources/{foreign}").status_code == 404
