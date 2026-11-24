@@ -65,7 +65,6 @@ export async function checkReviewerWidths(
 		// A fresh viewport also exercises loading a deep link after authentication.
 		const tab = await browser.newPage({
 			storageState,
-			ignoreHTTPSErrors: true,
 			reducedMotion: "reduce",
 			viewport: { width, height: 800 },
 		});

@@ -458,7 +458,7 @@ def measure_page():
             )
 
 
-def test_reviewer_context_resource_boundary(db, tmp_path, key):  # noqa: F811
+def test_reviewer_context_resource_boundary(db, tmp_path, monkeypatch, key):  # noqa: F811
     import subprocess
     import sys
 
@@ -531,3 +531,6 @@ def test_reviewer_context_resource_boundary(db, tmp_path, key):  # noqa: F811
         assert measured["page_bytes"] < 65536
         assert measured["seconds"] < 12, "The cabinet request exceeded its 12-second timeout"
     assert db.execute("SELECT count(*) FROM analysis_run").fetchone() == (0,)
+    from operational.tests.test_candidate_search import measure_boundary
+
+    measure_boundary(db,tmp_path,monkeypatch,w,s,snap,password)

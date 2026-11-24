@@ -73,28 +73,7 @@ def install(app, authenticated, local, read_contract, errors):
             raise HTTPException(422)
         with authenticated(request) as (cur, actor):
             store.authorize(cur, actor, w, "review_evidence")
-            cur.execute(
-                """SELECT review_evidence_page(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS evidence""",
-                (
-                    w,
-                    k,
-                    version,
-                    filters.source_id,
-                    filters.location_id,
-                    filters.rating,
-                    filters.has_text,
-                    filters.has_date,
-                    filters.first_day,
-                    filters.last_day,
-                    filters.position,
-                    0 if version else filters.offset,
-                    1 if version else filters.limit,
-                ),
-            )
-            result = cur.fetchone()["evidence"]
-            if result is None:
-                raise HTTPException(404)
-            return result
+            return evidence_page(cur, w, k, filters, version)
 
     @app.get(route, openapi_extra=read_contract, responses=errors)
     def reviews(
@@ -111,3 +90,28 @@ def install(app, authenticated, local, read_contract, errors):
         filters: Annotated[Filters, Query()],
     ) -> EvidencePage:
         return read(request, workspace, snapshot, filters, version)
+
+
+def evidence_page(cur, w, k, filters, version=None):
+    cur.execute(
+        """SELECT review_evidence_page(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS evidence""",
+        (
+            w,
+            k,
+            version,
+            filters.source_id,
+            filters.location_id,
+            filters.rating,
+            filters.has_text,
+            filters.has_date,
+            filters.first_day,
+            filters.last_day,
+            filters.position,
+            0 if version else filters.offset,
+            1 if version else filters.limit,
+        ),
+    )
+    result = cur.fetchone()["evidence"]
+    if result is None:
+        raise HTTPException(404)
+    return result

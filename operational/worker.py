@@ -14,7 +14,7 @@ from time import monotonic
 
 import psycopg
 
-from operational import signals
+from operational import candidate_worker, signals
 from operational.delivery_objects import (
     DeliveryError,
     encoded,
@@ -68,7 +68,7 @@ def connect():
             AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context')
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -104,12 +104,15 @@ def summarize(conn, claim, info, directory, pulse):
     w, r, _token = claim
     filters = info["filters"]
     require(filters.get("format") == FORMAT, "UNSUPPORTED_FORMAT")
+    is_candidate = info["kind"] == candidate_worker.KIND
     is_signals = info["kind"] == signals.KIND
     require(
         (info["kind"], info["version"], info["definition"], info["model"], info["procedure"])
         in {
             (KIND, "1", "summary-1", "unused", VERSION),
             (signals.KIND, "1", "signals-1", "unused", VERSION),
+            (candidate_worker.KIND, "1", "candidate-search-1", "unused", VERSION),
+            (candidate_worker.KIND, "1", "candidate-search-1", "minilm-pr04", VERSION),
         },
         "UNSUPPORTED_VERSION",
     )
@@ -207,6 +210,8 @@ def summarize(conn, claim, info, directory, pulse):
                         if kind in ("local", "invalid", "missing")
                         else "ineligible_event_basis"
                     ] += 1
+                if is_candidate:
+                    projected.append((row["version_id"],row["content_sha256"],row["text"] or ""))
                 if is_signals:
                     item = signals.projection(row, rate, issue)
                     projection_bytes += len(encoded(item))
@@ -216,7 +221,6 @@ def summarize(conn, claim, info, directory, pulse):
                     projected.append(item)
                 n += 1
         require(not stream.read(1) and actual.hexdigest() == info["snapshot_sha256"])
-    pulse("publish", total, total)
     exclusions["missing_reviewer"] = counts["unknown_author"]
     exclusions["missing_text"] = total - counts["usable_text"]
     summary = {
@@ -262,6 +266,11 @@ def summarize(conn, claim, info, directory, pulse):
             "NO_PERIOD_COMPARISON",
         ],
     }
+    if is_candidate:
+        summary = candidate_worker.result(
+            summary, projected, info["candidate"], partial(pulse, "summarize", total, total)
+        )
+    pulse("publish", total, total)
     return signals.result(summary, projected, info["as_of"]) if is_signals else summary
 
 
@@ -331,22 +340,27 @@ def process(conn, job, stopping):
         require(len(data) <= signals.LIMIT, "RESOURCE_LIMIT")
         with conn.transaction(), conn.cursor() as cur, publishing(cur) as witness:
             certified_space(witness, claim[0], info["root"])
-            if not conn.execute("SELECT job_input(%s,%s,%s) IS NOT NULL", claim).fetchone()[0]:
-                raise Finished(step())
-            digest = publish(directory, (data,))
-            verify_file(directory, digest, len(data))
-            conn.execute(
-                "SELECT set_config(%s,%s,true)",
-                (
-                    "rs.signals_projection"
-                    if info["kind"] == signals.KIND
-                    else "rs.summary_projection",
-                    data.decode("utf-8"),
-                ),
-            )
-            outcome = step(
-                "WORKER_STOPPED" if stopping.is_set() else None, digest, len(data), info["manifest"]
-            )
+            available = conn.execute("SELECT job_input(%s,%s,%s) IS NOT NULL", claim).fetchone()[0]
+            outcome = "running"
+            if not available:
+                # Commit the cancellation/revocation decision in this transaction.
+                outcome = step("INTEGRITY_ERROR")
+            elif info["kind"] == candidate_worker.KIND:
+                outcome = step("WORKER_STOPPED" if stopping.is_set() else None)
+            if outcome == "running":
+                digest = publish(directory, (data,))
+                verify_file(directory, digest, len(data))
+                projection = {
+                    signals.KIND: "rs.signals_projection",
+                    candidate_worker.KIND: "rs.candidate_projection",
+                }.get(info["kind"], "rs.summary_projection")
+                conn.execute("SELECT set_config(%s,%s,true)", (projection, data.decode("utf-8")))
+                outcome = step(
+                    "WORKER_STOPPED" if stopping.is_set() else None,
+                    digest,
+                    len(data),
+                    info["manifest"],
+                )
     except Finished as exc:
         outcome = exc.args[0]
     except JobError as exc:

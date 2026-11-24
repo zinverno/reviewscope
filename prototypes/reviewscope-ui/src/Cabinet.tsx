@@ -16,6 +16,7 @@ import {
 	SnapshotReviewerContext,
 	privateUuid,
 } from "./SnapshotReviewerContext";
+import { CandidateSearch } from "./CandidateSearch";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
 type Space = { id: string; name: string; role: string };
@@ -125,6 +126,9 @@ function link(changes: Record<string, string>) {
 			"signalPlace",
 			"signalRating",
 			"signalPage",
+			"candidateRun",
+			"candidateSource",
+			"fragment",
 			"fromSignals",
 			"contextSource",
 			"contextFrom",
@@ -360,6 +364,7 @@ function Cabinet() {
 	const principal = session?.principal_id;
 	const [revision, setRevision] = useState(0);
 	const signalView = query.get("view") === "signals";
+	const candidateSource = query.get("candidateSource") || source;
 	const privateReviewer = query.get("view") === "reviewer-context";
 	const reviewerView =
 		privateReviewer || query.get("view") === "public-reviewers";
@@ -513,7 +518,7 @@ function Cabinet() {
 					throw new AccessError(404, codes.not_found);
 				if (
 					job?.status === "succeeded" &&
-					job.job_kind !== signalKind &&
+					job.job_kind === "snapshot_integrity_and_summary_v1" &&
 					!success
 				)
 					throw new AccessError(503, codes.access_unavailable);
@@ -832,6 +837,23 @@ function Cabinet() {
 						)
 					) : query.get("view") === "legacy" ? (
 						<LegacyOverview search={search} />
+					) : query.get("view") === "candidates" ? (
+						snapshot &&
+						canWrite &&
+						candidateSource &&
+						(!source || source === candidateSource) ? (
+							<CandidateSearch
+								key={workspace + search}
+								workspace={w}
+								source={candidateSource}
+								snapshot={snapshot}
+								search={search}
+								api={api}
+								link={link}
+							/>
+						) : (
+							<p>Поиск недоступен.</p>
+						)
 					) : query.get("view") === "reviews" ? (
 						snapshot && canWrite ? (
 							<ReviewEvidence

@@ -34,6 +34,7 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/rs-browsers
         run: |
+          command -v certutil || sudo apt-get install -y libnss3-tools
           npm ci
           npm run build
           npx playwright install --with-deps chromium firefox
@@ -47,7 +48,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           python -VV
           python -m pytest -q tests/test_access.py
-          bash operational/test-postgres.sh --tb=short
+          bash operational/test-isolated.sh --tb=short
       - uses: actions/upload-artifact@v4
         with:
           name: synthetic-cabinet-acceptance

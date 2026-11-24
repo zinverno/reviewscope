@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import evidence, reviewer_context, signals, store, uploads
+from . import candidate_search, evidence, reviewer_context, signals, store, uploads
 from .security import normalize, password_proof, server_key, session_proof
 
 LOG = logging.getLogger("reviewscope.access.requests")
@@ -499,7 +499,7 @@ def create_app():
             revision = cur.fetchone()["version_num"]
             projection = {"metrics": None, "context": None}
             if revision != "0006_retention" and job["artifact_id"] is not None:
-                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context"} else "metrics"
+                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search"} else "metrics"
                 cur.execute(
                     f"SELECT {columns} FROM browser_summary WHERE workspace_id=%s AND run_id=%s AND artifact_id=%s",
                     (workspace, job["id"], job["artifact_id"]),
@@ -619,6 +619,7 @@ def create_app():
                 raise HTTPException(status)
 
     uploads.install(app, authenticated, key, cookie, local)
+    candidate_search.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
     signals.install(app, authenticated, key, cookie, local, read_contract, errors)
     evidence.install(app, authenticated, local, read_contract, errors)
     reviewer_context.install(app, authenticated, local, read_contract, errors)

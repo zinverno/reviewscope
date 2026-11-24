@@ -66,6 +66,24 @@ def cli(label):
     )
     assert result.returncode == 0, (result.stdout, result.stderr)
     events = [json.loads(line) for line in result.stdout.splitlines()]
+    profiles = [e for e in events if e.get("event") == "candidate_resources"]
+    assert all(
+        set(p)
+        == {
+            "event",
+            "segmentation_and_token_check_s",
+            "lexical_fit_s",
+            "corpus_dense_s",
+            "matrix_bytes",
+            "model_load_s",
+            "query_s",
+            "peak_rss_kib",
+        }
+        | ({"unique_encoded", "input_tokens"} if "unique_encoded" in p else set())
+        and all(isinstance(v, (int, float)) for k, v in p.items() if k != "event")
+        for p in profiles
+    )
+    events=[e for e in events if e not in profiles]
     assert result.stderr == b"" and events
     assert all(
         set(e)
@@ -316,11 +334,34 @@ def admit_signal_fixture(db, w, snapshot, kind):
         )
 
 
-@pytest.mark.parametrize("kind", [worker.KIND, worker.signals.KIND])
+@pytest.mark.parametrize("kind", [worker.KIND, worker.signals.KIND,worker.candidate_worker.KIND])
 def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind):
     client, path, w, a, _, root, _ = jobs
     admit_signal_fixture(db, w, a, kind)
-    run, _ = enqueue(client, path, a, kind=kind)
+    if kind == worker.candidate_worker.KIND:
+        (source,) = db.execute(
+            """INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,candidate_allowed)
+            SELECT s.workspace_id,s.source_id,b.file_sha256,true,true FROM snapshot s JOIN import_batch b ON
+            (s.workspace_id,s.source_id,s.batch_id)=(b.workspace_id,b.source_id,b.id)
+            WHERE s.workspace_id=%s AND s.id=%s RETURNING source_id""",
+            (w, a),
+        ).fetchone()
+        reply = client.post(
+            path.removesuffix("/runs") + f"/snapshots/{a}/candidates",
+            json=dict(
+                source_id=str(source),
+                idempotency_key=str(uuid4()),
+                mode="lexical",
+                role="query_to_passage",
+                k=2,
+                query="табло",
+            ),
+            headers=CSRF,
+        )
+        assert reply.status_code == 202
+        run = reply.json()["id"]
+    else:
+        run, _ = enqueue(client, path, a, kind=kind)
     # Capture a real live generation without placing its nonce in logs.
     with worker.connect() as one, worker.connect() as two, ThreadPoolExecutor(2) as pool:
         barrier = Barrier(2)

@@ -121,9 +121,15 @@ def export(conn, rid, root, handoff):
                     ["browser_admission_authorizations", "browser_confirmation_credentials"]
                 )
             for table, order in tables.items():
+                run_fields = RUN_FIELDS
+                if table == "analysis_run" and one(
+                    conn,
+                    "SELECT EXISTS(SELECT FROM pg_attribute WHERE attrelid='analysis_run'::regclass AND attname='candidate_params' AND NOT attisdropped)",
+                ):
+                    run_fields += ",candidate_params"
                 fields = {
                     "workspace": "id,name,state,created_at",
-                    "analysis_run": RUN_FIELDS,
+                    "analysis_run": run_fields,
                     "browser_delivery": "workspace_id,id,source_id,fmt,locations,checksum,fingerprint,diagnostics,expires_at,snapshot_id",
                 }.get(table, "*")
                 with conn.cursor(name="export_rows") as cur:

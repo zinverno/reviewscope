@@ -73,7 +73,6 @@ export async function checkSignals(
 			.browser()
 			.newPage({
 				storageState,
-				ignoreHTTPSErrors: true,
 				locale: "ru-RU",
 				reducedMotion: "reduce",
 				viewport: { width, height: 800 },

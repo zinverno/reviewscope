@@ -1,7 +1,13 @@
-import { checkPublicReviewer, checkReviewerWidths, checkSnapshotReviewer } from "./reviewer-context-acceptance.mjs";
+import {
+	checkPublicReviewer,
+	checkReviewerWidths,
+	checkSnapshotReviewer,
+} from "./reviewer-context-acceptance.mjs";
 import { checkSignals } from "./signals-acceptance.mjs";
 import { checkSources } from "./overview-sources-acceptance.mjs";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createHash, X509Certificate } from "node:crypto";
 import { readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, firefox } from "playwright";
@@ -17,10 +23,45 @@ const observed = [];
 const snapshots = new Map();
 async function test(type) {
 	stage = type.name() + " launch";
-	const browser = await type.launch();
+	const cert = process.env.NODE_EXTRA_CA_CERTS;
+	if (!cert) throw new Error("test certificate required");
+	let browser;
+	if (type.name() === "firefox") {
+		const profile = join(process.env.HOME, "fixture-firefox");
+		await mkdir(profile, { mode: 0o700 });
+		execFileSync("certutil", [
+			"-N",
+			"--empty-password",
+			"-d",
+			"sql:" + profile,
+		]);
+		execFileSync("certutil", [
+			"-A",
+			"-n",
+			"disposable-cabinet",
+			"-t",
+			"C,,",
+			"-i",
+			cert,
+			"-d",
+			"sql:" + profile,
+		]);
+		const persistent = await type.launchPersistentContext(profile);
+		browser = persistent.browser();
+	} else {
+		const pin = createHash("sha256")
+			.update(
+				new X509Certificate(
+					await readFile(process.env.RS_FIXTURE_CERT),
+				).publicKey.export({ type: "spki", format: "der" }),
+			)
+			.digest("base64");
+		browser = await type.launch({
+			args: ["--ignore-certificate-errors-spki-list=" + pin],
+		});
+	}
 	try {
 		const context = await browser.newContext({
-			ignoreHTTPSErrors: true,
 			locale: "ru-RU",
 			reducedMotion: "reduce",
 			viewport: { width: 1366, height: 768 },
@@ -64,7 +105,6 @@ async function test(type) {
 		// Record only after authentication and never persist browser storage or private headers.
 		const review = await browser.newContext({
 			storageState: content,
-			ignoreHTTPSErrors: true,
 			locale: "ru-RU",
 			reducedMotion: "reduce",
 			...(media
@@ -533,9 +573,16 @@ async function test(type) {
 			.waitFor();
 		stage = type.name() + " public reviewer navigation";
 		const reviewerTab = await review.newPage();
-		const reviewerProfile = await checkPublicReviewer(reviewerTab, origin, media);
+		const reviewerProfile = await checkPublicReviewer(
+			reviewerTab,
+			origin,
+			media,
+		);
 		await reviewerTab.close();
-		if (media) await reviewerTab.video().saveAs(join(media, "reviewer-context-" + type.name() + ".webm"));
+		if (media)
+			await reviewerTab
+				.video()
+				.saveAs(join(media, "reviewer-context-" + type.name() + ".webm"));
 		stage = type.name() + " reviewer widths";
 		await checkReviewerWidths(browser, origin, reviewerProfile, content);
 		stage = type.name() + " signal analysis";
@@ -543,7 +590,6 @@ async function test(type) {
 		await review.close();
 		const signalsContext = await browser.newContext({
 			storageState: content,
-			ignoreHTTPSErrors: true,
 			locale: "ru-RU",
 			reducedMotion: "reduce",
 		});
@@ -567,6 +613,55 @@ async function test(type) {
 		);
 		stage = type.name() + " scoped reviewer navigation";
 		await checkSnapshotReviewer(signalsPage, origin, fixture, snapshots);
+		stage = type.name() + " exact candidate";
+		const candidatePage = await signalsContext.newPage();
+		await candidatePage.goto(
+			origin +
+				"/cabinet/?" +
+				new URLSearchParams({
+					workspace: fixture.w,
+					source: fixture.s,
+					snapshot: snapshots.get("a"),
+					view: "reviews",
+				}),
+		);
+		await candidatePage
+			.getByRole("link", { name: "Поиск кандидатов по снимку" })
+			.click();
+		await candidatePage
+			.getByLabel("Формулировка или пример")
+			.fill("Ждать не пришлось");
+		await candidatePage
+			.getByRole("button", { name: "Найти кандидатов" })
+			.press("Enter");
+		await candidatePage
+			.getByRole("link", { name: "Фрагмент 1 · отзыв 1", exact: true })
+			.click({ timeout: 30000 });
+		await candidatePage.locator("mark").waitFor();
+		assert.equal(
+			await candidatePage.locator("mark").textContent(),
+			"Ждать не пришлось.",
+		);
+		await candidatePage.reload();
+		await candidatePage.locator("mark").waitFor();
+		for (const width of [320, 390, 1366, 1920]) {
+			await candidatePage.setViewportSize({ width, height: 768 });
+			assert(
+				await candidatePage.evaluate(
+					() => document.documentElement.scrollWidth <= innerWidth + 1,
+				),
+			);
+		}
+		assert(!decodeURIComponent(candidatePage.url()).includes("пришлось"));
+		await candidatePage
+			.getByText("Полный текст версии", { exact: true })
+			.click();
+		await candidatePage
+			.getByRole("link", { name: "Вернуться к списку кандидатов" })
+			.click();
+		await candidatePage
+			.getByRole("link", { name: "Фрагмент 1 · отзыв 1", exact: true })
+			.waitFor();
 		await signalsContext.close();
 	} finally {
 		await browser.close();
