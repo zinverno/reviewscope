@@ -464,6 +464,8 @@ def verify_restore_roles(admin):
         (SCOPED, SCOPED),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
+    if one(admin, "SELECT version_num FROM alembic_version") == "0007_browser_delivery":
+        require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 
 def recover(admin, expected, receipts, access_sha):

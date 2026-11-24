@@ -14,7 +14,7 @@ env:
 jobs:
   operational:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,15 +24,36 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install -e ".[operational,access,dev]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: prototypes/reviewscope-ui/package-lock.json
+      - name: Build local cabinet and install synthetic acceptance browsers
+        working-directory: prototypes/reviewscope-ui
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/rs-browsers
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium firefox
       - name: Migrate, backfill and restore on disposable PostgreSQL
         env:
           RS_TEST_PG_MAJOR: "16"
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/rs-browsers
+          RS_TEST_BROWSER_OUT: ${{ runner.temp }}/rs-cabinet-synthetic
         run: |
           git rev-parse HEAD
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           python -VV
           python -m pytest -q tests/test_access.py
-          bash operational/test-postgres.sh
+          bash operational/test-postgres.sh --tb=short
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-cabinet-acceptance
+          path: ${{ runner.temp }}/rs-cabinet-synthetic
+          retention-days: 14
+          if-no-files-found: error
       - name: Export local TLS workspace OpenAPI
         run: |
           python -c 'import json; from reviewscope.access.http import create_app; print(json.dumps(create_app().openapi(), sort_keys=True, indent=2))' > workspace-openapi.json

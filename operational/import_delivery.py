@@ -88,7 +88,7 @@ def authorize(conn, args, witness):
         WHERE a.workspace_id=%s AND a.source_id=%s AND current_user=session_user
           AND a.operator_login=session_user AND current_user<>'rs_runtime'
           AND w.state='active' AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
-          AND (SELECT version_num FROM alembic_version) = '0006_retention'
+          AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery')
         FOR UPDATE OF s FOR SHARE OF a,w,m,p
     """,
         (args.workspace, args.source),
@@ -100,64 +100,58 @@ def authorize(conn, args, witness):
     return row[0], row[2]
 
 
-def version_for(conn, scope, batch, row, metadata):
-    if row.source_review_id is None:
-        (identity,) = conn.execute(
-            """
-            INSERT INTO review_identity(workspace_id,source_id,external_place_id,observation_batch_id,observation_position)
-            VALUES (%s,%s,%s,%s,%s) RETURNING id
-        """,
-            (*scope, row.source_place_id, batch, row.source_position),
-        ).fetchone()
-    else:
-        key = (*scope, row.source_place_id, row.source_review_id)
+def version_links(conn, scope, batch, rows):
+    """The source row is locked; compare each accepted position to its latest immutable version."""
+    links = {}
+    for offset in range(0, len(rows), 256):
+        group = rows[offset : offset + 256]
+        keys = [dict(pos=r["pos"], place=r["place"], review=r["review"]) for r in group]
         conn.execute(
-            """INSERT INTO review_identity(workspace_id,source_id,external_place_id,external_review_id)
-                        VALUES (%s,%s,%s,%s) ON CONFLICT (workspace_id,source_id,external_place_id,external_review_id)
-                        DO NOTHING""",
-            key,
+            """INSERT INTO review_identity(workspace_id,source_id,external_place_id,external_review_id,
+                  observation_batch_id,observation_position)
+               SELECT %s,%s,place,review,CASE WHEN review IS NULL THEN %s::uuid END,
+                      CASE WHEN review IS NULL THEN pos END
+               FROM jsonb_to_recordset(%s) r(pos integer,place text,review text)
+               ON CONFLICT(workspace_id,source_id,external_place_id,external_review_id) DO NOTHING""",
+            (*scope, batch, Jsonb(keys)),
         )
-        (identity,) = conn.execute(
-            """SELECT id FROM review_identity WHERE
-            (workspace_id,source_id,external_place_id,external_review_id)=(%s,%s,%s,%s) FOR UPDATE""",
-            key,
-        ).fetchone()
-    last = conn.execute(
-        """
-        SELECT id,version_no,normalization_version,source_reviewer_id,text_content,rating,metadata
-        FROM review_version WHERE (workspace_id,source_id,identity_id)=(%s,%s,%s)
-        ORDER BY version_no DESC LIMIT 1
-    """,
-        (*scope, identity),
-    ).fetchone()
-    content = (VERSION, row.reviewer_id, row.text, row.rating_1_to_5, metadata)
-    if last and last[2:] == content:
-        return identity, last[0]
-    day = row.event.value if row.event.kind == "date" else None
-    instant = row.event.value if row.event.kind == "instant" else None
-    published = row.event_basis == "published"
-    (version,) = conn.execute(
-        """
-        INSERT INTO review_version(workspace_id,source_id,identity_id,batch_id,external_place_id,version_no,
-            normalization_version,source_reviewer_id,text_content,rating,metadata,event_date,event_at,
-            published_date,published_at)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
-    """,
-        (
-            *scope,
-            identity,
-            batch,
-            row.source_place_id,
-            last[1] + 1 if last else 1,
-            *content[:-1],
-            Jsonb(metadata),
-            day,
-            instant,
-            day if published else None,
-            instant if published else None,
-        ),
-    ).fetchone()
-    return identity, version
+        result = conn.execute(
+            """WITH input AS MATERIALIZED (
+                SELECT * FROM jsonb_to_recordset(%(rows)s) r(pos integer,place text,review text,
+                  author text,body text,rating smallint,meta jsonb,day date,instant timestamptz,published boolean)
+            ), identities AS MATERIALIZED (
+                SELECT r.pos,i.id FROM input r JOIN review_identity i ON
+                 (i.workspace_id,i.source_id,i.external_place_id,i.external_review_id)
+                  =(%(w)s,%(s)s,r.place,r.review)
+                UNION ALL
+                SELECT r.pos,i.id FROM input r JOIN review_identity i ON
+                 (i.workspace_id,i.source_id,i.observation_batch_id,i.observation_position)
+                  =(%(w)s,%(s)s,%(batch)s,r.pos) WHERE r.review IS NULL
+            ), resolved AS MATERIALIZED (
+                SELECT r.*,i.id identity_id,v.id previous_id,coalesce(v.version_no,0)+1 next_version,
+                 v.id IS NOT NULL AND
+                 ROW(v.normalization_version,v.source_reviewer_id,v.text_content,v.rating,v.metadata)
+                 IS NOT DISTINCT FROM ROW(%(norm)s::text,r.author,r.body,r.rating,r.meta) AS unchanged
+                FROM input r JOIN identities i USING(pos)
+                LEFT JOIN LATERAL (SELECT * FROM review_version v
+                 WHERE (v.workspace_id,v.source_id,v.identity_id)=(%(w)s,%(s)s,i.id)
+                 ORDER BY v.version_no DESC LIMIT 1) v ON true
+            ), added AS (
+                INSERT INTO review_version(workspace_id,source_id,identity_id,batch_id,external_place_id,
+                 version_no,normalization_version,source_reviewer_id,text_content,rating,metadata,
+                 event_date,event_at,published_date,published_at)
+                SELECT %(w)s,%(s)s,identity_id,%(batch)s,place,next_version,%(norm)s,author,body,rating,
+                 meta,day,instant,CASE WHEN published THEN day END,CASE WHEN published THEN instant END
+                FROM resolved WHERE NOT unchanged RETURNING identity_id,id
+            )
+            SELECT r.pos,r.identity_id,coalesce(a.id,r.previous_id) FROM resolved r
+            LEFT JOIN added a USING(identity_id)""",
+            dict(w=scope[0], s=scope[1], batch=batch, norm=VERSION, rows=Jsonb(group)),
+        ).fetchall()
+        if len(result) != len(group) or any(v is None for _, _, v in result):
+            raise DeliveryError("journal_mismatch")
+        links.update((pos, (i, v)) for pos, i, v in result)
+    return links
 
 
 def journal(conn, scope, batch, result, data):
@@ -180,15 +174,14 @@ def journal(conn, scope, batch, result, data):
         )
     ).hexdigest()
     event_key = next((k for k, v in result.mapping.fields.items() if v == "published_at"), None)
-    accepted = {}
-    expected = []
+    versions = []
+    positions = []
     for row, (record, _, _) in zip(result.rows, inputs, strict=True):
         presence = {
             target: "null" if record[key] is None else "present"
             for key, target in result.mapping.fields.items()
             if target and key in record
         }
-        links = (None, None)
         if row.status == "accepted":
             metadata = {
                 "rules": rules,
@@ -203,10 +196,28 @@ def journal(conn, scope, batch, result, data):
                 metadata["invalid_event_input"] = (
                     {"number": raw_event.raw} if isinstance(raw_event, JsonNumber) else raw_event
                 )
-            links = version_for(conn, scope, batch, row, metadata)
-            accepted[row.source_position] = links
-        elif row.status == "confirmed_duplicate":
-            links = accepted[row.related_position]
+            versions.append(
+                dict(
+                    pos=row.source_position,
+                    place=row.source_place_id,
+                    review=row.source_review_id,
+                    author=row.reviewer_id,
+                    body=row.text,
+                    rating=row.rating_1_to_5,
+                    meta=metadata,
+                    day=row.event.value if row.event.kind == "date" else None,
+                    instant=row.event.value if row.event.kind == "instant" else None,
+                    published=row.event_basis == "published",
+                )
+            )
+        positions.append((row, presence))
+    accepted = version_links(conn, scope, batch, versions)
+    expected = []
+    for row, presence in positions:
+        linked = (
+            row.related_position if row.status == "confirmed_duplicate" else row.source_position
+        )
+        identity, version = accepted.get(linked, (None, None))
         expected.append(
             (
                 row.source_position,
@@ -214,20 +225,38 @@ def journal(conn, scope, batch, result, data):
                 row.reasons,
                 row.warnings,
                 row.related_position,
-                *links,
+                identity,
+                version,
                 row.field_provenance,
                 presence,
             )
         )
-    with conn.cursor() as cur:
-        cur.executemany(
+    names = (
+        "position",
+        "status",
+        "reasons",
+        "warnings",
+        "related_position",
+        "identity_id",
+        "version_id",
+        "provenance",
+        "field_presence",
+    )
+    for offset in range(0, len(expected), 256):
+        entries = []
+        for entry in expected[offset : offset + 256]:
+            fields = dict(zip(names, entry, strict=True))
+            for name in ("identity_id", "version_id"):
+                if fields[name] is not None:
+                    fields[name] = str(fields[name])
+            entries.append(fields)
+        conn.execute(
             """INSERT INTO import_row(workspace_id,source_id,batch_id,position,status,reasons,
-            warnings,related_position,identity_id,version_id,provenance,field_presence)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (
-                (*scope, batch, *entry[:-2], Jsonb(entry[-2]), Jsonb(entry[-1]))
-                for entry in expected
-            ),
+                warnings,related_position,identity_id,version_id,provenance,field_presence)
+               SELECT %s,%s,%s,r.* FROM jsonb_to_recordset(%s) r(
+                position integer,status text,reasons text[],warnings text[],related_position integer,
+                identity_id uuid,version_id uuid,provenance jsonb,field_presence jsonb)""",
+            (*scope, batch, Jsonb(entries)),
         )
     actual = conn.execute(
         """SELECT position,status,reasons,warnings,related_position,identity_id,version_id,
@@ -247,6 +276,15 @@ def snapshot_bytes(conn, scope, ids, filters):
         cur.itersize = 128
         cur.execute(
             """
+            WITH selected AS MATERIALIZED (SELECT DISTINCT unnest(%s::uuid[]) id),
+            versions AS MATERIALIZED (
+                SELECT v.* FROM review_version v JOIN selected USING(id)
+                WHERE v.workspace_id=%s AND v.source_id=%s
+            ), identities AS MATERIALIZED (
+                SELECT i.id,i.external_place_id,i.external_review_id FROM review_identity i
+                JOIN (SELECT DISTINCT identity_id FROM versions) k ON k.identity_id=i.id
+                WHERE i.workspace_id=%s AND i.source_id=%s
+            )
             SELECT v.id::text AS version_id,i.id::text AS identity_id,i.external_place_id AS source_place_id,
                    i.external_review_id AS source_review_id,v.version_no,v.normalization_version AS normalization,
                    v.source_reviewer_id AS reviewer_id,v.text_content AS text,v.rating AS rating_1_to_5,v.metadata,v.content_sha256,
@@ -254,14 +292,10 @@ def snapshot_bytes(conn, scope, ids, filters):
                    to_char(v.event_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS event_utc,
                    to_char(v.published_date,'YYYY-MM-DD') AS published_date,
                    to_char(v.published_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_utc
-            FROM (SELECT DISTINCT unnest(%s::uuid[]) AS id) selected
-            JOIN LATERAL (SELECT * FROM review_version
-                WHERE (workspace_id,source_id,id)=(%s,%s,selected.id) LIMIT 1) v ON true
-            JOIN LATERAL (SELECT * FROM review_identity
-                WHERE (workspace_id,source_id,id)=(v.workspace_id,v.source_id,v.identity_id) LIMIT 1) i ON true
+            FROM versions v JOIN identities i ON i.id=v.identity_id
             ORDER BY v.id
         """,
-            (ids, *scope),
+            (ids, *scope, *scope),
         )
         for row in cur:
             yield encoded(row) + b"\n"
@@ -290,18 +324,37 @@ def verify_snapshot(conn, scope, batch, directory):
 
 
 def register(conn, args, witness):
-    scope = (args.workspace, args.source)
-    batch = args.delivery_id
     source_key, principal = authorize(conn, args, witness)
     data = read_local(args.input, MAX_BYTES)
     mapping = read_local(args.mapping, MAX_CONFIG)
     passport = read_local(args.passport, MAX_CONFIG)
     coverage_bytes = read_local(args.coverage_passport, MAX_CONFIG)
+    return register_bytes(
+        conn, args, source_key, principal, data, mapping, passport, coverage_bytes
+    )
+
+
+def register_bytes(
+    conn, args, source_key, principal, data, mapping, passport, coverage_bytes, *, browser=False
+):
+    """Both callers hold the exclusive source row lock for the whole delivery transaction."""
+    scope = (args.workspace, args.source)
+    batch = args.delivery_id
     coverage_sha = hashlib.sha256(coverage_bytes).hexdigest()
     cover = coverage_passport(coverage_bytes)
     result = preview(data, args.format, mapping, passport)
     if result.fingerprint != args.preview_fingerprint:
         raise DeliveryError("preview_mismatch")
+    if browser:
+        allowed = {
+            place
+            for (place,) in conn.execute(
+                "SELECT external_place_id FROM source_location WHERE workspace_id=%s AND source_id=%s",
+                scope,
+            )
+        }
+        if not result.allowed_in_browser(source_key, allowed):
+            raise DeliveryError("scope_denied")
     places = {r.source_place_id for r in result.rows if r.status == "accepted"}
     if result.passport.source_place_id:
         places.add(result.passport.source_place_id)

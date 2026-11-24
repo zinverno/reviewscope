@@ -44,3 +44,7 @@
 ## PR-12 — сроки, экспорт и удаление
 
 **NEEDS_RETENTION_CONTRACT_REVIEW**. Локальные owner-операции и изолированное восстановление описаны в [ADR](adr-retention.md), [процедуре оператора](retention-operations.md), [карточке политики](retention-policy-template.md), [контракте выдачи](retention-export.md) и [отчёте проверки](retention-verification.md). Вход в PR-13 требует отдельного решения владельца после разбора границ сроков и backup и принятия PR-12. BLOCKED_REAL_SOURCE и BLOCKED_CLIENT_PILOT сохраняются.
+
+## Roadmap PR-13 · локальный кабинет
+
+Синтетическая браузерная поставка, статус проверки снимка и условия перехода описаны в [контракте кабинета](browser-cabinet.md). Перед PR-14 сохранить различие между ID поставки, immutable version, snapshot и run. Для первоначального review остаются NEEDS_SELF_SERVICE_UX_REVIEW и NEEDS_UPLOAD_SECURITY_REVIEW.

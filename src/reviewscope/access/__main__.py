@@ -15,11 +15,22 @@ if __name__ == "__main__":
     key = None if local else os.environ.get("RS_ACCESS_TLS_KEY")
     if not local and not (cert and key):
         sys.exit("Configure local TLS or explicitly enable HTTP loopback.")
+    app = create_app()
+    options = {}
+    if os.environ.get("RS_UPLOAD_SOCKET"):
+        from .cabinet_sandbox import confine
+
+        try:
+            confine()
+            options = {"ws": "none", "loop": "asyncio", "http": "h11"}
+        except (KeyError, ValueError, OSError):
+            sys.exit("cabinet_profile_unavailable")
     uvicorn.run(
-        create_app(),
+        app,
         host="127.0.0.1",
         port=8001,
         access_log=False,
+        **options,
         proxy_headers=False,
         ssl_certfile=cert,
         ssl_keyfile=key,

@@ -107,7 +107,7 @@ def fresh_restore_cluster(monkeypatch, archive):
             with psycopg.connect(user="rs_test", autocommit=True) as admin:
                 admin.execute("CREATE ROLE synthetic_oid_offset")
                 admin.execute("CREATE ROLE rs_migration LOGIN CREATEDB")
-                for role in ("rs_runtime", "rs_worker", "rs_retention"):
+                for role in ("rs_runtime", "rs_worker", "rs_retention", "rs_upload"):
                     admin.execute("CREATE ROLE " + role + " LOGIN")
             target = new_db()
             subprocess.run(
