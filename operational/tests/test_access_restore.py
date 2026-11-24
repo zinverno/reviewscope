@@ -11,6 +11,7 @@ from operational.retention import capture_access, recover
 from operational.tests.conftest import freeze_objects, generation, new_db, prepare_copy
 from operational.tests.test_access import COOKIE, ORIGIN, ROOT, login
 from operational.tests.test_deliveries import call, command, csv
+from operational.tests.test_reviewer_context import context_url, reviewer_fixture
 from operational.tests.test_schema import scope
 from reviewscope.access.http import create_app
 from reviewscope.access.ledger import read_witness
@@ -26,6 +27,9 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
     monkeypatch.delenv("RS_ACCESS_HTTP_LOOPBACK", raising=False)
     base, root, w, own = command(db, tmp_path)
     call(base + csv("a") + ["--apply"])
+    snap, versions = reviewer_fixture(db, tmp_path / "authors", base, w, own)
+    author_url = context_url(w, snap, versions[0])
+    context_filter = {"source_id": str(own)}
     other, _, foreign = scope(db)
     restored_root = generation("copied-objects")
     frozen = freeze_objects(root, tmp_path, [w])
@@ -33,6 +37,8 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
     actor = provision(db, "restored", password, key, workspace=w)
     with TestClient(create_app(), base_url=ORIGIN) as http:
         assert login(http, "restored", password).status_code == 204
+        observed = http.get(author_url, params=context_filter).json()
+        assert observed["total"] == 2
         prior = http.cookies[COOKIE]
     backup = tmp_path / "synthetic.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", backup], check=True)
@@ -68,13 +74,15 @@ def test_restored_access_requires_fresh_session(db, tmp_path, monkeypatch):
             "snapshot_member",
             "snapshot",
         ):
-            query = sql.SQL("SELECT * FROM {} ORDER BY 1,2").format(sql.Identifier(table))
+            query = sql.SQL("SELECT to_jsonb(t) FROM {} t ORDER BY 1").format(sql.Identifier(table))
             assert restored.execute(query).fetchall() == db.execute(query).fetchall()
     with TestClient(create_app(), base_url=ORIGIN) as http:
         assert (
             http.get(ROOT + "/session", headers={"Cookie": COOKIE + "=" + prior}).status_code == 401
         )
+        assert http.get(author_url, params=context_filter, headers={"Cookie": COOKIE + "=" + prior}).status_code == 401
         assert login(http, "restored", password).status_code == 204
+        assert http.get(author_url, params=context_filter).json() == observed
         assert http.get(ROOT + "/session").json()["principal_id"] == str(actor)
         assert http.get(ROOT + f"/workspaces/{w}/sources/{own}").status_code == 200
         assert http.get(ROOT + f"/workspaces/{other}/sources/{foreign}").status_code == 404

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import manifest from "./demo-graph/manifest.json";
+import { reviewContextHref } from "./reviewerNavigation";
 
 type Kind = "exact" | "fuzzy" | "near" | "semantic";
 type Edge = [string, string, Kind, number];
@@ -211,7 +212,15 @@ function MapOfPairs({
 		</>
 	);
 }
-function TextOfReview({ id, data }: { id: string; data: Review }) {
+function TextOfReview({
+	place,
+	id,
+	data,
+}: {
+	place: string;
+	id: string;
+	data: Review;
+}) {
 	return (
 		<article className="evidence-detail">
 			<h4>Отзыв {id}</h4>
@@ -227,6 +236,9 @@ function TextOfReview({ id, data }: { id: string; data: Review }) {
 				<summary>Версия записи</summary>
 				<p>{data.version}</p>
 			</details>
+			<a href={reviewContextHref(place, id, data.version)}>
+				Контекст автора в этом наборе
+			</a>
 		</article>
 	);
 }
@@ -483,8 +495,8 @@ export function LegacyGraph({ search }: { search: string }) {
 								: "В одном семействе. Прямой связи между выбранными отзывами в результате нет."}
 						</p>
 					)}
-					{a && <TextOfReview id={a} data={doc.reviews[a]} />}{" "}
-					{b && <TextOfReview id={b} data={doc.reviews[b]} />}
+					{a && <TextOfReview place={place} id={a} data={doc.reviews[a]} />}{" "}
+					{b && <TextOfReview place={place} id={b} data={doc.reviews[b]} />}
 				</>
 			)}
 			<details>

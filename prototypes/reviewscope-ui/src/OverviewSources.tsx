@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import demo from "./overview.synthetic.json";
+import { reviewContextHref } from "./reviewerNavigation";
 
 export const sources = import.meta.glob<{ default: Sources }>(
 	"./overview-sources/*.json",
@@ -201,6 +202,13 @@ export function PublicReviewDetail({
 			</p>
 			<p className="source-text">{r.text ?? "Текст отсутствует"}</p>
 			<p>Точный фрагмент не размечен.</p>
+			{r.reviewer_id?.trim() && r.source?.trim() ? (
+				<a href={reviewContextHref(place, id, r.version)}>
+					Контекст автора в этом наборе
+				</a>
+			) : (
+				<p>NO_REVIEWER_ID · автор в источнике не установлен.</p>
+			)}
 			<details>
 				<summary>Версия и источник</summary>
 				<p>Версия публичного отзыва {r.version}</p>

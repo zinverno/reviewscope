@@ -11,6 +11,11 @@ import "./cabinet.css";
 import { SnapshotOverview, LegacyOverview } from "./Overview";
 import { CanonicalGraph, LegacyGraph, demoGraphHref } from "./DuplicateGraph";
 import { PublicSignals, CanonicalSignals, signalKind } from "./Signals";
+import { PublicReviewers } from "./ReviewerContext";
+import {
+	SnapshotReviewerContext,
+	privateUuid,
+} from "./SnapshotReviewerContext";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
 type Space = { id: string; name: string; role: string };
@@ -121,6 +126,10 @@ function link(changes: Record<string, string>) {
 			"signalRating",
 			"signalPage",
 			"fromSignals",
+			"contextSource",
+			"contextFrom",
+			"authorPage",
+			"authorVersion",
 		])
 			u.searchParams.delete(k);
 	}
@@ -351,8 +360,17 @@ function Cabinet() {
 	const principal = session?.principal_id;
 	const [revision, setRevision] = useState(0);
 	const signalView = query.get("view") === "signals";
+	const privateReviewer = query.get("view") === "reviewer-context";
+	const reviewerView =
+		privateReviewer || query.get("view") === "public-reviewers";
+	const fromSignalResult =
+		query.get("contextFrom") === "signals" || query.get("fromSignals") === "1";
 	const watch =
-		!!w && (!query.get("view") || signalView) && !!(run || snapshot);
+		!!w &&
+		(!query.get("view") ||
+			signalView ||
+			(privateReviewer && privateUuid(run) && privateUuid(snapshot))) &&
+		!!(run || snapshot);
 	const scope = JSON.stringify([
 		session?.principal_id,
 		w,
@@ -429,7 +447,7 @@ function Cabinet() {
 		let current = true;
 		setDrafts([]);
 		setPage(0);
-		if (canWrite && source) {
+		if (canWrite && source && !reviewerView) {
 			api<Draft[]>(sourcePath)
 				.then((v) => {
 					if (current) setDrafts(v);
@@ -449,7 +467,7 @@ function Cabinet() {
 		return () => {
 			current = false;
 		};
-	}, [sourcePath, source, delivery, canWrite]);
+	}, [sourcePath, source, delivery, canWrite, reviewerView]);
 	useEffect(() => {
 		if (sourcePath) {
 			setFile(null);
@@ -680,16 +698,18 @@ function Cabinet() {
 				)}
 			</header>
 			<h1>
-				{["graph", "legacy-graph"].includes(query.get("view") ?? "")
-					? "Граф повторов"
-					: signalView || query.get("view") === "public-signals"
-						? "Сигналы и оценки"
-						: query.get("view") === "reviews"
-							? "Панель доказательств"
-							: query.get("view") === "overview" ||
-									query.get("view") === "legacy"
-								? "Обзор данных"
-								: "Проверка снимка и пригодности данных"}
+				{privateReviewer || query.get("view") === "public-reviewers"
+					? "Контекст автора"
+					: ["graph", "legacy-graph"].includes(query.get("view") ?? "")
+						? "Граф повторов"
+						: signalView || query.get("view") === "public-signals"
+							? "Сигналы и оценки"
+							: query.get("view") === "reviews"
+								? "Панель доказательств"
+								: query.get("view") === "overview" ||
+										query.get("view") === "legacy"
+									? "Обзор данных"
+									: "Проверка снимка и пригодности данных"}
 			</h1>
 			{msg && <p role="alert">{msg}</p>}
 			{!ready ? (
@@ -739,6 +759,27 @@ function Cabinet() {
 				>
 					{!w ? (
 						<p>Рабочая область недоступна.</p>
+					) : query.get("view") === "public-reviewers" ? (
+						<PublicReviewers key={search} search={search} />
+					) : privateReviewer ? (
+						snapshot &&
+						canWrite &&
+						(!run
+							? !fromSignalResult
+							: job?.id === run &&
+								job.status === "succeeded" &&
+								(!fromSignalResult || job.job_kind === signalKind)) ? (
+							<SnapshotReviewerContext
+								key={workspace + search}
+								workspace={w}
+								snapshot={snapshot}
+								search={search}
+								api={api}
+								link={link}
+							/>
+						) : (
+							<p role="alert">История выбранного снимка недоступна.</p>
+						)
 					) : query.get("view") === "public-signals" ? (
 						<PublicSignals key={search} search={search} />
 					) : signalView ? (

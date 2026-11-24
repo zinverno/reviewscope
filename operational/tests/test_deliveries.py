@@ -221,8 +221,7 @@ def test_two_deliveries_restore_every_version_and_byte(db, tmp_path):
         assert hashlib.file_digest(file, "sha256").hexdigest() == DEMO_SHA
 
 
-def test_json_position_journal_and_replay(db, tmp_path):
-    base, _, w, s = command(db, tmp_path)
+def conflicting_json(tmp_path):
     item = {"id": "conflict", "body": "private synthetic text"}
     original = {"id": "repeat", "body": None}
     anon = {"id": None}
@@ -242,12 +241,17 @@ def test_json_position_journal_and_replay(db, tmp_path):
     ]
     # Missing place IDs are supplied in the input, independently of review identity.
     rows = [({"place": "p1"} | r) if isinstance(r, dict) else r for r in rows]
-    args = base + json_input(
+    return json_input(
         tmp_path,
         rows,
         {"id": "source_review_id", "place": "source_place_id", "body": "text"},
         {"source": "synthetic"},
     )
+
+
+def test_json_position_journal_and_replay(db, tmp_path):
+    base, _, w, s = command(db, tmp_path)
+    args = base + conflicting_json(tmp_path)
     with ThreadPoolExecutor(max_workers=2) as pool:
         reports = list(pool.map(lambda _: call(args + ["--apply"]), range(2)))
     assert {r["outcome"] for r in reports} == {"applied", "already_applied"}
@@ -505,8 +509,11 @@ def test_historical_backfill_survives_upgrade(monkeypatch, tmp_path):
                       VALUES (%s,%s,'legacy',%s,'accepted')""",
             (w, s, "0" * 64),
         )
-        for rev in ("0002_principals", "0003_workspace_access", "0004_delivery_history", "0005_background_jobs", "head"):
+        for rev in ("0002_principals", "0003_workspace_access", "0004_delivery_history", "0005_background_jobs", "0010_signals"):
             subprocess.run([*ALEMBIC, "upgrade", rev], check=True)
+        db.execute("INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed) VALUES(%s,%s,%s,true)", (w,s,DEMO_SHA))
+        subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
+        assert db.execute("SELECT evidence_allowed,author_context_allowed FROM browser_admission").fetchone() == (True,False)
         initialize(db)
         assert before == [db.execute(q).fetchall() for q in queries]
         assert db.execute(

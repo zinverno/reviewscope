@@ -3,6 +3,8 @@
 import hashlib
 import os
 import secrets
+import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -144,7 +146,11 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
         assert b"diagnostics" in row and b"approval" not in row and b"session" not in row
     db.execute("UPDATE browser_admission SET evidence_allowed=true WHERE workspace_id=%s", (w,))
     evidence_url = path + f"/snapshots/{snapshot}/reviews"
-    assert web.get(evidence_url).json()["total"] == 3
+    evidence = web.get(evidence_url).json()
+    assert evidence["total"] == 3
+    version = evidence["rows"][0]["version_id"]
+    context_url = f"{evidence_url}/{version}/reviewer-context?source_id={s}"
+    assert web.get(context_url).json()["status"] == "NO_REVIEWER_ID"
     archive = tmp_path / "old.dump"
     subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
     frozen = freeze_objects(root, tmp_path, [w])
@@ -168,6 +174,7 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
         == web.get(metrics_url).status_code
         == web.get(signal_url).status_code
         == web.get(evidence_url).status_code
+        == web.get(context_url).status_code
         == 404
     )
     assert db.execute("SELECT count(*) FROM browser_summary").fetchone() == (0,)
@@ -191,7 +198,7 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
             assert not (restored / str(w) / "sha256" / digest).exists()
             assert target.execute("SELECT count(*) FROM artifact WHERE checksum=%s",(digest,)).fetchone()==(0,)
             recovered_api.cookies.update(web.cookies)
-            assert recovered_api.get(evidence_url).status_code == 401
+            assert recovered_api.get(evidence_url).status_code == recovered_api.get(context_url).status_code == 401
 
 
 def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
@@ -200,6 +207,7 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
     from pathlib import Path
 
     from operational.tests.test_deliveries import call, json_input
+    from operational.tests.test_reviewer_context import reviewer_fixture
     from operational.tests.test_schema import scope
 
     registration, object_root, w, s = command(db, tmp_path)
@@ -266,6 +274,7 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
             hashlib.sha256((long_fixture / "data").read_bytes()).hexdigest(),
         ),
     )
+    author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)
     cert, tls = tmp_path / "cert.pem", tmp_path / "tls.pem"
     subprocess.run(
         [
@@ -340,6 +349,18 @@ with tempfile.TemporaryFile() as stage:
             stderr=subprocess.DEVNULL,
         )
         try:
+            # Verify the disposable launcher's certificate before sending fixture credentials.
+            tls_context = ssl.create_default_context(cafile=cert)
+            deadline = time.monotonic() + 10
+            while True:
+                if access.poll() is not None or time.monotonic() > deadline:
+                    raise AssertionError("disposable TLS cabinet did not start")
+                try:
+                    with socket.create_connection(("127.0.0.1", 8001), timeout=1) as conn:
+                        with tls_context.wrap_socket(conn, server_hostname="127.0.0.1"):
+                            break
+                except ConnectionRefusedError:
+                    time.sleep(0.05)
             # Browser subprocess receives synthetic input only. No storage credentials or operator authority.
             env = {
                 k: v
@@ -368,6 +389,8 @@ with tempfile.TemporaryFile() as stage:
                 csv=str(FIX.resolve()),
                 json=str(j),
                 longSnapshot=long_snapshot,
+                authorSnapshot=author_snapshot,
+                authorVersions=author_versions[:2],
                 otherWorkspace=str(other),
             )
             native = subprocess.Popen(
@@ -423,7 +446,7 @@ with tempfile.TemporaryFile() as stage:
         db.execute(
             "SELECT input_count,accepted_count,rejected_count,confirmed_duplicate_count FROM import_batch"
         ).fetchall()
-    ) == [(3, 3, 0, 0), (6, 6, 0, 0), (12, 6, 5, 1), (28, 28, 0, 0)]
+    ) == [(3, 3, 0, 0), (6, 6, 0, 0), (8, 5, 2, 1), (12, 6, 5, 1), (28, 28, 0, 0)]
 
 
 def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811

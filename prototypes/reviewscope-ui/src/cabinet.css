@@ -172,3 +172,8 @@
 .direct-map circle { fill:var(--text); }
 .direct-map text { fill:var(--base); font:8px var(--mono); }
 .duplicate-investigation caption { text-align:left; font-weight:bold; }
+
+.reviewer-plot { margin: 1rem 0; max-width: 32rem; }
+.reviewer-plot svg { display: block; width: 100%; background: var(--surface); }
+.reviewer-plot svg text { font: 12px var(--mono); fill: currentColor; }
+.reviewer-plot svg circle { fill: var(--blue); }
