@@ -137,6 +137,8 @@ def public_profile(encoder):
         index = CandidateIndex({"dataset": DEMO_SHA}, docs, mode, encoder)
         t = perf_counter()
         returned = index.search("Мне пришлось ждать готовый заказ", 10)
+        first_query_s = perf_counter() - t
+        first_stages = index.query_timings
         times = []
         for _ in range(5):
             tick = perf_counter()
@@ -144,7 +146,8 @@ def public_profile(encoder):
             times.append(perf_counter() - tick)
         results[mode] = dict(
             build_s=t - start,
-            first_query_s=perf_counter() - t - sum(times),
+            first_query_s=first_query_s,
+            first_query_stages=first_stages,
             warm_queries_s=times,
             diagnostics=index.diagnostics,
             reviews=len(rows),
@@ -203,6 +206,7 @@ def main():
                 method["queries"][q] = dict(
                     role=role,
                     query_s=perf_counter() - t,
+                    query_stages=index.query_timings,
                     ranked=[[h["version_id"], h["start"], h["end"], h["channels"]] for h in hits],
                     at_k={k: evaluate(list(docs), hits, labels, k) for k in KS},
                 )

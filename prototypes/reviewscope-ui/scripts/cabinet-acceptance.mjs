@@ -637,6 +637,10 @@ async function test(type) {
 		await candidatePage
 			.getByRole("link", { name: "Фрагмент 1 · отзыв 1", exact: true })
 			.click({ timeout: 30000 });
+		await candidatePage
+			.getByRole("table", { name: "Ранжированные кандидаты" })
+			.getByRole("columnheader", { name: "Версия и границы" })
+			.waitFor();
 		await candidatePage.locator("mark").waitFor();
 		assert.equal(
 			await candidatePage.locator("mark").textContent(),

@@ -336,30 +336,50 @@ export function CandidateSearch({
 										</a>
 									</article>
 								)}
-								{doc.candidates.map((h) => (
-									<p key={h.fragment_id}>
-										<a
-											aria-current={
-												h.fragment_id === fragment ? "true" : undefined
-											}
-											href={link({ fragment: h.fragment_id })}
-										>
-											Фрагмент {h.rank} · отзыв {h.review_rank}
-										</a>{" "}
-										· {h.score.toFixed(4)} ·{" "}
-										{Object.entries(h.channels)
-											.map(
-												([c, v]) =>
-													c +
-													" #" +
-													v.rank +
-													" (" +
-													v.similarity.toFixed(3) +
-													")",
-											)
-											.join(", ")}
-									</p>
-								))}
+								<div style={{ overflowX: "auto" }}>
+									<table
+										aria-label="Ранжированные кандидаты"
+										style={{ minWidth: "35rem" }}
+									>
+										<thead>
+											<tr>
+												<th scope="col">Ранг</th>
+												<th scope="col">
+													{doc.mode === "hybrid" ? "Оценка RRF" : "Сходство"}
+												</th>
+												<th scope="col">Канал, ранг и сходство</th>
+												<th scope="col">Версия и границы</th>
+											</tr>
+										</thead>
+										<tbody>
+											{doc.candidates.map((h) => (
+												<tr key={h.fragment_id}>
+													<td>
+														<a
+															aria-current={
+																h.fragment_id === fragment ? "true" : undefined
+															}
+															href={link({ fragment: h.fragment_id })}
+														>
+															Фрагмент {h.rank} · отзыв {h.review_rank}
+														</a>
+													</td>
+													<td>{h.score.toFixed(4)}</td>
+													<td>
+														{Object.entries(h.channels).map(([c, v]) => (
+															<div key={c}>
+																{c} #{v.rank} ({v.similarity.toFixed(3)})
+															</div>
+														))}
+													</td>
+													<td>
+														{h.version_id} · [{h.start}, {h.end})
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
 							</>
 						))}
 				</>

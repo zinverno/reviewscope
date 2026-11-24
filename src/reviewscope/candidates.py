@@ -115,6 +115,7 @@ class CandidateIndex:
         self.dense_id = None
         self.diagnostics = {}
         started = perf_counter()
+        token_s = 0.0
         count = None
         if mode in {"dense", "hybrid"}:
             from reviewscope.embeddings.sentence_transformer import SentenceTransformerProvider
@@ -122,7 +123,15 @@ class CandidateIndex:
             if encoder.contract != SentenceTransformerProvider().contract:
                 raise ValueError("INCOMPATIBLE_ENCODING")
             self.dense_id = encoder.contract.encoding_id
-            count = lru_cache(maxsize=8192)(encoder.token_count)
+
+            @lru_cache(maxsize=8192)
+            def count(text):
+                nonlocal token_s
+                tick = perf_counter()
+                length = encoder.token_count(text)
+                token_s += perf_counter() - tick
+                return length
+
             self.manifest.update(
                 dense=asdict(encoder.contract),
                 tokenizer=self.dense_id,
@@ -164,7 +173,8 @@ class CandidateIndex:
         self.manifest.update(
             members_sha256=digest(members), order_sha256=digest([s.fragment_id for s in self.spans])
         )
-        self.diagnostics["segmentation_and_token_check_s"] = perf_counter() - started
+        self.diagnostics["segmentation_s"] = perf_counter() - started - token_s
+        self.diagnostics["corpus_tokenizer_s"] = token_s
         started = perf_counter()
         self.lexical = self.dense = None
         if whole:
@@ -218,19 +228,23 @@ class CandidateIndex:
             or not 1 <= k <= CHANNEL_BUDGET
         ):
             raise ValueError("INVALID_QUERY")
-        scores = {}
+        started = perf_counter()
+        sparse_query = dense_query = None
         if self.lexical is not None:
-            scores["lexical"] = (
-                (self.lexical @ normalize(self.vectorizer.transform([query])).T).toarray().ravel()
-            )
+            sparse_query = normalize(self.vectorizer.transform([query]))
         if self.dense_id:
             if self.encoder.contract.encoding_id != self.dense_id:
                 raise ValueError("INCOMPATIBLE_ENCODING")
             if self.encoder.token_count(query) > 128:
                 raise ValueError("QUERY_TOKEN_LIMIT")
             if self.dense is not None:
-                vector = unit_dense(self.encoder.encode([query]), 1, self.encoder.contract.dim)
-                scores["dense"] = (self.dense @ vector.T).ravel()
+                dense_query = unit_dense(self.encoder.encode([query]), 1, self.encoder.contract.dim)
+        encoded_at = perf_counter()
+        scores = {}
+        if sparse_query is not None:
+            scores["lexical"] = (self.lexical @ sparse_query.T).toarray().ravel()
+        if dense_query is not None:
+            scores["dense"] = (self.dense @ dense_query.T).ravel()
         channels = defaultdict(dict)
         for channel, values in scores.items():
             counts = Counter()
@@ -251,6 +265,8 @@ class CandidateIndex:
                     continue
                 counts[vid] += 1
                 channels[i][channel] = dict(rank=rank, similarity=float(values[i]))
+
+        ranked_at = perf_counter()
 
         def score(i):
             values = channels[i].values()
@@ -283,6 +299,11 @@ class CandidateIndex:
                     channels=channels[i],
                 )
             )
+        self.query_timings = dict(
+            query_encoding_s=encoded_at - started,
+            exact_search_and_channel_rank_s=ranked_at - encoded_at,
+            fusion_and_selection_s=perf_counter() - ranked_at,
+        )
         return dict(
             scope=self.scope,
             index=self.manifest,

@@ -71,7 +71,11 @@ def cli(label):
         set(p)
         == {
             "event",
-            "segmentation_and_token_check_s",
+            "segmentation_s",
+            "corpus_tokenizer_s",
+            "query_encoding_s",
+            "exact_search_and_channel_rank_s",
+            "fusion_and_selection_s",
             "lexical_fit_s",
             "corpus_dense_s",
             "matrix_bytes",
@@ -83,7 +87,7 @@ def cli(label):
         and all(isinstance(v, (int, float)) for k, v in p.items() if k != "event")
         for p in profiles
     )
-    events=[e for e in events if e not in profiles]
+    events = [e for e in events if e not in profiles]
     assert result.stderr == b"" and events
     assert all(
         set(e)

@@ -41,6 +41,7 @@ def compute(scope, rows, params):
             **result,
             diagnostics=dict(
                 **index.diagnostics,
+                **index.query_timings,
                 model_load_s=load_s,
                 query_s=monotonic() - searched,
                 peak_rss_kib=linux_peak_kib("self"),

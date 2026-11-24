@@ -126,10 +126,23 @@ def test_candidate_search(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811
             web.get(route, params=fragment).json()["evidence"]["rows"][0]["full_text"] == original
         )
         assert web.get(route, params=params | {"fragment_id": "0" * 64}).status_code == 404
-        dense, _ = submit(route, "Деньги за одну покупку взяли повторно", "hybrid")
+        dense, dense_params = submit(route, "Деньги за одну покупку взяли повторно", "hybrid")
         semantic = dense["result"]
         if semantic["status"] == "READY":
-            assert any("dense" in h["channels"] for h in semantic["candidates"])
+            # Ground the paraphrase in the independently authored original, including its exact anchor.
+            exact = [
+                h
+                for h in semantic["candidates"]
+                if "dense" in h["channels"]
+                and h["text_sha256"] == hashlib.sha256(texts[1].encode()).hexdigest()
+            ]
+            assert exact
+            hit = exact[0]
+            detail = web.get(route, params=dense_params | {"fragment_id": hit["fragment_id"]})
+            row = detail.json()["evidence"]["rows"][0]
+            assert row["version_id"] == hit["version_id"]
+            assert row["full_text"][hit["start"] : hit["end"]] == texts[1]
+            print("paraphrase rank", hit["rank"], row["version_id"], hit["start"], hit["end"])
             assert semantic["index"]["dense"]["dim"] == 384
             assert semantic["retrieved_review_count"] == 3
         else:
