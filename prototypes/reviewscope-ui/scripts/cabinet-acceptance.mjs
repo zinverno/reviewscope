@@ -1,3 +1,4 @@
+import { checkSignals } from "./signals-acceptance.mjs";
 import { checkSources } from "./overview-sources-acceptance.mjs";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
@@ -529,8 +530,34 @@ async function test(type) {
 		await page
 			.getByText("Для выбранного снимка и результата граф недоступен.")
 			.waitFor();
-		stage = type.name() + " finish recording";
+		stage = type.name() + " signal analysis";
+		// Capture only the packaged public explanation. Snapshot results use an unrecorded context.
 		await review.close();
+		const signalsContext = await browser.newContext({
+			storageState: content,
+			ignoreHTTPSErrors: true,
+			locale: "ru-RU",
+			reducedMotion: "reduce",
+		});
+		await signalsContext.route("**/*", (route) =>
+			new URL(route.request().url()).origin === origin
+				? route.continue()
+				: route.abort(),
+		);
+		signalsContext.setDefaultTimeout(10000);
+		const signalsPage = await signalsContext.newPage();
+		await checkSignals(
+			signalsPage,
+			origin,
+			fixture,
+			snapshots,
+			(phase) => {
+				stage = type.name() + " signals " + phase;
+			},
+			media,
+			content,
+		);
+		await signalsContext.close();
 	} finally {
 		await browser.close();
 	}

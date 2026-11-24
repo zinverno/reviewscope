@@ -10,6 +10,7 @@ import "./tokens.css";
 import "./cabinet.css";
 import { SnapshotOverview, LegacyOverview } from "./Overview";
 import { CanonicalGraph, LegacyGraph, demoGraphHref } from "./DuplicateGraph";
+import { PublicSignals, CanonicalSignals, signalKind } from "./Signals";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
 type Space = { id: string; name: string; role: string };
@@ -46,6 +47,7 @@ type Draft = {
 };
 type Metric = { numerator: number; denominator: number };
 type Job = {
+	job_kind?: string;
 	metrics?: {
 		counts: Record<string, Metric>;
 		eligibility: Record<string, Metric>;
@@ -110,7 +112,16 @@ function link(changes: Record<string, string>) {
 			(k) => k in changes && changes[k] !== u.searchParams.get(k),
 		)
 	) {
-		for (const k of [...evidenceFields, "view", "review", "offset"])
+		for (const k of [
+			...evidenceFields,
+			"view",
+			"review",
+			"offset",
+			"signalPlace",
+			"signalRating",
+			"signalPage",
+			"fromSignals",
+		])
 			u.searchParams.delete(k);
 	}
 	for (const [k, v] of Object.entries(changes)) {
@@ -310,7 +321,7 @@ function WorkspacePanel({
 	);
 }
 function Cabinet() {
-	const pendingJob = useRef<{ snapshot: string; key: string } | null>(null);
+	const pendingJob = useRef<{ scope: string; key: string } | null>(null);
 	const [session, setSession] = useState<Session | null>(null),
 		[ready, setReady] = useState(false),
 		[msg, setMsg] = useState(""),
@@ -339,7 +350,9 @@ function Cabinet() {
 	const runs = historyPage?.workspace === workspace ? historyPage.rows : [];
 	const principal = session?.principal_id;
 	const [revision, setRevision] = useState(0);
-	const watch = !!w && !query.get("view") && !!(run || snapshot);
+	const signalView = query.get("view") === "signals";
+	const watch =
+		!!w && (!query.get("view") || signalView) && !!(run || snapshot);
 	const scope = JSON.stringify([
 		session?.principal_id,
 		w,
@@ -347,6 +360,7 @@ function Cabinet() {
 		snapshot,
 		run,
 		revision,
+		signalView,
 	]);
 	const [observation, setObservation] = useState<{
 		scope: string;
@@ -479,7 +493,11 @@ function Cabinet() {
 						(success.snapshot_id !== id || success.status !== "succeeded"))
 				)
 					throw new AccessError(404, codes.not_found);
-				if (job?.status === "succeeded" && !success)
+				if (
+					job?.status === "succeeded" &&
+					job.job_kind !== signalKind &&
+					!success
+				)
 					throw new AccessError(503, codes.access_unavailable);
 				const current = revalidate
 					? await api<Session>("/session", init)
@@ -600,25 +618,31 @@ function Cabinet() {
 		setValid(!confirm);
 		setDrafts(await api<Draft[]>(sourcePath));
 	}
-	async function start() {
+	async function start(kind = "snapshot_integrity_and_summary_v1") {
+		const requestScope = JSON.stringify([principal, w, source, snapshot, kind]);
 		const address = location.href;
 		const id =
-			pendingJob.current?.snapshot === snapshot
+			pendingJob.current?.scope === requestScope
 				? pendingJob.current.key
 				: crypto.randomUUID();
-		pendingJob.current = { snapshot, key: id };
+		pendingJob.current = { scope: requestScope, key: id };
 		const result = await api<Job>(
 			workspace + "/runs",
 			jsonPost({
 				snapshot_id: snapshot,
 				idempotency_key: id,
-				job_kind: "snapshot_integrity_and_summary_v1",
+				job_kind: kind,
 				engine_version: "1",
 			}),
 		);
 		if (location.href !== address) return;
 		pendingJob.current = null;
 		go({ run: result.id });
+	}
+	async function cancelRun() {
+		const address = location.href;
+		await api<Job>(workspace + "/runs/" + run + "/cancel", { method: "POST" });
+		if (location.href === address) setRevision((v) => v + 1);
 	}
 	const locations = targets.filter((t) => t.source_id === source);
 	const projects = [...new Map(targets.map((t) => [t.project_id, t])).values()];
@@ -658,11 +682,14 @@ function Cabinet() {
 			<h1>
 				{["graph", "legacy-graph"].includes(query.get("view") ?? "")
 					? "Граф повторов"
-					: query.get("view") === "reviews"
-						? "Панель доказательств"
-						: query.get("view") === "overview" || query.get("view") === "legacy"
-							? "Обзор данных"
-							: "Проверка снимка и пригодности данных"}
+					: signalView || query.get("view") === "public-signals"
+						? "Сигналы и оценки"
+						: query.get("view") === "reviews"
+							? "Панель доказательств"
+							: query.get("view") === "overview" ||
+									query.get("view") === "legacy"
+								? "Обзор данных"
+								: "Проверка снимка и пригодности данных"}
 			</h1>
 			{msg && <p role="alert">{msg}</p>}
 			{!ready ? (
@@ -712,6 +739,27 @@ function Cabinet() {
 				>
 					{!w ? (
 						<p>Рабочая область недоступна.</p>
+					) : query.get("view") === "public-signals" ? (
+						<PublicSignals key={search} search={search} />
+					) : signalView ? (
+						canWrite && source && snapshot ? (
+							<CanonicalSignals
+								key={scope + search + (job?.status ?? "")}
+								search={search}
+								workspace={w}
+								source={source}
+								snapshot={snapshot}
+								run={run}
+								job={job}
+								api={api}
+								link={link}
+								busy={busy}
+								start={() => void action(() => start(signalKind))}
+								cancel={() => void action(cancelRun)}
+							/>
+						) : (
+							<p>Нет доступа к сигналам выбранного снимка.</p>
+						)
 					) : query.get("view") === "graph" ? (
 						snapshot ? (
 							<CanonicalGraph
@@ -1094,17 +1142,7 @@ function Cabinet() {
 									["queued", "running"].includes(job.status) && (
 										<button
 											type="button"
-											onClick={() =>
-												void action(async () => {
-													const address = location.href;
-													await api<Job>(
-														workspace + "/runs/" + run + "/cancel",
-														{ method: "POST" },
-													);
-													if (location.href === address)
-														setRevision((v) => v + 1);
-												})
-											}
+											onClick={() => void action(cancelRun)}
 										>
 											Отменить проверку
 										</button>

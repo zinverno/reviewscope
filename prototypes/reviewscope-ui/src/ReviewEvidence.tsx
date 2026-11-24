@@ -152,6 +152,20 @@ export function ReviewEvidence({
 	}
 	return (
 		<section className="evidence">
+			{params.get("fromSignals") === "1" && (
+				<p>
+					<a
+						href={link({
+							view: "signals",
+							review: "",
+							fromSignals: "",
+							source_id: "",
+						})}
+					>
+						Вернуться к сигналам запуска
+					</a>
+				</p>
+			)}
 			<a href={link({ view: "", review: "" })}>Вернуться к снимку</a>
 			<p>
 				<a href={link({ view: "overview" })}>Обзор этой выборки</a>

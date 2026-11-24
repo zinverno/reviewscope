@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, FiniteFloat
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from reviewscope.analysis.engine import AnalyzedPlace
 from reviewscope.models.scores import ConfidenceLevel
@@ -53,7 +53,7 @@ class Score(Evidence):
     name: str
     value: FiniteFloat | None
     unit: str
-    confidence: ConfidenceLevel
+    confidence: ConfidenceLevel = Field(description="Legacy heuristic evidence band (not a calibrated probability).")
     details: dict[str, FiniteFloat]
 
 

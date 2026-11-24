@@ -92,7 +92,7 @@ PR-03 можно готовить на синтетике. Рабочий экр
 [burst]: ../../src/reviewscope/analysis/bursts.py
 [rating]: ../../src/reviewscope/analysis/rating_anomalies.py
 [scores]: ../../src/reviewscope/analysis/scoring.py
-[specific]: ../../src/reviewscope/analysis/specificity.py
+[specific]: ../../src/reviewscope/specificity.py
 [template]: ../../src/reviewscope/analysis/templated.py
 [reviewer]: ../../src/reviewscope/analysis/reviewer.py
 [places]: ../../src/reviewscope/ui/reviewed_places.py

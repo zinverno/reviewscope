@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import evidence, store, uploads
+from . import evidence, signals, store, uploads
 from .security import normalize, password_proof, server_key, session_proof
 
 LOG = logging.getLogger("reviewscope.access.requests")
@@ -125,7 +125,7 @@ class Run(Strict):
 class JobRequest(Strict):
     snapshot_id: UUID
     idempotency_key: UUID
-    job_kind: str = Field(min_length=1, max_length=64)
+    job_kind: str = Field(min_length=1, max_length=64, description="snapshot_integrity_and_summary_v1 or snapshot_explainable_signals_v1 on admitted synthetic snapshots")
     engine_version: str = Field(min_length=1, max_length=32)
 
 
@@ -423,6 +423,8 @@ def create_app():
         response: Response,
         _: Annotated[Strict, Query()],
     ) -> JobStatus:
+        if data.job_kind == signals.KIND and (local or request.url.scheme != "https"):
+            raise HTTPException(403)
         with authenticated(request) as (cur, principal):
             store.authorize(cur, principal, workspace, "start_analysis")
             cur.execute(
@@ -484,7 +486,7 @@ def create_app():
         with authenticated(request) as (cur, principal):
             store.authorize(cur, principal, workspace, "read")
             job = store.job_status(cur, workspace, snapshot=snapshot_id, run=selection.run_id)
-            if job["snapshot_id"] != snapshot_id:
+            if job["snapshot_id"] != snapshot_id or job["job_kind"] != "snapshot_integrity_and_summary_v1":
                 raise HTTPException(404)
             if selection.source_id is not None:
                 cur.execute(
@@ -497,7 +499,7 @@ def create_app():
             revision = cur.fetchone()["version_num"]
             projection = {"metrics": None, "context": None}
             if revision != "0006_retention" and job["artifact_id"] is not None:
-                columns = "metrics, context" if revision == "0009_overview" else "metrics"
+                columns = "metrics, context" if revision in {"0009_overview", "0010_signals"} else "metrics"
                 cur.execute(
                     f"SELECT {columns} FROM browser_summary WHERE workspace_id=%s AND run_id=%s AND artifact_id=%s",
                     (workspace, job["id"], job["artifact_id"]),
@@ -617,5 +619,6 @@ def create_app():
                 raise HTTPException(status)
 
     uploads.install(app, authenticated, key, cookie, local)
+    signals.install(app, authenticated, key, cookie, local, read_contract, errors)
     evidence.install(app, authenticated, local, read_contract, errors)
     return app

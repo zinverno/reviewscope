@@ -6,6 +6,7 @@ import {
 } from "./OverviewSources";
 import demo from "./overview.synthetic.json";
 import { evidenceFields } from "./ReviewEvidence";
+import { signalHref } from "./Signals";
 import { demoGraphHref } from "./DuplicateGraph";
 
 type Pair = { numerator: number; denominator: number };
@@ -261,6 +262,19 @@ export function SnapshotOverview({
 				</p>
 			)}
 			<p>
+				{canRead && (source || ctx?.source_id) && (
+					<a
+						href={link({
+							...Object.fromEntries(evidenceFields.map((k) => [k, ""])),
+							view: "signals",
+							source: source || ctx?.source_id || "",
+							run: "",
+							signalRating: params.get("rating") ?? "",
+						})}
+					>
+						Сигналы и оценки снимка
+					</a>
+				)}{" "}
 				<a href={link({ view: "graph" })}>Повторы выбранного снимка</a>
 			</p>
 			<h3>Темы и динамика</h3>
@@ -369,6 +383,7 @@ export function LegacyOverview({ search }: { search: string }) {
 				<>
 					<h3>{place.name}</h3>
 					<p>
+						<a href={signalHref(place.id)}>Сигналы и оценки точки</a>{" "}
 						<a href={demoGraphHref(place.id)}>Семейства повторов этой точки</a>
 					</p>
 					<p className="overview-count">

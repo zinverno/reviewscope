@@ -125,11 +125,21 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
         "numerator": 3,
         "denominator": 3,
     }
+    from operational.signals import KIND
+
+    db.execute("UPDATE browser_admission SET evidence_allowed=true WHERE workspace_id=%s", (w,))
+    run, _ = enqueue(web, path + "/runs", snapshot, kind=KIND)
+    assert cli("browser-signal-export") == "succeeded"
+    signal_url = path + f"/snapshots/{snapshot}/signals?source_id={s}&run_id={run}"
+    result = web.get(signal_url)
+    assert result.status_code == 200
+    digest=result.json()["artifact_sha256"]
     req = ask(web, w, "source", s, "export")
     handoff = tmp_path / "handoff"
     handoff.mkdir(mode=0o700)
     operator("export", "--request", req["id"], "--root", root, "--owner-handoff", handoff)
     with ZipFile(handoff / (req["id"] + ".zip")) as zipped:
+        assert hashlib.sha256(zipped.read("objects/"+digest)).hexdigest()==digest
         row = zipped.read("rows/browser_delivery.jsonl")
         assert b"diagnostics" in row and b"approval" not in row and b"session" not in row
     db.execute("UPDATE browser_admission SET evidence_allowed=true WHERE workspace_id=%s", (w,))
@@ -156,6 +166,7 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
     assert (
         web.get(draft_url).status_code
         == web.get(metrics_url).status_code
+        == web.get(signal_url).status_code
         == web.get(evidence_url).status_code
         == 404
     )
@@ -177,6 +188,8 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
         ).fetchone() == (0, 0)
         assert operator("purge", "--request", erase["id"], "--root", restored) == "completed"
         with TestClient(create_app(), base_url=ORIGIN) as recovered_api:
+            assert not (restored / str(w) / "sha256" / digest).exists()
+            assert target.execute("SELECT count(*) FROM artifact WHERE checksum=%s",(digest,)).fetchone()==(0,)
             recovered_api.cookies.update(web.cookies)
             assert recovered_api.get(evidence_url).status_code == 401
 
@@ -389,7 +402,8 @@ with tempfile.TemporaryFile() as stage:
                         continue
                     # Let the browser close its tab and cancel its first queued attempt before the worker starts.
                     if db.execute(
-                        "SELECT count(*) FROM analysis_run WHERE status='cancelled'"
+                        """SELECT EXISTS(SELECT FROM analysis_run WHERE status='cancelled')
+                               AND EXISTS(SELECT FROM analysis_run WHERE status='queued')"""
                     ).fetchone()[0]:
                         subprocess.run(
                             [sys.executable, "-m", "operational.worker", "--once"],

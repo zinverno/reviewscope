@@ -2,11 +2,7 @@
 
 * **Coordinated activity score** (§14) — 0..100 composite of seven
   anomaly signals; each weighted as documented in ``CoordinatedConfig``.
-* **Graded coordinated probability** (§22 → §8) — per-review probability in
-  0..1 that the review took part in a coordinated manipulation event.  This
-  replaces the binary flag (audit §22): a review on a burst day that is also
-  templated/duplicate gets a high probability, an organic review that merely
-  happens to be published during a busy day gets a bounded probability.
+* **Review-level coordination strength** (§22) — an uncalibrated heuristic index in 0..1.
 * **Review weight** (§22) — per-review weight in ``[weight_min, weight_max]``
   with a documented *derived* range: neutral evidence -> 1.0, best quality
   and no penalties -> 2.0, worst reachable penalties -> 0.31.  The configured
@@ -165,6 +161,7 @@ def coordinated_activity_score(
     dup_groups: list | None = None,
     templated_results: list | None = None,
     config: CoordinatedConfig = CONFIG.coordinated,
+    *, exact_components: dict[str, float] | None = None,
 ) -> ScoreResult:
     """Coordinated activity score 0..100 (SPEC.md §14).
 
@@ -243,6 +240,8 @@ def coordinated_activity_score(
         "reviewer_overlap": rov_signal,
     }
 
+    if exact_components is not None:
+        exact_components.update(components)
     score = 100.0 * sum(w.get(k, 0.0) * v for k, v in components.items())
     score = round(max(0.0, min(100.0, score)), 1)
 
@@ -313,7 +312,7 @@ def coordinated_review_probabilities(
     clusters: list | None = None,
     config: CoordinatedConfig = CONFIG.coordinated,
 ) -> dict[str, float]:
-    """Graded probability that each review participated in coordination.
+    """Heuristic strength of observed coordination signals per review (legacy API name).
 
     Returns ``{review_id: 0..1}``.  Weights come from
     ``config.review_probability_components`` and sum to 1.0:
@@ -331,15 +330,6 @@ def coordinated_review_probabilities(
     charging the coordinated penalty, so text reuse is never counted twice
     (Phase 17I, architecture E) while event / peer / temporal coordination
     stays charged.
-
-    Semantics (audit §22: "the review-level coordinated flag is a binary
-    for engineered events; the weight penalty needs a graded probability"):
-
-    * a review published on a manipulation event day with an aligned rating
-      shift and templated/duplicate peers gets a high probability;
-    * a genuine organic review that merely falls on a busy day scores a
-      bounded ``temporal_density`` contribution and does not exceed ~0.3
-      unless other evidence stacks up.
 
     ``templated_results[i]`` must correspond to ``reviews[i]``.
     """
@@ -428,14 +418,14 @@ def coordinated_review_probabilities(
 # ---------------------------------------------------------------------------
 
 
-def _recency_factor(published_at: str | None, half_life: int = 365) -> float:
+def _recency_factor(published_at: str | None, half_life: int = 365, as_of: date | None = None) -> float:
     if not published_at:
         return 0.0
     try:
         d = date.fromisoformat(str(published_at)[:10])
     except ValueError:
         return 0.0
-    days_old = max(0, (date.today() - d).days)
+    days_old = max(0, ((as_of or date.today()) - d).days)
     return 0.5 ** (days_old / max(half_life, 1))
 
 
@@ -449,6 +439,8 @@ def compute_review_weights(
     templated_probability: dict[str, float] | None = None,
     coordinated_probability: dict[str, float] | None = None,
     config: WeightConfig = CONFIG.weight,
+    as_of: date | None = None,
+    explanations: dict[str, dict[str, float]] | None = None,
 ) -> list[float]:
     """Compute per-review weight in ``[weight_min, weight_max]``.
 
@@ -498,7 +490,7 @@ def compute_review_weights(
       malformed or out-of-range inputs — bounded probabilities cannot reach it.
 
     Component maps are keyed by ``review_id`` with values in 0..1
-    (graded probabilities, not flags — audit §22).  Missing keys default to
+    (heuristic strengths — audit §22).  Missing keys default to
     0.0.  ``duplicate_probability``/``templated_probability`` arise from
     duplicate and templated analysis; ``coordinated_probability`` from
     :func:`coordinated_review_probabilities`.
@@ -510,7 +502,7 @@ def compute_review_weights(
         spec = (specificity_map or {}).get(rid, 0.0) / 100.0
         cat = (category_experience_map or {}).get(rid, 0.0) / 100.0
         rel = (reviewer_relevance_map or {}).get(rid, 0.0) / 100.0
-        rec = _recency_factor(r.published_at, config.recency_half_life_days)
+        rec = _recency_factor(r.published_at, config.recency_half_life_days, as_of)
 
         quality = (
             config.weight_specificity * spec
@@ -529,14 +521,36 @@ def compute_review_weights(
         # can never turn the penalty into a bonus.
         text_reuse = round(text_reuse_weight * max(dup, tpl), 3)
         coord_residual = max(0.0, round(coord - text_reuse, 3))
-        penalty = (
-            config.penalty_duplicate * dup
-            + config.penalty_templated * tpl
-            + config.penalty_coordinated * coord_residual
-        )
+        duplicate_charge = config.penalty_duplicate * dup
+        template_charge = config.penalty_templated * tpl
+        residual_charge = config.penalty_coordinated * coord_residual
+        penalty = duplicate_charge + template_charge + residual_charge
         raw = 1.0 + config.rise_factor * excess - penalty
         w = max(config.weight_min, min(config.weight_max, raw))
-        weights.append(round(w, 4))
+        final = round(w, 4)
+        weights.append(final)
+        if explanations is not None:
+            explanations[rid] = dict(
+                specificity=spec,
+                category_experience=cat,
+                relevance=rel,
+                recency=rec,
+                quality=quality,
+                neutral_quality=config.neutral_quality,
+                excess=excess,
+                duplicate_strength=dup,
+                templated_strength=tpl,
+                coordinated_strength=coord,
+                text_reuse=text_reuse,
+                coordinated_residual=coord_residual,
+                duplicate_charge=duplicate_charge,
+                template_charge=template_charge,
+                residual_charge=residual_charge,
+                penalty=penalty,
+                before_clamp=raw,
+                clamped=w,
+                weight=final,
+            )
     return weights
 
 
