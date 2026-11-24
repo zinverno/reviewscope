@@ -136,12 +136,32 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
     result = web.get(signal_url)
     assert result.status_code == 200
     digest=result.json()["artifact_sha256"]
+    db.execute("UPDATE browser_admission SET candidate_allowed=true WHERE workspace_id=%s", (w,))
+    candidate_path = path + f"/snapshots/{snapshot}/candidates"
+    phrase = "Тестовый поиск готового заказа"
+    new = web.post(
+        candidate_path,
+        json=dict(
+            source_id=str(s),
+            query=phrase,
+            mode="lexical",
+            role="query_to_passage",
+            k=2,
+            idempotency_key=str(uuid4()),
+        ),
+        headers=CSRF,
+    )
+    assert new.status_code == 202 and cli("candidate-export") == "succeeded"
+    params = dict(source_id=str(s), run_id=new.json()["id"])
+    candidate_sha=web.get(candidate_path,params=params).json()["artifact_sha256"]
     req = ask(web, w, "source", s, "export")
     handoff = tmp_path / "handoff"
     handoff.mkdir(mode=0o700)
     operator("export", "--request", req["id"], "--root", root, "--owner-handoff", handoff)
     with ZipFile(handoff / (req["id"] + ".zip")) as zipped:
         assert hashlib.sha256(zipped.read("objects/"+digest)).hexdigest()==digest
+        assert hashlib.sha256(zipped.read("objects/" + candidate_sha)).hexdigest() == candidate_sha
+        assert phrase in zipped.read("rows/analysis_run.jsonl").decode()
         row = zipped.read("rows/browser_delivery.jsonl")
         assert b"diagnostics" in row and b"approval" not in row and b"session" not in row
     db.execute("UPDATE browser_admission SET evidence_allowed=true WHERE workspace_id=%s", (w,))
@@ -172,6 +192,7 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
     assert (
         web.get(draft_url).status_code
         == web.get(metrics_url).status_code
+        == web.get(candidate_path,params=params).status_code
         == web.get(signal_url).status_code
         == web.get(evidence_url).status_code
         == web.get(context_url).status_code
@@ -197,6 +218,8 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
         with TestClient(create_app(), base_url=ORIGIN) as recovered_api:
             assert not (restored / str(w) / "sha256" / digest).exists()
             assert target.execute("SELECT count(*) FROM artifact WHERE checksum=%s",(digest,)).fetchone()==(0,)
+            assert not (restored / str(w) / "sha256" / candidate_sha).exists()
+            assert not target.execute("SELECT FROM analysis_run WHERE candidate_params IS NOT NULL").fetchall()
             recovered_api.cookies.update(web.cookies)
             assert recovered_api.get(evidence_url).status_code == recovered_api.get(context_url).status_code == 401
 
@@ -265,8 +288,9 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
             "INSERT INTO browser_admission VALUES (%s,%s,%s,true)",
             (w, s, hashlib.sha256(file.read_bytes()).hexdigest()),
         )
+    db.execute("UPDATE browser_admission SET candidate_allowed=true WHERE workspace_id=%s AND source_id=%s AND checksum=%s",(w,s,hashlib.sha256((FIX/"a.csv").read_bytes()).hexdigest()))
     db.execute(
-        "UPDATE browser_admission SET evidence_link_hashes=ARRAY[%s]::sha256_hex[] WHERE workspace_id=%s AND source_id=%s AND checksum=%s",
+        "UPDATE browser_admission SET candidate_allowed=true, evidence_link_hashes=ARRAY[%s]::sha256_hex[] WHERE workspace_id=%s AND source_id=%s AND checksum=%s",
         (
             hashlib.sha256(b"https://example.test/review/long").hexdigest(),
             w,
@@ -276,9 +300,13 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
     )
     author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)
     cert, tls = tmp_path / "cert.pem", tmp_path / "tls.pem"
-    subprocess.run(
+    ca, ca_key = tmp_path / "ca.pem", tmp_path / "ca.key"
+    csr, extensions = tmp_path / "leaf.csr", tmp_path / "leaf.ext"
+    extensions.write_text(
+        "basicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n"
+    )
+    for args in (
         [
-            "openssl",
             "req",
             "-x509",
             "-newkey",
@@ -287,17 +315,46 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
             "-days",
             "1",
             "-subj",
+            "/CN=Disposable cabinet CA",
+            "-addext", "basicConstraints=critical,CA:TRUE",
+            "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+            "-keyout",
+            ca_key,
+            "-out",
+            ca,
+        ],
+        [
+            "req",
+            "-new",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-subj",
             "/CN=localhost",
-            "-addext",
-            "subjectAltName=IP:127.0.0.1",
             "-keyout",
             tls,
             "-out",
+            csr,
+        ],
+        [
+            "x509",
+            "-req",
+            "-in",
+            csr,
+            "-CA",
+            ca,
+            "-CAkey",
+            ca_key,
+            "-CAcreateserial",
+            "-days",
+            "1",
+            "-extfile",
+            extensions,
+            "-out",
             cert,
         ],
-        check=True,
-        capture_output=True,
-    )
+    ):
+        subprocess.run(["openssl", *args], check=True, capture_output=True)
     ui = Path("prototypes/reviewscope-ui").resolve()
     assert (ui / "dist/cabinet.html").is_file(), (
         "Build the cabinet before its native acceptance test"
@@ -350,7 +407,7 @@ with tempfile.TemporaryFile() as stage:
         )
         try:
             # Verify the disposable launcher's certificate before sending fixture credentials.
-            tls_context = ssl.create_default_context(cafile=cert)
+            tls_context = ssl.create_default_context(cafile=ca)
             deadline = time.monotonic() + 10
             while True:
                 if access.poll() is not None or time.monotonic() > deadline:
@@ -379,6 +436,8 @@ with tempfile.TemporaryFile() as stage:
             browser_home = tmp_path / "browser-home"
             browser_home.mkdir(mode=0o700)
             env["HOME"] = str(browser_home)
+            env["NODE_EXTRA_CA_CERTS"] = str(ca)
+            env["RS_FIXTURE_CERT"] = str(cert)
             inputs = dict(
                 account="cabinet-owner",
                 emptyWorkspace=str(empty),
@@ -393,6 +452,8 @@ with tempfile.TemporaryFile() as stage:
                 authorVersions=author_versions[:2],
                 otherWorkspace=str(other),
             )
+            # Exercise the offline-unavailable state in both browsers with a fresh cache.
+            worker_env = os.environ | {"HF_HUB_CACHE": str(tmp_path / "empty-model-cache")}
             native = subprocess.Popen(
                 ["node", "scripts/cabinet-acceptance.mjs"],
                 cwd=ui,
@@ -430,6 +491,7 @@ with tempfile.TemporaryFile() as stage:
                     ).fetchone()[0]:
                         subprocess.run(
                             [sys.executable, "-m", "operational.worker", "--once"],
+                            env=worker_env,
                             check=True,
                             capture_output=True,
                         )
@@ -616,3 +678,7 @@ def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, ca
         print(
             f"Browser confirmation: {MAX_BYTES} bytes, {MAX_ROWS} positions, {confirmed_seconds:.2f}s"
         )
+
+        from operational.tests.test_candidate_search import measure_boundary
+
+        measure_boundary(db, web, w, s, applied.json()["snapshot_id"])

@@ -122,48 +122,61 @@ def install(app, authenticated, key, cookie, local, contract, errors):
             )
             if not cur.fetchone()["admitted"]:
                 raise HTTPException(404)
-            cur.execute(
-                """SELECT id,status FROM analysis_run WHERE workspace_id=%s AND snapshot_id=%s
-                        AND job_kind=%s ORDER BY id""",
-                (workspace, snapshot, KIND),
+            return read_selection(
+                cur,
+                actor,
+                workspace,
+                snapshot,
+                q,
+                request,
+                cookie,
+                key,
+                KIND,
+                "signals-1",
+                "read_signals",
+                "snapshot-explainable-signals-1",
             )
-            runs = cur.fetchall()
-            if q.run_id is None:
-                return SignalSelection(runs=runs, result=None, artifact_sha256=None)
-            job = store.job_status(cur, workspace, run=q.run_id)
-            if job["job_kind"] != KIND or job["snapshot_id"] != snapshot or not job["artifact_id"]:
-                raise HTTPException(404)
-            cur.execute(
-                "SELECT floor(extract(epoch FROM statement_timestamp()))::bigint+25 AS expires"
-            )
-            expires = cur.fetchone()["expires"]
-            ids = list(map(str, (workspace, q.source_id, snapshot, q.run_id, actor)))
-            payload = "|".join(["signals-1", *ids, str(expires)]).encode()
-            proof = session_proof(request.cookies[cookie], key()).encode()
-            ticket = hashlib.sha256(
-                hashlib.sha256(proof).digest() + hashlib.sha256(payload).digest()
-            ).hexdigest()
-            msg = dict(zip(("workspace", "source", "snapshot", "run", "actor"), ids, strict=True))
-            try:
-                doc = upload_wire.exchange(
-                    dict(**msg, op="read_signals", expires=expires, ticket=ticket), (), 65536
-                )
-            except (ValueError, OSError):
-                raise HTTPException(503) from None
-            if isinstance(doc, dict) and doc.get("error") == "scope_denied":
-                raise HTTPException(404)
-            if not isinstance(doc, dict) or doc.get("schema") != "snapshot-explainable-signals-1":
-                raise HTTPException(503)
-            if [doc.get(k) for k in ("workspace_id", "source_id", "snapshot_id", "run_id")] != ids[
-                :4
-            ]:
-                raise HTTPException(503)
-            raw = (
-                json.dumps(
-                    doc, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
-                ).encode()
-                + b"\n"
-            )
-            if hashlib.sha256(raw).hexdigest() != job["sha256"]:
-                raise HTTPException(503)
-            return SignalSelection(runs=runs, result=doc, artifact_sha256=job["sha256"])
+
+
+def read_selection(
+    cur, actor, workspace, snapshot, q, request, cookie, key, kind, ticket_kind, op, schema
+):
+    cur.execute(
+        """SELECT id,status FROM analysis_run WHERE workspace_id=%s AND snapshot_id=%s
+                AND job_kind=%s ORDER BY id""",
+        (workspace, snapshot, kind),
+    )
+    runs = cur.fetchall()
+    if q.run_id is None:
+        return dict(runs=runs, result=None, artifact_sha256=None)
+    job = store.job_status(cur, workspace, run=q.run_id)
+    if job["job_kind"] != kind or job["snapshot_id"] != snapshot or not job["artifact_id"]:
+        raise HTTPException(404)
+    cur.execute("SELECT floor(extract(epoch FROM statement_timestamp()))::bigint+25 AS expires")
+    expires = cur.fetchone()["expires"]
+    ids = list(map(str, (workspace, q.source_id, snapshot, q.run_id, actor)))
+    payload = "|".join([ticket_kind, *ids, str(expires)]).encode()
+    proof = session_proof(request.cookies[cookie], key()).encode()
+    ticket = hashlib.sha256(
+        hashlib.sha256(proof).digest() + hashlib.sha256(payload).digest()
+    ).hexdigest()
+    msg = dict(zip(("workspace", "source", "snapshot", "run", "actor"), ids, strict=True))
+    try:
+        doc = upload_wire.exchange(dict(**msg, op=op, expires=expires, ticket=ticket), (), 65536)
+    except (ValueError, OSError):
+        raise HTTPException(503) from None
+    if isinstance(doc, dict) and doc.get("error") == "scope_denied":
+        raise HTTPException(404)
+    if not isinstance(doc, dict) or doc.get("schema") != schema:
+        raise HTTPException(503)
+    if [doc.get(k) for k in ("workspace_id", "source_id", "snapshot_id", "run_id")] != ids[:4]:
+        raise HTTPException(503)
+    raw = (
+        json.dumps(
+            doc, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode()
+        + b"\n"
+    )
+    if hashlib.sha256(raw).hexdigest() != job["sha256"]:
+        raise HTTPException(503)
+    return dict(runs=runs, result=doc, artifact_sha256=job["sha256"])

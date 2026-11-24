@@ -148,7 +148,6 @@ export async function checkPoll(page, fixture) {
 			.browser()
 			.newContext({
 				storageState: await page.context().storageState(),
-				ignoreHTTPSErrors: true,
 			});
 		try {
 			const tab = await guest.newPage();

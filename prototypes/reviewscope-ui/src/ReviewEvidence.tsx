@@ -215,6 +215,24 @@ export function ReviewEvidence({
 	const matching = state?.key === key ? state : undefined;
 	const result = matching?.result,
 		detail = matching?.detail;
+	const [allowed, setAllowed] = useState("");
+	const grantSource = result?.source_id;
+	useEffect(() => {
+		let live = true;
+		if (grantSource)
+			api(
+				`/workspaces/${workspace}/snapshots/${snapshot}/candidates?source_id=${grantSource}`,
+			)
+				.then(() => {
+					if (live) setAllowed(key);
+				})
+				.catch(() => {
+					if (live) setAllowed("");
+				});
+		return () => {
+			live = false;
+		};
+	}, [api, workspace, snapshot, grantSource, key]);
 	const targetSource = result?.source_id ?? params.get("source");
 	const uniqueSources = [
 		...new Map(targets.map((t) => [t.source_id, t])).values(),
@@ -248,6 +266,20 @@ export function ReviewEvidence({
 				<a href={link({ view: "overview" })}>Обзор этой выборки</a>
 			</p>
 			<h2>Отзывы и доказательства</h2>
+			{result && allowed === key && (
+				<p>
+					<a
+						href={link({
+							view: "candidates",
+							candidateSource: result.source_id,
+							candidateRun: "",
+							fragment: "",
+						})}
+					>
+						Поиск кандидатов по снимку
+					</a>
+				</p>
+			)}
 			{matching?.error ? (
 				<p role="alert">Снимок или версия недоступны. {matching.error}</p>
 			) : !result ? (
