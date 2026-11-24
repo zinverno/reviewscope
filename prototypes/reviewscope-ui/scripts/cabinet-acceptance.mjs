@@ -1,3 +1,4 @@
+import { checkPublicReviewer, checkSnapshotReviewer } from "./reviewer-context-acceptance.mjs";
 import { checkSignals } from "./signals-acceptance.mjs";
 import { checkSources } from "./overview-sources-acceptance.mjs";
 import assert from "node:assert/strict";
@@ -530,6 +531,11 @@ async function test(type) {
 		await page
 			.getByText("Для выбранного снимка и результата граф недоступен.")
 			.waitFor();
+		stage = type.name() + " public reviewer navigation";
+		const reviewerTab = await review.newPage();
+		await checkPublicReviewer(reviewerTab, origin);
+		await reviewerTab.close();
+		if (media) await reviewerTab.video().saveAs(join(media, "reviewer-context-" + type.name() + ".webm"));
 		stage = type.name() + " signal analysis";
 		// Capture only the packaged public explanation. Snapshot results use an unrecorded context.
 		await review.close();
@@ -557,6 +563,8 @@ async function test(type) {
 			media,
 			content,
 		);
+		stage = type.name() + " scoped reviewer navigation";
+		await checkSnapshotReviewer(signalsPage, origin, fixture, snapshots);
 		await signalsContext.close();
 	} finally {
 		await browser.close();

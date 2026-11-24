@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 type Row = {
 	position: number;
@@ -22,7 +22,7 @@ type Row = {
 	full_text: string | null;
 	source_url: string | null;
 };
-type Result = {
+export type EvidenceResult = {
 	snapshot_id: string;
 	source_id: string;
 	source_label: string;
@@ -47,7 +47,7 @@ type Props = {
 	snapshot: string;
 	search: string;
 	targets: Target[];
-	api: (path: string) => Promise<Result>;
+	api: (path: string) => Promise<EvidenceResult>;
 	link: (changes: Record<string, string>) => string;
 };
 export const evidenceFields = [
@@ -90,6 +90,67 @@ function eventTime(row: Row) {
 		(row.time_kind === "local" ? " · местное время, пояс неизвестен" : "")
 	);
 }
+export function EvidenceDetail({
+	detail,
+	result,
+	children,
+}: {
+	detail: Row;
+	result: EvidenceResult;
+	children: ReactNode;
+}) {
+	return (
+		<article aria-label="Доказательство отзыва" className="evidence-detail">
+			<h3>
+				Отзыв {detail.review_id ?? `в позиции ${detail.position}`} · версия{" "}
+				{detail.version_no}
+			</h3>
+			<p>
+				{detail.location_name ?? detail.place_key} · {eventTime(detail)} ·{" "}
+				{basis[detail.event_basis ?? "unknown"]}
+			</p>
+			<h4>Полный текст</h4>
+			<p>Точный фрагмент не размечен.</p>
+			{detail.full_text ? (
+				<blockquote>{detail.full_text}</blockquote>
+			) : (
+				<p>Текст отсутствует.</p>
+			)}
+			<dl>
+				{Object.entries({
+					"Внешний ID": detail.review_id,
+					"Точка источника": detail.place_key,
+					Позиция: detail.position,
+					"Оценка источника": detail.raw_rating,
+					"Шкала источника": detail.rating_scale?.join("–"),
+					"Оценка 1–5": detail.rating,
+					"Точность времени": detail.time_precision,
+					"Исходное смещение UTC": detail.utc_offset,
+					Идентичность: detail.identity_id,
+					Версия: detail.version_id,
+					"Поставка версии": detail.version_batch_id,
+					"Поставка снимка": result.batch_id,
+					Снимок: result.snapshot_id,
+				}).map(([label, value]) => (
+					<div key={label}>
+						<dt>{label}</dt>
+						<dd>{value == null ? "Неизвестно" : String(value)}</dd>
+					</div>
+				))}
+			</dl>
+			{detail.source_url ? (
+				<p>
+					<a href={detail.source_url} target="_blank" rel="noopener noreferrer">
+						Открыть проверенную ссылку источника
+					</a>
+				</p>
+			) : (
+				<p>Внешняя ссылка для этой выдачи недоступна.</p>
+			)}
+			{children}
+		</article>
+	);
+}
 export function ReviewEvidence({
 	workspace,
 	snapshot,
@@ -102,7 +163,7 @@ export function ReviewEvidence({
 	const selected = params.get("review");
 	const [state, setState] = useState<{
 		key: string;
-		result?: Result;
+		result?: EvidenceResult;
 		detail?: Row;
 		error?: string;
 	}>();
@@ -111,11 +172,14 @@ export function ReviewEvidence({
 		const value = params.get(name);
 		if (value) filters.set(name, value);
 	}
+	const scopedSource = params.get("source");
+	if (scopedSource && !filters.has("source_id"))
+		filters.set("source_id", scopedSource);
 	filters.set("offset", params.get("offset") || "0");
 	filters.set("limit", "25");
 	const query = filters.toString();
 	const base = `/workspaces/${workspace}/snapshots/${snapshot}/reviews`;
-	const key = base + "?" + query + "#" + (selected ?? "");
+	const key = JSON.stringify([base, query, selected, scopedSource]);
 	useEffect(() => {
 		let live = true;
 		setState(undefined);
@@ -126,7 +190,20 @@ export function ReviewEvidence({
 				: Promise.resolve(null),
 		])
 			.then(([result, detail]) => {
-				if (live) setState({ key, result, detail: detail?.rows[0] });
+				if (live) {
+					if (
+						result.snapshot_id !== snapshot ||
+						(scopedSource && result.source_id !== scopedSource) ||
+						(selected &&
+							(detail?.snapshot_id !== snapshot ||
+								detail?.source_id !== result.source_id ||
+								detail?.rows[0]?.version_id !== selected))
+					) {
+						setState({ key, error: "Версия не соответствует снимку." });
+						return;
+					}
+					setState({ key, result, detail: detail?.rows[0] });
+				}
 			})
 			.catch((e: Error) => {
 				if (live) setState({ key, error: e.message });
@@ -134,7 +211,7 @@ export function ReviewEvidence({
 		return () => {
 			live = false;
 		};
-	}, [api, base, query, selected, key]);
+	}, [api, base, query, selected, key, snapshot, scopedSource]);
 	const matching = state?.key === key ? state : undefined;
 	const result = matching?.result,
 		detail = matching?.detail;
@@ -268,62 +345,19 @@ export function ReviewEvidence({
 					</details>
 					<p aria-live="polite">Отзывов в выборке: {result.total}</p>
 					{detail && (
-						<article
-							aria-label="Доказательство отзыва"
-							className="evidence-detail"
-						>
-							<h3>
-								Отзыв {detail.review_id ?? `в позиции ${detail.position}`} ·
-								версия {detail.version_no}
-							</h3>
+						<EvidenceDetail detail={detail} result={result}>
 							<p>
-								{detail.location_name ?? detail.place_key} · {eventTime(detail)}{" "}
-								· {basis[detail.event_basis ?? "unknown"]}
+								<a
+									href={link({
+										view: "reviewer-context",
+										contextSource: result.source_id,
+									})}
+								>
+									Контекст автора в этом снимке
+								</a>
 							</p>
-							<h4>Полный текст</h4>
-							<p>Точный фрагмент не размечен.</p>
-							{detail.full_text ? (
-								<blockquote>{detail.full_text}</blockquote>
-							) : (
-								<p>Текст отсутствует.</p>
-							)}
-							<dl>
-								{Object.entries({
-									"Внешний ID": detail.review_id,
-									"Точка источника": detail.place_key,
-									Позиция: detail.position,
-									"Оценка источника": detail.raw_rating,
-									"Шкала источника": detail.rating_scale?.join("–"),
-									"Оценка 1–5": detail.rating,
-									"Точность времени": detail.time_precision,
-									"Исходное смещение UTC": detail.utc_offset,
-									Идентичность: detail.identity_id,
-									Версия: detail.version_id,
-									"Поставка версии": detail.version_batch_id,
-									"Поставка снимка": result.batch_id,
-									Снимок: result.snapshot_id,
-								}).map(([label, value]) => (
-									<div key={label}>
-										<dt>{label}</dt>
-										<dd>{value == null ? "Неизвестно" : String(value)}</dd>
-									</div>
-								))}
-							</dl>
-							{detail.source_url ? (
-								<p>
-									<a
-										href={detail.source_url}
-										target="_blank"
-										rel="noopener noreferrer"
-									>
-										Открыть проверенную ссылку источника
-									</a>
-								</p>
-							) : (
-								<p>Внешняя ссылка для этой выдачи недоступна.</p>
-							)}
 							<a href={link({ review: "" })}>К списку с фильтрами</a>
-						</article>
+						</EvidenceDetail>
 					)}
 					{result.rows.length ? (
 						<ol className="evidence-rows">

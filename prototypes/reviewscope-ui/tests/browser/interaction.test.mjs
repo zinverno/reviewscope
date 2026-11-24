@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {checkReviewerNavigation, checkReviewerRevocation} from "./reviewer-checks.mjs";
 import { after, before, test } from "node:test";
 import { chromium, firefox } from "playwright";
 import { createServer } from "vite";
@@ -640,3 +641,6 @@ test("narrow phones keep readable content reachable without horizontal overflow"
     await page.close();
   }
 });
+
+test("public reviewer scope, exact cross-place evidence and bounded pages", () => checkReviewerNavigation(browser, origin));
+test("private history masks denied and stale responses on scope change", () => checkReviewerRevocation(browser, origin));

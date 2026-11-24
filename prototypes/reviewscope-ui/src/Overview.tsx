@@ -6,6 +6,7 @@ import {
 } from "./OverviewSources";
 import demo from "./overview.synthetic.json";
 import { evidenceFields } from "./ReviewEvidence";
+import { publicOrigin, reviewerHref } from "./reviewerNavigation";
 import { signalHref } from "./Signals";
 import { demoGraphHref } from "./DuplicateGraph";
 
@@ -383,6 +384,13 @@ export function LegacyOverview({ search }: { search: string }) {
 				<>
 					<h3>{place.name}</h3>
 					<p>
+						<a
+							href={reviewerHref(place.id, {
+								from: publicOrigin(search, place.id),
+							})}
+						>
+							Авторы этой точки
+						</a>{" "}
 						<a href={signalHref(place.id)}>Сигналы и оценки точки</a>{" "}
 						<a href={demoGraphHref(place.id)}>Семейства повторов этой точки</a>
 					</p>

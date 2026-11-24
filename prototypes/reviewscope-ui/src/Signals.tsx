@@ -1,3 +1,4 @@
+import { reviewContextHref } from "./reviewerNavigation";
 import { useEffect, useState } from "react";
 import manifest from "./demo-signals/manifest.json";
 import {
@@ -432,6 +433,21 @@ export function PublicSignals({ search }: { search: string }) {
 					<a href={href({ review: r.id, version: r.version })}>
 						Исходный отзыв {r.id}
 					</a>
+					<p>
+						<a
+							href={reviewContextHref(
+								place,
+								r.id,
+								r.version,
+								new URL(
+									href({ review: r.id, version: r.version }),
+									location.origin,
+								).search,
+							)}
+						>
+							Контекст автора в этом наборе
+						</a>
+					</p>
 					<Strength label="Специфичность" value={r.specificity} />
 					<Strength label="Шаблонность" value={r.templated} />
 					<Strength label="Релевантность" value={r.relevance} />
@@ -750,6 +766,18 @@ export function CanonicalSignals({
 									>
 										Исходная версия {r.version_id}
 									</a>
+									<p>
+										<a
+											href={link({
+												view: "reviewer-context",
+												review: r.version_id,
+												contextSource: source,
+												contextFrom: "signals",
+											})}
+										>
+											Контекст автора в этом снимке
+										</a>
+									</p>
 								</article>
 							))}
 							<Pager
