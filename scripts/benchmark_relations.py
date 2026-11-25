@@ -4,9 +4,9 @@ import argparse
 import gzip
 import hashlib
 import json
-import socket
 import re
 import resource
+import socket
 import time
 from collections import Counter
 from pathlib import Path

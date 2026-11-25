@@ -342,7 +342,7 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
         decision_snap = call(aspect_args + decision_input + ["--apply"])["snapshot_id"]
         db.execute(
             "INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,"
-            "candidate_allowed,decision_allowed,human_review_allowed) VALUES (%s,%s,%s,true,true,true,true)",
+            "candidate_allowed,decision_allowed,human_review_allowed,relation_allowed) VALUES (%s,%s,%s,true,true,true,true,true)",
             (aw, source, hashlib.sha256((decisions / "data").read_bytes()).hexdigest()),
         )
     author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)

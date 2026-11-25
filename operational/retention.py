@@ -478,6 +478,11 @@ def verify_catalog(conn):
         require(not one(conn, HUMAN_CATALOG_INVALID), "human_catalog_mismatch")
 
 
+    if one(conn, "SELECT to_regclass('public.relation_result') IS NOT NULL"):
+        require(not one(conn, """SELECT EXISTS(SELECT FROM relation_result
+            WHERE relation_intact(workspace_id,snapshot_id,id) IS NOT TRUE)"""), "relation_catalog_mismatch")
+
+
 def verify_restore_roles(admin):
     scoped = SCOPED
     if one(admin, "SELECT to_regclass('public.aspect_version') IS NOT NULL"):
@@ -502,6 +507,12 @@ def verify_restore_roles(admin):
             AND (has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')
                 OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER')))""",
             (list(HUMAN_TABLES),)), "restore_roles_unverified")
+    if one(admin, "SELECT to_regclass('public.relation_result') IS NOT NULL"):
+        scoped = [*scoped, "relation_result", "relation_pair"]
+        require(one(admin, """SELECT NOT EXISTS (SELECT FROM pg_roles r,pg_class c
+            WHERE r.rolname IN ('rs_runtime','rs_worker','rs_upload') AND c.oid IN ('relation_result'::regclass,'relation_pair'::regclass)
+            AND (has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER')))"""),
+            "restore_roles_unverified")
     allowed = admin.execute(
         """SELECT count(*)=3 AND bool_and(NOT (rolsuper OR rolbypassrls OR rolcreatedb
             OR rolcreaterole OR rolreplication) AND NOT EXISTS
@@ -524,7 +535,7 @@ def verify_restore_roles(admin):
         (scoped, scoped),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 

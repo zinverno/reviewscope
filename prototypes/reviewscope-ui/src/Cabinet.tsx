@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
 import { SnapshotOverview, LegacyOverview } from "./Overview";
+import { TypedRelations } from "./TypedRelations";
 import { CanonicalGraph, LegacyGraph, demoGraphHref } from "./DuplicateGraph";
 import { PublicSignals, CanonicalSignals, signalKind } from "./Signals";
 import { PublicReviewers } from "./ReviewerContext";
@@ -115,6 +116,24 @@ const jsonPost = (value: unknown): RequestInit => ({
 });
 function link(changes: Record<string, string>) {
 	const u = new URL(window.location.href);
+	if (
+		"view" in changes ||
+		["source", "workspace", "snapshot"].some(
+			(k) => k in changes && changes[k] !== u.searchParams.get(k),
+		)
+	) {
+		for (const k of [
+			"relation",
+			"relationDigest",
+			"left",
+			"right",
+			"pairPage",
+			"pairFilter",
+			"relationRun",
+			"relationRevision",
+		])
+			u.searchParams.delete(k);
+	}
 	if (
 		changes.view === "decisions" ||
 		(changes.view === "reviews" && u.searchParams.get("view") === "decisions")
@@ -863,6 +882,16 @@ function Cabinet() {
 						) : (
 							<p>Нет доступа к сигналам выбранного снимка.</p>
 						)
+					) : query.get("view") === "relations" ? (
+						<TypedRelations
+							key={workspace + search}
+							workspace={w}
+							source={source}
+							snapshot={snapshot}
+							api={api}
+							link={link}
+							search={search}
+						/>
 					) : query.get("view") === "graph" ? (
 						snapshot ? (
 							<CanonicalGraph

@@ -68,6 +68,7 @@ export function CanonicalGraph({
 	const q = new URLSearchParams(search),
 		run = q.get("run"),
 		source = q.get("source");
+	const [verifiedSource, setVerifiedSource] = useState("");
 	const [state, setState] = useState<"loading" | "available" | "closed">(
 		"loading",
 	);
@@ -85,6 +86,7 @@ export function CanonicalGraph({
 				: Promise.resolve(null),
 		])
 			.then(([s, r]) => {
+				if (live) setVerifiedSource(s.source_id);
 				if (live)
 					setState(
 						s.id === snapshot &&
@@ -119,18 +121,25 @@ export function CanonicalGraph({
 							Обзор и статус выбранного снимка
 						</a>
 					</p>
+					<p>
+						<a href={link({ view: "relations", source: verifiedSource })}>
+							Отношения между отзывами
+						</a>
+					</p>
 					<a href={demoGraphHref()}>Исследовать повторы публичной синтетики</a>
 				</>
 			)}
 		</section>
 	);
 }
-function MapOfPairs({
+export function MapOfPairs({
 	edges,
+	canonical = false,
 	totals,
 	select,
 }: {
-	edges: Edge[];
+	edges: (Edge | [string, string])[];
+	canonical?: boolean;
 	totals: { members: number; edges: number };
 	select: (a: string, b: string) => string;
 }) {
@@ -193,16 +202,17 @@ function MapOfPairs({
 						})}
 					</svg>
 					<figcaption>
-						На карте показаны {ids.length} из {totals.members} отзывов семейства
-						и {shown.length} из {totals.edges} прямых пар выбранного типа.
-						Расстояние на схеме не измеряет сходство.
+						На карте показаны {ids.length} из {totals.members} отзывов{" "}
+						{canonical ? "снимка" : "семейства"}и {shown.length} из{" "}
+						{totals.edges} прямых пар выбранного типа. Расстояние на схеме не
+						измеряет сходство.
 					</figcaption>
 					<details>
 						<summary>Номера отзывов на карте</summary>
 						<ol>
 							{ids.map((id) => (
 								<li key={id}>
-									<a href={select(id, "")}>{id}</a>
+									{canonical ? id : <a href={select(id, "")}>{id}</a>}
 								</li>
 							))}
 						</ol>

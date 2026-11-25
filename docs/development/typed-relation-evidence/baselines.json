@@ -1,0 +1,28 @@
+{
+  "head": "b2ef6df8c6c98719435266a19c462bef005d338f",
+  "new_matrix_equal": 432,
+  "canonical_ranking_metrics_sha256": "d028a242515d363cc5b1e49830a2d0e6a9233a268e15e6e0fd7e0d19b4fc721e",
+  "pr19_equal": 40,
+  "pr05_models": {
+    "tfidf": "RUN",
+    "minilm": "RUN"
+  },
+  "pr05_fingerprint": "6f9aa5c71903156806f9fc594f15aa311cf20b6355f28f1c2d8249479fd32b3f",
+  "pr05_compared_methods": 2,
+  "pr22_rows": {
+    "lexical": {
+      "count": 396,
+      "sha256": "29b9a23ea2cb5e79b22387b886076c82b39d89c4f6a2798451a4bb02a192b2e9"
+    },
+    "minilm": {
+      "count": 396,
+      "sha256": "0df72fb0f6604c959ac16deeda3bac0625d06484587b5e9f0f3671b63a7d5280"
+    },
+    "pair": {
+      "count": 396,
+      "sha256": "666218581c0c751dbb07af8837114cac2bb630c72260bf118a3f15a9219b0262"
+    }
+  },
+  "protected_files": 117,
+  "protected_aggregate": "603d70d5233305513c7a9c06031f4e4def6fadea27d88ead2b0858c2c6d10eda"
+}

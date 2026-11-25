@@ -1,0 +1,362 @@
+{
+  "overlap": {
+    "05": {
+      "compared": 1170,
+      "max_ratio": 0.5663716814159292,
+      "normalized_equal": 0,
+      "rapidfuzz_ge_85": 0
+    },
+    "19": {
+      "compared": 1170,
+      "max_ratio": 0.5714285714285714,
+      "normalized_equal": 0,
+      "rapidfuzz_ge_85": 0
+    },
+    "21": {
+      "compared": 9900,
+      "max_ratio": 0.5882352941176471,
+      "normalized_equal": 0,
+      "rapidfuzz_ge_85": 0
+    },
+    "22": {
+      "compared": 14670,
+      "max_ratio": 0.6185567010309279,
+      "normalized_equal": 0,
+      "rapidfuzz_ge_85": 0
+    },
+    "between_splits": {
+      "compared": 2700,
+      "max_ratio": 0.5777777777777777,
+      "normalized_equal": 0,
+      "rapidfuzz_ge_85": 0
+    }
+  },
+  "quality": {
+    "handover": {
+      "critical": {
+        "other_to_shared": 2
+      },
+      "method": "handover_linear",
+      "slices": {
+        "opposite_stance": {
+          "D": {
+            "fp": 0,
+            "known": 106,
+            "positive": 28,
+            "selected_positive": 8,
+            "tp": 0
+          },
+          "M": {
+            "fp": 2,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "U": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "all": {
+            "fp": 2,
+            "known": 406,
+            "positive": 28,
+            "selected_positive": 8,
+            "tp": 0
+          },
+          "identical_or_normalized": {
+            "fp": 0,
+            "known": 1,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "long_tail": {
+            "fp": 0,
+            "known": 28,
+            "positive": 4,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "wording_change": {
+            "fp": 0,
+            "known": 8,
+            "positive": 2,
+            "selected_positive": 2,
+            "tp": 0
+          }
+        },
+        "same_specific_complaint": {
+          "D": {
+            "fp": 0,
+            "known": 106,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "M": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "U": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "all": {
+            "fp": 2,
+            "known": 406,
+            "positive": 21,
+            "selected_positive": 7,
+            "tp": 1
+          },
+          "identical_or_normalized": {
+            "fp": 0,
+            "known": 1,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "long_tail": {
+            "fp": 0,
+            "known": 28,
+            "positive": 6,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "wording_change": {
+            "fp": 0,
+            "known": 8,
+            "positive": 1,
+            "selected_positive": 1,
+            "tp": 1
+          }
+        }
+      }
+    },
+    "queue": {
+      "critical": {},
+      "method": "queue_rules",
+      "slices": {
+        "opposite_stance": {
+          "D": {
+            "fp": 0,
+            "known": 81,
+            "positive": 21,
+            "selected_positive": 10,
+            "tp": 6
+          },
+          "M": {
+            "fp": 4,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "U": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "all": {
+            "fp": 4,
+            "known": 406,
+            "positive": 21,
+            "selected_positive": 10,
+            "tp": 6
+          },
+          "identical_or_normalized": {
+            "fp": 0,
+            "known": 1,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "long_tail": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "wording_change": {
+            "fp": 0,
+            "known": 8,
+            "positive": 3,
+            "selected_positive": 3,
+            "tp": 3
+          }
+        },
+        "same_specific_complaint": {
+          "D": {
+            "fp": 0,
+            "known": 81,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "M": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "U": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "all": {
+            "fp": 0,
+            "known": 406,
+            "positive": 21,
+            "selected_positive": 9,
+            "tp": 5
+          },
+          "identical_or_normalized": {
+            "fp": 0,
+            "known": 1,
+            "positive": 1,
+            "selected_positive": 1,
+            "tp": 1
+          },
+          "long_tail": {
+            "fp": 0,
+            "known": 28,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "wording_change": {
+            "fp": 0,
+            "known": 8,
+            "positive": 2,
+            "selected_positive": 2,
+            "tp": 2
+          }
+        }
+      }
+    },
+    "text": {
+      "critical": {},
+      "method": "text",
+      "slices": {
+        "exact_text": {
+          "D": {
+            "fp": 0,
+            "known": 0,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "M": {
+            "fp": 0,
+            "known": 0,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "U": {
+            "fp": 0,
+            "known": 0,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "all": {
+            "fp": 0,
+            "known": 435,
+            "positive": 1,
+            "selected_positive": 1,
+            "tp": 1
+          },
+          "identical_or_normalized": {
+            "fp": 0,
+            "known": 1,
+            "positive": 1,
+            "selected_positive": 1,
+            "tp": 1
+          },
+          "long_tail": {
+            "fp": 0,
+            "known": 29,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "wording_change": {
+            "fp": 0,
+            "known": 8,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          }
+        },
+        "near_copy": {
+          "D": {
+            "fp": 0,
+            "known": 0,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "M": {
+            "fp": 0,
+            "known": 0,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "U": {
+            "fp": 0,
+            "known": 0,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "all": {
+            "fp": 0,
+            "known": 435,
+            "positive": 8,
+            "selected_positive": 8,
+            "tp": 3
+          },
+          "identical_or_normalized": {
+            "fp": 0,
+            "known": 1,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "long_tail": {
+            "fp": 0,
+            "known": 29,
+            "positive": 0,
+            "selected_positive": 0,
+            "tp": 0
+          },
+          "wording_change": {
+            "fp": 0,
+            "known": 8,
+            "positive": 8,
+            "selected_positive": 8,
+            "tp": 3
+          }
+        }
+      }
+    }
+  }
+}

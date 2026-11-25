@@ -23,7 +23,7 @@ if [[ "${1:-}" != --native-test-volume ]]; then
         fi
         exec /usr/bin/setpriv --inh-caps=-all --ambient-caps=-all --no-new-privs "$@"
     ' fixture "$test_uid" "$test_gid" /usr/bin/env "PATH=$PATH" "PYTHONPATH=${PYTHONPATH:-}" \
-        "RS_MEASURE_DECISIONS=${RS_MEASURE_DECISIONS:-0}" "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/ms-playwright}" "RS_TEST_BROWSER_OUT=${RS_TEST_BROWSER_OUT:-}" \
+        "RS_MEASURE_DECISIONS=${RS_MEASURE_DECISIONS:-0}" "RS_MEASURE_RELATIONS=${RS_MEASURE_RELATIONS:-0}" "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/ms-playwright}" "RS_TEST_BROWSER_OUT=${RS_TEST_BROWSER_OUT:-}" \
         "RS_TEST_PG_MAJOR=${RS_TEST_PG_MAJOR:-}" "$(command -v python)" -m operational.tests.native_volume \
         bash operational/test-postgres.sh --native-test-volume "$@"
 fi

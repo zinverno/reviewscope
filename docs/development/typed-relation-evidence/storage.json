@@ -1,0 +1,51 @@
+{
+  "probe": "relation-storage",
+  "pairs": 10416,
+  "results": 21,
+  "publish_s": 1.2250617560057435,
+  "plans": [
+    {
+      "analyzed": false,
+      "mode": "force_generic_plan",
+      "max_visited": 496.0
+    },
+    {
+      "analyzed": false,
+      "mode": "force_custom_plan",
+      "max_visited": 496.0
+    },
+    {
+      "analyzed": true,
+      "mode": "force_generic_plan",
+      "max_visited": 496.0
+    },
+    {
+      "analyzed": true,
+      "mode": "force_custom_plan",
+      "max_visited": 496.0
+    }
+  ],
+  "reads": [
+    {
+      "offset": 0,
+      "seconds": 0.0499643180082785,
+      "bytes": 11059
+    },
+    {
+      "offset": 0,
+      "seconds": 0.038730743995984085,
+      "bytes": 11059
+    },
+    {
+      "offset": 490,
+      "seconds": 0.03765477301203646,
+      "bytes": 7163
+    }
+  ],
+  "pg_backend_hwm_kib": 112276,
+  "parent_hwm_kib": 295972,
+  "payload_bytes": 11421144,
+  "export_s": 1.6287631310115103,
+  "export_bytes": 14361102,
+  "erase_s": 1.1359059579990571
+}
