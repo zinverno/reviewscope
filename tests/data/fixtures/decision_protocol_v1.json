@@ -1,0 +1,38 @@
+{
+  "schema": "aspect-decision-1",
+  "annotation": "authored_synthetic",
+  "base": "8c0f431ed28c82948c79d5bf290dbd3f3b1a0547",
+  "budgets": {
+    "max_wall_s": 120,
+    "rss_mib": 2048,
+    "review_window_codepoints": 160,
+    "stride": 112
+  },
+  "seed": 2201,
+  "units": "One exact nonblank review version per supported frozen aspect. Every pair explicitly judged. No use of stars, dates, IDs or splits as predictors. Six project templates only; all exact fields and manual origin required.",
+  "split_counts": {
+    "train": 55,
+    "cal": 42,
+    "test": 66
+  },
+  "split": "Independent authored scenes per row. No resampling. Exact/casefold text and scene-family disjoint. Input order fixed. Smaller hand-authored corpus prioritizes full annotations in six aspects; rare class support and author bias preclude pilot claims. No old train or test reviews reused. No separate dev; architectures and hyperparameters fixed here.",
+  "annotation_rules": "Whole original review; mark direct complaint, same-aspect unresolved complaint plus praise or denial as mixed, explicit denial, praise, neutral, unclear stance for definite mentions, topic_uncertain for unknown stage or referent, unknown for damaged unjudgeable source. not_mentioned is explicitly annotated. Opposite polarity on a different aspect has no effect. Quoted, conditional and other-site statements alone do not establish a present complaint. Gold spans are exact original context, end exclusive code points; including both sides of a mixed statement. Do not infer events.",
+  "models": {
+    "lexical": "Exact-definition-specific multinomial logit heads; L2-normalized char_wb 3–5 hashed 1024 buckets, alternate_sign false, no ID/label features. Full frozen definition selects a trained head. No token truncation.",
+    "minilm": "Same per-definition joint outcome head on L2 normalized PR04 MiniLM text embedding, elementwise product with frozen definition embedding and absolute difference. Structured definition includes name, definition and inclusion/exclusion examples. Fixed 128 true tokens incl specials. CPU FP32. PR21 MiniLM file hash attestation.",
+    "pair": "Same supervision on joint MiniLM encoding of ordered definition and text as true tokenizer sentence pair. Pool last hidden states over text segment (excludes specials), L2 normalize. 128 true tokens shared, preserving full definition. Use concise definition sentence only for joint input; include/exclude and name select the exact permitted head. Same pinned PR04 weights."
+  },
+  "fit": "Regularized multinomial logistic regression C=3, class_weight=balanced, lbfgs, max_iter=500, seed=2201. Train gold-context labels on train only; all off-topic windows retained; ambiguous and mixed retained, unknown omitted. Use one label per training window: a marked observation when overlapping gold span, otherwise not_mentioned. No learned probability claim.",
+  "context": "All codepoint windows length <=160 stride 112; for transformer methods split overlength windows recursively at midpoint retaining original coordinates until tokenizer fits. No omitted tail; same review pairs for all. Each window input is verifiable model context, not an exact complaint highlight.",
+  "aggregate": "Highest margin complaint and other definite stance on disjoint windows -> mixed; overlapping window conflict selects highest top-two logit gap with first window tie. A single direct complaint/mixed outranks noncomplaint windows. Then any mentioned class, then uncertain, then all off-topic. Below calibrated gap: topic_uncertain when winning class is off-topic else unclear for definite mention; topic_uncertain stays uncertain.",
+  "threshold_sets": [
+    0.0,
+    0.15,
+    0.4,
+    0.8
+  ],
+  "cal": "Each model: maximize end-to-end binary complaint F1 on calibration, then defined coverage then smaller margin threshold. Before test select best calibration F1 then coverage, then lexical/minilm/pair. Commit fitted parameters and selected thresholds before test. One held-out opening; repeat only for determinism.",
+  "gate": "On test: pooled complaint P>=.85 R>=.80, defined coverage>=.80 AND same three thresholds for A and B with >=3 positive gold examples each. Denial false-positive count must be zero and mixed and long-tail complaint recall >=.80 with positive support. Gate applies only to synthetic evidence. No automatic production promotion. Lexical portable cabinet control always experimental; other profiles research only until separately operationally qualified.",
+  "metrics": "Known complaint = complaint or mixed. Explicit gold unknown and topic_uncertain/unclear have unknown complaint polarity and are excluded from binary confusion only; they contribute coverage and full outcome matrix where labels known. Gold-positive predicted abstention or omission is FN end to end. Selective recall conditions on defined output. Null undefined denominator, report supports; descriptive, no inference of significance. Retrieval comparison uses identical held-out pairs, six frozen definition sentences, PR19 hybrid MiniLM@10/50 candidate recall ceiling, PR21 mMARCO ranking of same pool. No gold-driven retrieval. Raw score is uncalibrated margin.",
+  "private_pack": "Future consented independent review: use private PR05 package protocol, immutable source/version IDs and same full outcome/offset schema. Never send private text to a model API."
+}
