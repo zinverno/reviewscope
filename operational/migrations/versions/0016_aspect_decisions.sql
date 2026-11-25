@@ -318,13 +318,17 @@ CREATE TRIGGER clear_decision_stage AFTER UPDATE OF status ON analysis_run FOR E
  EXECUTE FUNCTION clear_decision_stage();
 CREATE FUNCTION decision_read(w uuid,src uuid,s uuid,r uuid,f text,skip integer,detail uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE j analysis_run; b decision_binding; a artifact; output jsonb; listed jsonb; n integer; label decision_outcome;
+DECLARE state record; j analysis_run; b decision_binding; a artifact; output jsonb; listed jsonb; n integer; label decision_outcome;
 BEGIN
  IF skip IS NULL OR skip NOT BETWEEN 0 AND 10000 OR (f IS NOT NULL AND f<>ALL(enum_range(NULL::decision_outcome)::text[]))
  OR NOT decision_scope(w,src,s) THEN RETURN NULL; END IF;
- SELECT * INTO b FROM decision_binding WHERE (workspace_id,source_id,snapshot_id,run_id)=(w,src,s,r);
- IF NOT FOUND OR NOT aspect_scope(w,b.project_id) THEN RETURN NULL; END IF;
- SELECT * INTO STRICT j FROM analysis_run WHERE (workspace_id,id)=(w,r);
+ -- The immutable result and its job status must come from the same MVCC snapshot during publication.
+ SELECT job AS job,binding AS binding INTO state FROM decision_binding binding JOIN analysis_run job
+ ON (job.workspace_id,job.id)=(binding.workspace_id,binding.run_id)
+ WHERE (binding.workspace_id,binding.source_id,binding.snapshot_id,binding.run_id)=(w,src,s,r);
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ b:=state.binding; j:=state.job;
+ IF NOT aspect_scope(w,b.project_id) THEN RETURN NULL; END IF;
  output:=jsonb_build_object('id',r,'status',j.status,'reason',j.reason,'stage',j.stage,'processed',j.processed,'total',j.total,
  'compute_state','NOT_COMPUTED','summary',NULL,'filtered_total',NULL,'rows','[]'::jsonb,'profile',b.profile,'threshold_set',b.threshold_set,
  'profile_sha256',b.profile_sha256,'definition',aspect_detail(w,b.project_id,b.aspect_id,b.version_id));

@@ -6,7 +6,7 @@ import secrets
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from time import monotonic
+from time import monotonic, sleep
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -295,6 +295,34 @@ def test_decision_accounting_fencing(db, tmp_path, key):  # noqa: F811
                 db.execute(
                     "UPDATE browser_admission SET decision_allowed=true WHERE source_id=%s", (s[1],)
                 )
+
+
+def test_decision_read_during_publication(db, tmp_path, key):  # noqa: F811
+    with (
+        cabinet(db, tmp_path, key) as (scope, reader, _, root, _, _),
+        worker.connect() as conn,
+        ThreadPoolExecutor(1) as pool,
+    ):
+        _, run = enqueue(reader, scope)
+        claim = conn.execute("SELECT * FROM claim_job()").fetchone()[:3]
+        assert stage(conn, claim, scores(db, scope)) == 8
+        with conn.transaction():
+            # Fence holds the project lock while the reader enters its scoped read.
+            assert query(conn, "decision_manifest(%s,%s,%s)", claim)
+            waiting = pool.submit(page, reader, scope, run)
+            until = monotonic() + 4
+            while not query(
+                db,
+                " %s=ANY(pg_blocking_pids(%s))",
+                (conn.info.backend_pid, reader.info.backend_pid),
+            ):
+                assert monotonic() < until
+                sleep(0.02)
+            publish(conn, claim, 6, root)
+        first = waiting.result(timeout=5)
+        assert first is not None and first["id"] == str(run)
+        assert first["status"] == "running" and first["summary"] is None
+        assert page(reader, scope, run)["summary"]["N_evaluated"] == 6
 
 
 @pytest.mark.parametrize("kind", ["source", "project", "workspace"])
