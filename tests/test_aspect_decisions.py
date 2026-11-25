@@ -64,6 +64,17 @@ def test_portable_real_head_and_definition_scope():
     assert scorer.threshold_set == "calibrated-v1" and len(scorer.profile_sha256) == 64
     text = "К оформившему заказ кассиру смогли подойти лишь через сорок минут."
     assert scorer.score(text) == scorer.score(text)
+    known = "Где тархун из набора? Оплаченную бутылку забыли вложить."
+    missing = DecisionScorer({"payload": definitions()["missing"], "origin": "manual"}, PROFILE)
+    assert missing.score(known) == dict(
+        outcome="complaint",
+        reason="MODEL_CONTEXT",
+        start=0,
+        end=len(known),
+        score=pytest.approx(0.07314328408744131, abs=1.0e-10),
+        counter_start=None,
+        counter_end=None,
+    )
     for invalid in (
         dict(frozen, payload=payload | {"exclude": ["Иное"]}),
         dict(frozen, origin="import"),
@@ -91,3 +102,15 @@ def test_binary_oracle_counts_positive_abstention_and_preserves_unknown():
         tp=1, fp=1, fn=1, tn=1, abstained_negative=1, known=5, precision=0.5, recall=0.5, f1=0.5
     )
     assert binary([])["recall"] is None
+
+
+def test_resource_fixtures_preserve_repeated_positions_and_public_membership():
+    from reviewscope.import_preview.contract import MAX_BYTES
+    from scripts.profile_aspect_decisions import workload
+
+    repeated = workload("repeated")
+    assert len(repeated) == 10000 and len(set(repeated)) == 2
+    assert 8 + sum(7 + len(text) for text in repeated) == MAX_BYTES
+    public = workload("public-demo")
+    assert len(public) == sum(bool(t.strip()) for t in public) == 1058
+    assert len(set(public)) == 1033

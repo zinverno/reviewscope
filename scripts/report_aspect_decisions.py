@@ -9,7 +9,16 @@ from collections import Counter
 from pathlib import Path
 from statistics import mean
 
-from reviewscope.aspect_decisions import COMPLAINTS, LABELS, PROFILE, DecisionScorer, definitions
+import numpy as np
+
+from reviewscope.aspect_decisions import (
+    COMPLAINTS,
+    LABELS,
+    PROFILE,
+    DecisionScorer,
+    aggregate,
+    definitions,
+)
 from scripts.benchmark_aspect_decisions import METHODS, digest, load_rows, metrics, write_json
 
 
@@ -52,6 +61,37 @@ def report(first, repeat, evidence):
         methods={},
     )
     for method in METHODS:
+        calibration_file = f"{method}-fit-rows.jsonl.gz"
+        calibrated = [
+            json.loads(s)
+            for s in gzip.decompress((first / calibration_file).read_bytes()).splitlines()
+        ]
+        expected_cal = {(r["id"], a) for r in inputs if r["split"] == "cal" for a in definitions()}
+        if {(r["id"], r["aspect"]) for r in calibrated} != expected_cal or len(calibrated) != len(
+            expected_cal
+        ):
+            raise ValueError("WRONG_CALIBRATION_MEMBERSHIP")
+        for gap, expected_grid in selection["methods"][method]["grid"].items():
+            replayed = []
+            for r in calibrated:
+                if by_id[r["id"]]["labels"][r["aspect"]]["outcome"] != r["gold"]:
+                    raise ValueError("WRONG_CALIBRATION_GOLD")
+                replayed.append(r | aggregate(r["windows"], np.asarray(r["logits"]), float(gap)))
+            actual = metrics(replayed)
+            if [actual["complaint"]["f1"] or 0.0, actual["coverage"]] != expected_grid:
+                raise ValueError("CALIBRATION_GRID_CHANGED")
+        # The pre-test file predates the two optional, empty counter-context fields.
+        for r in calibrated:
+            for field in ("counter_start", "counter_end"):
+                if r.pop(field, None) is not None:
+                    raise ValueError("UNEXPECTED_CALIBRATION_COUNTER_CONTEXT")
+        calibration_lines = "".join(
+            json.dumps(r, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
+            for r in calibrated
+        )
+        (evidence / calibration_file).write_bytes(
+            gzip.compress(calibration_lines.encode(), mtime=0)
+        )
         file = f"{method}-test-rows.jsonl.gz"
         if digest(first / file) != digest(repeat / file):
             raise ValueError("REPEAT_MISMATCH")
