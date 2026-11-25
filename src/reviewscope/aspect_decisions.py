@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Iterator
 from importlib.resources import files
+from time import perf_counter
 
 import numpy as np
 from sklearn.feature_extraction.text import HashingVectorizer
@@ -142,10 +143,24 @@ class DecisionScorer:
         ):
             raise ValueError("INCOMPATIBLE_MODEL")
         self.encoder = lexical_encoder()
+        self.resources = dict(
+            scored_windows=0, segmentation_s=0.0, feature_s=0.0, head_s=0.0, aggregate_s=0.0
+        )
 
     def score(self, text: str):
         if not text.strip():
             raise ValueError("EXCLUDED_BLANK")
+        start = perf_counter()
         spans = list(windows(text))
-        features = self.encoder.transform(text[start:end] for start, end in spans)
-        return aggregate(spans, features @ self.coef.T + self.bias, self.threshold)
+        segmented = perf_counter()
+        features = self.encoder.transform(text[a:b] for a, b in spans)
+        encoded = perf_counter()
+        logits = features @ self.coef.T + self.bias
+        scored = perf_counter()
+        outcome = aggregate(spans, logits, self.threshold)
+        self.resources["scored_windows"] += len(spans)
+        self.resources["segmentation_s"] += segmented - start
+        self.resources["feature_s"] += encoded - segmented
+        self.resources["head_s"] += scored - encoded
+        self.resources["aggregate_s"] += perf_counter() - scored
+        return outcome

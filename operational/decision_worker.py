@@ -33,7 +33,6 @@ def score_batches(params, texts):
     if params["profile"] != PROFILE or params["threshold_set"] != THRESHOLDS:
         raise ValueError("INVALID_PROFILE")
     started = monotonic()
-    cpu = process_time()
     scorer = DecisionScorer(params, PROFILE)
     if scorer.profile_sha256 != params["profile_sha256"] or scorer.threshold_set != THRESHOLDS:
         raise ValueError("INVALID_PROFILE")
@@ -72,7 +71,8 @@ def score_batches(params, texts):
         unique_scored=len(cache),
         load_s=loaded - started,
         score_wall_s=scoring_s,
-        cpu_s=process_time() - cpu,
+        cpu_s=process_time(),
+        **scorer.resources,
         peak_rss_kib=linux_peak_kib("self"),
     )
 
@@ -164,6 +164,7 @@ def result(conn, claim, info, rows, pulse):
 
     eligible = sum(bool(r[2].strip()) for r in rows)
     require(eligible == info["decision"]["eligible"])
+    parent_cpu_start = process_time()
     done = 0
     staged_bytes = 0
     stage_s = 0.0
@@ -195,7 +196,13 @@ def result(conn, claim, info, rows, pulse):
     doc["runtime"] = stats.pop("runtime")
     print(
         json.dumps(
-            dict(event="decision_resources", **stats, stage_s=stage_s, staged_bytes=staged_bytes)
+            dict(
+                event="decision_resources",
+                **stats,
+                stage_s=stage_s,
+                staged_bytes=staged_bytes,
+                parent_compute_cpu_s=process_time() - parent_cpu_start,
+            )
         ),
         flush=True,
     )

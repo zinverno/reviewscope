@@ -90,7 +90,8 @@ def cli(label):
     decisions = [e for e in events if e.get("event") == "decision_resources"]
     assert all(
         set(e) == {"event", "rows", "unique_scored", "load_s", "score_wall_s", "cpu_s",
-                   "peak_rss_kib", "stage_s", "staged_bytes"}
+                   "peak_rss_kib", "stage_s", "staged_bytes", "parent_compute_cpu_s", "scored_windows",
+                   "segmentation_s", "feature_s", "head_s", "aggregate_s"}
         and all(isinstance(v, (int, float)) for k, v in e.items() if k != "event")
         for e in decisions
     )
