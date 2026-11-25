@@ -28,6 +28,7 @@ CREATE TABLE relation_pair (
  workspace_id uuid NOT NULL, snapshot_id uuid NOT NULL, result_id uuid NOT NULL,
  left_id uuid NOT NULL, right_id uuid NOT NULL CHECK(left_id<right_id), evidence jsonb NOT NULL,
  PRIMARY KEY(workspace_id,snapshot_id,result_id,left_id,right_id),
+ CHECK ((evidence#>>'{left,version_id}',evidence#>>'{right,version_id}') IS NOT DISTINCT FROM (left_id::text,right_id::text)),
  FOREIGN KEY(workspace_id,snapshot_id,result_id) REFERENCES relation_result ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
  FOREIGN KEY(workspace_id,snapshot_id,left_id) REFERENCES snapshot_member ON DELETE CASCADE,
  FOREIGN KEY(workspace_id,snapshot_id,right_id) REFERENCES snapshot_member ON DELETE CASCADE
@@ -141,7 +142,7 @@ $$;
 
 CREATE FUNCTION relation_publish(w uuid,src uuid,s uuid,r uuid,h uuid,k uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE sn snapshot; prior relation_result; saved uuid:=gen_random_uuid(); doc jsonb;
+DECLARE sn snapshot; prior relation_result; saved uuid:=gen_random_uuid(); doc jsonb; expected_count int; expected_sha text;
 BEGIN
  IF k IS NULL OR NOT relation_scope(w,src,s,r,h) THEN RETURN NULL; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended(w::text,2418));
@@ -158,8 +159,15 @@ BEGIN
  IF sn.version_ids IS DISTINCT FROM ARRAY(SELECT sm.version_id FROM snapshot_member sm WHERE (sm.workspace_id,sm.source_id,sm.snapshot_id)=(w,src,s) ORDER BY sm.version_id)
  OR sn.version_ids IS DISTINCT FROM ARRAY(SELECT ir.version_id FROM import_row ir WHERE (ir.workspace_id,ir.source_id,ir.batch_id)=(w,src,sn.batch_id) AND status='accepted' ORDER BY ir.version_id)
  THEN RETURN human_status(503); END IF;
- INSERT INTO relation_pair SELECT w,s,saved,p.* FROM relation_projection(w,src,s,r,h) p;
+ -- Hash the proposed set before storage. The manifest below hashes the actual persisted rows.
+ WITH proposed AS MATERIALIZED (SELECT * FROM relation_projection(w,src,s,r,h)),
+ written AS (INSERT INTO relation_pair SELECT w,s,saved,p.* FROM proposed p)
+ SELECT count(*),encode(sha256(convert_to(coalesce(string_agg(encode(sha256(convert_to(evidence::text,'UTF8')),'hex'),
+ '' ORDER BY left_id,right_id),''),'UTF8')),'hex') INTO expected_count,expected_sha FROM proposed;
  doc:=relation_manifest(w,src,s,r,h,saved);
+ IF (expected_count,expected_sha) IS DISTINCT FROM ((doc->>'candidate_pairs_count')::int,doc->>'rows_sha256') THEN
+   RAISE EXCEPTION 'incomplete_relation_publication';
+ END IF;
  IF NOT relation_scope(w,src,s,r,h) THEN RAISE EXCEPTION 'scope_closed'; END IF;
  INSERT INTO relation_result(workspace_id,source_id,snapshot_id,id,request_key,actor,run_id,revision_id,manifest,digest) VALUES(w,src,s,saved,k,access_actor(),r,h,doc,encode(sha256(convert_to(doc::text,'UTF8')),'hex'));
  RETURN human_status(201,saved);

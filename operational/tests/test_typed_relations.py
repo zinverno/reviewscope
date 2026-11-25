@@ -3,6 +3,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
+import psycopg
+import pytest
+
 from operational.tests.test_access import COOKIE, CSRF, key  # noqa: F401
 from operational.tests.test_decision_storage import runtime
 from operational.tests.test_human_review import annotation, grant, operation, oracle, submit
@@ -119,6 +122,27 @@ def test_typed_relations_freeze_and_scope(db, tmp_path, key, monkeypatch):  # no
         assert retry["id"] != staged["id"] and page(retry["id"])["digest"] == base["digest"]
         assert page(res, exact_only=True)["filtered"] == 1
         assert page(res, exact_only=True)["manifest"] == base["manifest"]
+        # Simulate storage omitting projected rows. Nothing from that attempt may become visible.
+        db.execute("""CREATE FUNCTION fixture_omit_pair() RETURNS trigger LANGUAGE plpgsql
+                      AS $$ BEGIN RETURN NULL; END $$""")
+        db.execute("""CREATE TRIGGER fixture_omit_pair BEFORE INSERT ON relation_pair
+                      FOR EACH ROW EXECUTE FUNCTION fixture_omit_pair()""")
+        missing = operation(src)
+        try:
+            with runtime(w, session_proof(web.cookies[COOKIE], key)) as actor:
+                with pytest.raises(psycopg.errors.RaiseException, match="incomplete_relation_publication"):
+                    actor.execute(
+                        "SELECT relation_publish(%s,%s,%s,NULL,NULL,%s)",
+                        (w, src, sn, missing["idempotency_key"]),
+                    )
+            assert web.post(url, headers=CSRF, json=missing).status_code == 503
+            assert db.execute(
+                "SELECT count(*) FROM relation_result WHERE request_key=%s",
+                (missing["idempotency_key"],),
+            ).fetchone() == (0,)
+        finally:
+            db.execute("DROP TRIGGER fixture_omit_pair ON relation_pair")
+        assert page(submit(web, url, missing)["id"])["digest"] == base["digest"]
         object_path = root / str(w) / "sha256" / base["manifest"]["snapshot_object"]
         object_path.chmod(0o600)
         object_path.write_bytes(b"corrupt synthetic snapshot")
@@ -126,9 +150,6 @@ def test_typed_relations_freeze_and_scope(db, tmp_path, key, monkeypatch):  # no
 
 
 def test_typed_relations_abstain_on_incomplete_stance(db, tmp_path, key, monkeypatch):  # noqa: F811
-    import psycopg
-    import pytest
-
     texts = [
         "Касса у воды. " + t
         for t in (
