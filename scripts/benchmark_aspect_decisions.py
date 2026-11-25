@@ -48,6 +48,8 @@ def load_rows(splits):
     refs = []
     for r in rows:
         refs.append((r["id"], r["family"], " ".join(r["text"].casefold().split())))
+        if r["split"] not in splits:
+            continue
         if set(r["labels"]) != set(definitions()):
             raise ValueError("INCOMPLETE_GOLD")
         for label in r["labels"].values():
@@ -74,11 +76,15 @@ def binary(rows):
     tp = sum(r["gold"] in COMPLAINTS and r["outcome"] in COMPLAINTS for r in known)
     fp = sum(r["gold"] not in COMPLAINTS and r["outcome"] in COMPLAINTS for r in known)
     fn = sum(r["gold"] in COMPLAINTS and r["outcome"] not in COMPLAINTS for r in known)
+    abstained_negative = sum(
+        r["gold"] not in COMPLAINTS and r["outcome"] in UNDECIDED for r in known
+    )
     return dict(
         tp=tp,
         fp=fp,
         fn=fn,
-        tn=len(known) - tp - fp - fn,
+        tn=len(known) - tp - fp - fn - abstained_negative,
+        abstained_negative=abstained_negative,
         known=len(known),
         precision=ratio(tp, tp + fp),
         recall=ratio(tp, tp + fn),
