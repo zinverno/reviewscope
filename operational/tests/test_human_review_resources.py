@@ -8,11 +8,12 @@ from time import monotonic
 from uuid import UUID, uuid4
 from zipfile import ZipFile
 
+import psycopg
 from psycopg.types.json import Jsonb
 
 from operational import worker
 from operational.tests.reviewer_plan_probe import enable_client_plans
-from operational.tests.test_access import ROOT, key  # noqa: F401
+from operational.tests.test_access import CSRF, ROOT, key  # noqa: F401
 from operational.tests.test_browser_delivery import importer
 from operational.tests.test_decision_storage import (
     cabinet,
@@ -109,6 +110,45 @@ def plan_profiles(w, proof, scope, sample_id, expected_sample, analyzed):
                     )
                 )
     return observations
+
+
+def publication_plan(db, scope, revision):
+    # Measure the exact SQL function separately from the production transaction and its FK checks.
+    enable_client_plans(db, "rs_migration")
+    plans = []
+    with psycopg.connect(user="rs_migration", autocommit=True) as explained:
+
+        def observe(notice):
+            _, marker, raw = notice.message_primary.partition("plan:\n")
+            if not marker or "WITH baseline AS (" not in raw or "human-resolved-v1" not in raw:
+                return
+            root = json.loads(raw)["Plan"]
+            nodes = [root]
+            visits = []
+            while nodes:
+                node = nodes.pop()
+                nodes.extend(node.get("Plans", []))
+                rows = node["Actual Rows"] + sum(
+                    node.get("Rows Removed by " + key, 0)
+                    for key in ("Filter", "Join Filter", "Index Recheck")
+                )
+                visits.append(
+                    (rows * node["Actual Loops"], node["Node Type"], node.get("Relation Name"))
+                )
+            cost, operation, table = max(visits, key=lambda item: item[0])
+            plans.append(
+                dict(
+                    max_visits=cost,
+                    operation=operation,
+                    relation=table,
+                    shared_blocks=root["Shared Read Blocks"] + root["Shared Hit Blocks"],
+                )
+            )
+
+        explained.add_notice_handler(observe)
+        assert query(explained, "human_result_document(%s,%s,%s)", (scope[0], scope[3], revision))
+    assert len(plans) == 1
+    return plans[0]
 
 
 def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
@@ -214,10 +254,40 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
                 print(f"Synthetic {size} events in {ticks[size]}s", flush=True)
             if size in (1000, 10000):
                 tick = monotonic()
-                reply = query(reader, "human_publish(%s,%s,%s,%s,%s)", (*scope, uuid4()))
-                assert reply["code"] == 201
+                with reader.transaction():
+                    reply = query(reader, "human_publish(%s,%s,%s,%s,%s)", (*scope, uuid4()))
+                    assert reply["code"] == 201
+                    sql_done = monotonic()
+                elapsed = monotonic() - tick
                 versions.append(reply["id"])
-                receipts.append(round((monotonic() - tick) * 1000, 2))
+                receipts.append(round(elapsed * 1000, 2))
+                print(
+                    json.dumps(
+                        dict(
+                            probe="human-publication",
+                            members=size,
+                            sql_ms=round((sql_done - tick) * 1000, 2),
+                            commit_ms=round((elapsed - (sql_done - tick)) * 1000, 2),
+                        )
+                    ),
+                    flush=True,
+                )
+        publication = publication_plan(db, scope, versions[-1])
+        print(json.dumps(dict(probe="human-publication-plan", **publication)), flush=True)
+        assert publication["max_visits"] <= 2 * len(event_ids)
+        assert max(receipts) < 12000
+        results_url = f"{ROOT}/workspaces/{w}/snapshots/{snap}/decisions/{run}/human/results"
+        body = {"source_id": str(src), "idempotency_key": str(uuid4())}
+        tick = monotonic()
+        published = web.post(results_url, headers=CSRF, json=body)
+        http_publish_ms = round((monotonic() - tick) * 1000, 2)
+        assert published.status_code == 201 and http_publish_ms < 12000
+        http_revision = published.json()["id"]
+        assert http_revision not in versions
+        page = web.get(f"{results_url}/{http_revision}", params={"source_id": str(src)})
+        assert page.status_code == 200 and page.json()["summary"]["reviewed"] == 10000
+        original = query(reader, "human_result(%s,%s,%s,%s,%s,0)", (*scope, versions[-1]))
+        assert page.json()["digest"] == original["digest"]
         for index, revision in enumerate(versions):
             count = (1000, 10000)[index]
             found = {}
@@ -292,6 +362,8 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
                     relation_bytes=relation_bytes,
                     append_seconds=ticks,
                     publish_ms=receipts,
+                    publication_plan=publication,
+                    http_publish_ms=http_publish_ms,
                     checked_memberships=11000,
                     versions=versions,
                     plans=plans,

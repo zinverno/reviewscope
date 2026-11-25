@@ -25,7 +25,7 @@ from reviewscope.access.operator import provision
 from reviewscope.import_preview.contract import MAX_BYTES, MAX_ROWS
 
 SMALL = ["a", "b", "problematic", "context"]
-LARGE = ["public-demo", "repeated-10k", "diverse-10k"]
+LARGE = ["public-demo", "repeated-10k", "diverse-10k", "diverse-4mib-10k"]
 
 
 def resource_input(directory, name):
@@ -58,7 +58,7 @@ def resource_input(directory, name):
                         "SELECT text FROM reviews ORDER BY review_id"
                     ).fetchall()
                 ]
-        elif name == "diverse-10k":
+        elif name in ("diverse-10k", "diverse-4mib-10k"):
             from scripts.profile_rerank import reviews
 
             texts = reviews()
@@ -75,6 +75,10 @@ def resource_input(directory, name):
             writer = csvlib.writer(out)
             writer.writerow(("id", "body"))
             writer.writerows(enumerate(texts))
+        if name == "diverse-4mib-10k":
+            from operational.tests.human_profile import fill_admitted_corpus
+
+            fill_admitted_corpus(file, MAX_BYTES, MAX_ROWS)
     mapping = directory / "mapping"
     mapping.write_text('{"version":"resource-1","fields":{"id":"source_review_id","body":"text"}}')
     passport = directory / "passport"
@@ -97,6 +101,7 @@ def test_decision_profile_resource(db, tmp_path, monkeypatch, key, fixture):  # 
         "public-demo": (1058, 1058),
         "repeated-10k": (10000, 10000),
         "diverse-10k": (10000, 10000),
+        "diverse-4mib-10k": (10000, 10000),
     }
     delivery = call(args + payload + ["--apply"])
     assert (delivery["input"], delivery["accepted"]) == expected[fixture]
@@ -212,7 +217,7 @@ def test_decision_profile_resource(db, tmp_path, monkeypatch, key, fixture):  # 
                 default=float,
             )
         )
-        if fixture == "diverse-10k":
+        if fixture == "diverse-4mib-10k":
             from operational.tests.human_profile import observe
 
             observe(db, client, src, w, f"{route}/{run}", [v for v, _ in originals])

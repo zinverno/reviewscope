@@ -276,8 +276,12 @@ CREATE FUNCTION human_result_document(w uuid,r uuid,revision uuid) RETURNS jsonb
      coalesce(string_agg(encode(sha256(convert_to(jsonb_build_array(e.version_id,e.id,e.sequence,e.previous_id,e.actor,
        extract(epoch FROM e.created_at),e.action,e.outcome,e.reason,e.spans,e.selection,e.plan_id,e.machine,
        e.content_sha256,e.text_sha256)::text,'UTF8')),'hex'),'' ORDER BY e.version_id),'') hashes
-   FROM human_result_member m JOIN human_review_event e
-   ON (e.workspace_id,e.run_id,e.version_id,e.id)=(m.workspace_id,m.run_id,m.version_id,m.event_id)
+   -- Keep each receipt lookup on the event's full primary key even before ANALYZE.
+   FROM human_result_member m CROSS JOIN LATERAL (
+     SELECT version_id,id,sequence,previous_id,actor,created_at,action,outcome,reason,spans,selection,plan_id,
+            machine,content_sha256,text_sha256 FROM human_review_event
+     WHERE (workspace_id,run_id,version_id,id)=(w,r,m.version_id,m.event_id) LIMIT 1
+   ) e
    WHERE (m.workspace_id,m.run_id,m.result_id)=(w,r,revision)
  ), report AS (
    SELECT *,jsonb_build_object('eligible',eligible,'reviewed',reviewed,'resolved',resolved,'confirmed',confirmed,'corrected',corrected,

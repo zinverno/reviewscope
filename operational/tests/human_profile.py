@@ -1,11 +1,34 @@
 """Measure authenticated human operations on the real, diverse lexical run."""
 
+import csv
 import hashlib
 import json
 from time import monotonic
 from uuid import UUID, uuid4
 
 from operational.tests.test_access import CSRF
+
+
+def fill_admitted_corpus(file, byte_limit, row_limit):
+    """Extend an independent copy of the diverse texts to the import byte boundary."""
+    remaining = byte_limit - file.stat().st_size
+    assert remaining > 0
+    with file.open(newline="", encoding="utf-8") as src:
+        header, *rows = csv.reader(src)
+    assert len(rows) == len({text for _, text in rows}) == row_limit
+    with file.open("w", newline="", encoding="utf-8") as dest:
+        writer = csv.writer(dest)
+        writer.writerow(header)
+        for ordinal, text in rows:
+            # ASCII without CSV metacharacters adds exactly one file byte per character.
+            context = (
+                f" We visited table {ordinal} on the ground floor. The wall menu listed tea and "
+                "soup by the cup. The ticket on the tray showed the same order number as the "
+                "display above the counter. There was a place to leave the tray by the door."
+            )[:remaining]
+            writer.writerow((ordinal, text + context))
+            remaining -= len(context)
+    assert remaining == 0 and file.stat().st_size == byte_limit
 
 
 def observe(db, web, source, workspace, route, original_ids):
