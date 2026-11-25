@@ -2,7 +2,7 @@
   "probe": "relation-storage",
   "pairs": 10416,
   "results": 21,
-  "publish_s": 1.2250617560057435,
+  "publish_s": 1.5827980339963688,
   "plans": [
     {
       "analyzed": false,
@@ -28,24 +28,24 @@
   "reads": [
     {
       "offset": 0,
-      "seconds": 0.0499643180082785,
+      "seconds": 0.06926728600228671,
       "bytes": 11059
     },
     {
       "offset": 0,
-      "seconds": 0.038730743995984085,
+      "seconds": 0.045761464003589936,
       "bytes": 11059
     },
     {
       "offset": 490,
-      "seconds": 0.03765477301203646,
+      "seconds": 0.04936805699253455,
       "bytes": 7163
     }
   ],
-  "pg_backend_hwm_kib": 112276,
-  "parent_hwm_kib": 295972,
+  "pg_backend_hwm_kib": 111124,
+  "parent_hwm_kib": 364228,
   "payload_bytes": 11421144,
-  "export_s": 1.6287631310115103,
+  "export_s": 2.4774185869900975,
   "export_bytes": 14361102,
-  "erase_s": 1.1359059579990571
+  "erase_s": 1.5216944929998135
 }

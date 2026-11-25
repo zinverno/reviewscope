@@ -127,9 +127,12 @@ def test_revision_scope_nulls_and_history(db):
         run(db, other_w, snapshot)
     with pytest.raises(psycopg.errors.CheckViolation):
         db.execute("INSERT INTO snapshot_member VALUES (%s,%s,%s,%s)", (w, s, snapshot, v2))
+    # The pair FK rejects a standalone truncation before the immutable triggers execute.
+    with pytest.raises(psycopg.errors.FeatureNotSupported):
+        db.execute("TRUNCATE snapshot_member")
     for sql in ("UPDATE review_version SET text_content='edit'", "DELETE FROM review_version",
                 "UPDATE review_identity SET external_review_id=NULL", "DELETE FROM snapshot_member",
-                "UPDATE snapshot SET version_ids='{}'", "TRUNCATE snapshot_member"):
+                "UPDATE snapshot SET version_ids='{}'", "TRUNCATE snapshot_member, relation_pair"):
         with pytest.raises(psycopg.errors.CheckViolation):
             db.execute(sql)
 

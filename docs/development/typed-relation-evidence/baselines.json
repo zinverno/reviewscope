@@ -24,5 +24,17 @@
     }
   },
   "protected_files": 117,
-  "protected_aggregate": "603d70d5233305513c7a9c06031f4e4def6fadea27d88ead2b0858c2c6d10eda"
+  "protected_aggregate": "603d70d5233305513c7a9c06031f4e4def6fadea27d88ead2b0858c2c6d10eda",
+  "feature_code_head": "5db5f2ed17541dc79b44e8155b0410586346c46f",
+  "feature_parity": {
+    "head": "5db5f2ed17541dc79b44e8155b0410586346c46f",
+    "new_matrix_equal": 432,
+    "canonical_ranking_metrics_sha256": "d028a242515d363cc5b1e49830a2d0e6a9233a268e15e6e0fd7e0d19b4fc721e",
+    "pr19_equal": 40,
+    "pr05_models": {
+      "tfidf": "RUN",
+      "minilm": "RUN"
+    },
+    "pr05_fingerprint": "6f9aa5c71903156806f9fc594f15aa311cf20b6355f28f1c2d8249479fd32b3f"
+  }
 }

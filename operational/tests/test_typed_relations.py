@@ -1,15 +1,34 @@
 """Exercise published pairs through the private API with authenticated synthetic imports."""
 
+import multiprocessing
+import os
+import secrets
+import signal
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg
 import pytest
+from fastapi.testclient import TestClient
 
-from operational.tests.test_access import COOKIE, CSRF, key  # noqa: F401
+from operational.tests.test_access import COOKIE, CSRF, ORIGIN, key, login  # noqa: F401
 from operational.tests.test_decision_storage import runtime
 from operational.tests.test_human_review import annotation, grant, operation, oracle, submit
+from reviewscope.access.http import create_app
+from reviewscope.access.operator import provision
 from reviewscope.access.security import session_proof
+
+
+def stage_until_killed(workspace, source, snapshot, request_key, proof, pipe):
+    with runtime(workspace, proof) as conn:
+        conn.execute("BEGIN")
+        row = conn.execute(
+            "SELECT relation_publish(%s,%s,%s,NULL,NULL,%s)",
+            (workspace, source, snapshot, request_key),
+        ).fetchone()[0]
+        pipe.send(row)
+        pipe.recv()
 
 
 def test_typed_relations_freeze_and_scope(db, tmp_path, key, monkeypatch):  # noqa: F811
@@ -104,20 +123,44 @@ def test_typed_relations_freeze_and_scope(db, tmp_path, key, monkeypatch):  # no
             )
             assert web.get(url + "/" + res, params=q).status_code == 404
             db.execute(f"UPDATE browser_admission SET {permission}=true WHERE source_id=%s", (src,))
-        # Loss of the producer connection after SQL publication but before commit rolls back both tables.
+        proof = session_proof(web.cookies[COOKIE], key)
         abort_key = uuid4()
-        conn = runtime(w, session_proof(web.cookies[COOKIE], key))
+        context = multiprocessing.get_context("spawn")
+        receiver, sender = context.Pipe()
+        producer = context.Process(
+            target=stage_until_killed, args=(w, src, sn, abort_key, proof, sender)
+        )
+        producer.start()
+        sender.close()
         try:
-            conn.execute("BEGIN")
-            staged = conn.execute(
-                "SELECT relation_publish(%s,%s,%s,NULL,NULL,%s)", (w, src, sn, abort_key)
-            ).fetchone()[0]
+            assert receiver.poll(20)
+            staged = receiver.recv()
             assert staged["code"] == 201
             assert db.execute(
                 "SELECT count(*) FROM relation_pair WHERE result_id=%s", (staged["id"],)
             ).fetchone() == (0,)
         finally:
-            conn.close()
+            producer.kill()
+            producer.join(10)
+            receiver.close()
+        assert producer.exitcode == -signal.SIGKILL
+        # The PR-19 scope holds FOR SHARE locks on the exact grant, session and membership.
+        revoked_key = uuid4()
+        with runtime(w, proof) as writer:
+            writer.execute("BEGIN")
+            staged_grant = writer.execute(
+                "SELECT relation_publish(%s,%s,%s,NULL,NULL,%s)", (w, src, sn, revoked_key)
+            ).fetchone()[0]
+            assert staged_grant["code"] == 201
+            with pytest.raises(psycopg.errors.LockNotAvailable), db.transaction():
+                db.execute("SET LOCAL lock_timeout='200ms'")
+                db.execute(
+                    "UPDATE browser_admission SET relation_allowed=false WHERE source_id=%s", (src,)
+                )
+            writer.execute("COMMIT")
+        db.execute("UPDATE browser_admission SET relation_allowed=false WHERE source_id=%s", (src,))
+        assert web.get(url + "/" + staged_grant["id"], params=q).status_code == 404
+        db.execute("UPDATE browser_admission SET relation_allowed=true WHERE source_id=%s", (src,))
         retry = submit(web, url, operation(src) | {"idempotency_key": str(abort_key)})
         assert retry["id"] != staged["id"] and page(retry["id"])["digest"] == base["digest"]
         assert page(res, exact_only=True)["filtered"] == 1
@@ -130,7 +173,9 @@ def test_typed_relations_freeze_and_scope(db, tmp_path, key, monkeypatch):  # no
         missing = operation(src)
         try:
             with runtime(w, session_proof(web.cookies[COOKIE], key)) as actor:
-                with pytest.raises(psycopg.errors.RaiseException, match="incomplete_relation_publication"):
+                with pytest.raises(
+                    psycopg.errors.RaiseException, match="incomplete_relation_publication"
+                ):
                     actor.execute(
                         "SELECT relation_publish(%s,%s,%s,NULL,NULL,%s)",
                         (w, src, sn, missing["idempotency_key"]),
@@ -268,3 +313,48 @@ def test_typed_relations_handover_and_no_transitive_link(db, tmp_path, key, monk
         assert edge["channels"] == {"frozen_endpoints": True}
         assert edge["aspect_kind"] == "opposite_stance" and edge["text_kind"] == "not_evaluated"
         assert detail["manifest"]["aspect_version_id"] == s[4]
+
+
+def test_typed_relations_integrity_and_scope(db, tmp_path, key, monkeypatch):  # noqa: F811
+    with oracle(db, tmp_path, key, monkeypatch) as (s, web, route, *_):
+        w, src, snap = s[:3]
+        db.execute("UPDATE browser_admission SET relation_allowed=true WHERE source_id=%s", (src,))
+        url = route.split("/decisions")[0] + "/relations"
+        q = dict(source_id=str(src))
+        result = submit(web, url, operation(src))["id"]
+        detail_url = url + "/" + result
+        assert web.get(detail_url, params=q).status_code == 200
+        assert web.get(detail_url.replace(str(w), str(uuid4())), params=q).status_code == 404
+        assert web.get(detail_url.replace(str(snap), str(uuid4())), params=q).status_code == 404
+        pwd = secrets.token_urlsafe(24)
+        provision(db, "relation-viewer", pwd, key, workspace=w, role="viewer")
+        with TestClient(create_app(), base_url=ORIGIN) as viewer:
+            assert login(viewer, "relation-viewer", pwd).status_code == 204
+            access = viewer.get(detail_url, params=q)
+            assert access.status_code in (403, 404) and "pairs" not in access.json()
+            assert viewer.post(url, headers=CSRF, json=operation(src)).status_code in (403, 404)
+        ledger = Path(os.environ["RS_RETENTION_LEDGER"])
+        saved = ledger.read_bytes()
+        ledger.write_bytes(b"invalid synthetic witness")
+        assert web.get(detail_url, params=q).status_code == 503
+        ledger.write_bytes(saved)
+        assert web.get(detail_url, params=q).status_code == 200
+        for table, column, value in [
+            ("relation_pair", "evidence", """evidence || '{"reason":"bad_fixture"}'"""),
+            ("relation_result", "manifest", """manifest || '{"budget":1}'"""),
+        ]:
+            db.execute("ALTER TABLE " + table + " DISABLE TRIGGER immutable_history")
+            db.execute("UPDATE " + table + " SET " + column + "=" + value)
+            db.execute("ALTER TABLE " + table + " ENABLE TRIGGER immutable_history")
+            resp = web.get(detail_url, params=q)
+            assert resp.status_code == 503 and "pairs" not in resp.json()
+            assert not db.execute("SELECT relation_intact(%s,%s,%s)", (w, snap, result)).fetchone()[
+                0
+            ]
+            if table == "relation_pair":
+                result = submit(web, url, operation(src))["id"]
+                detail_url = url + "/" + result
+        db.execute(
+            "UPDATE access_session SET created_at=now()-interval '2 days',expires_at=now()-interval '1 day'"
+        )
+        assert web.get(detail_url, params=q).status_code == 401
