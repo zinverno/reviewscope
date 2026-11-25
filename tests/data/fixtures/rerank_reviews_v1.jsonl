@@ -1,0 +1,110 @@
+{"id":"dev-01","split":"dev","family":"dev-01","text":"Очередь упиралась в дверь. Заказ начали принимать лишь через четверть часа.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,75,0,75]]}}}
+{"id":"dev-02","split":"dev","family":"dev-02","text":"Единственная касса стояла пустой, пока мы ждали с меню в руках.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,63,0,63]]}}}
+{"id":"dev-03","split":"dev","family":"dev-03","text":"У стойки передо мной двое; записать мой заказ смогли только минут через двадцать.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,81,0,81]]}}}
+{"id":"dev-04","split":"dev","family":"dev-04","text":"Прийти успел к открытию. Долго не подходили принять заказ.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,58,0,58]]}}}
+{"id":"dev-05","split":"dev","family":"dev-05","text":"Не пришлось стоять в очереди перед оплатой.","labels":{"queue":{"grade":1,"stance":"denial","spans":[[0,43,0,43]]}}}
+{"id":"dev-06","split":"dev","family":"dev-06","text":"Чек пробили сразу, даже с детской коляской прошли быстро.","labels":{"queue":{"grade":1,"stance":"positive","spans":[[0,57,0,57]]}}}
+{"id":"dev-07","split":"dev","family":"dev-07","text":"Ждали очень долго. На каком этапе, теперь уже не вспомню.","labels":{"queue":{"grade":1,"stance":"unclear","spans":[[0,57,0,57]]}}}
+{"id":"dev-08","split":"dev","family":"dev-08","text":"Очередь песен в плейлисте удачная.","labels":{}}
+{"id":"dev-09","split":"dev","family":"dev-09","text":"После оплаты пицца выпекалась целую вечность.","labels":{}}
+{"id":"dev-10","split":"dev","family":"dev-10","text":"Номер загорелся готовым, но до выдачи прошло ещё минут пятнадцать.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,66,0,66]]}}}
+{"id":"dev-11","split":"dev","family":"dev-11","text":"Моя подписанная коробка остывала на полке, пока искали, кому её передать.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,73,0,73]]}}}
+{"id":"dev-12","split":"dev","family":"dev-12","text":"Пакет завязали у меня на глазах и зачем-то держали за прилавком.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,64,0,64]]}}}
+{"id":"dev-13","split":"dev","family":"dev-13","text":"Курьер показал номер готового заказа, но его долго не выпускали с кухни с пакетом.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,82,0,82]]}}}
+{"id":"dev-14","split":"dev","family":"dev-14","text":"Уже готовый кофе протянули сразу.","labels":{"handover":{"grade":1,"stance":"denial","spans":[[0,33,0,33]]}}}
+{"id":"dev-15","split":"dev","family":"dev-15","text":"На выдаче никаких задержек с готовыми коробками не было.","labels":{"handover":{"grade":1,"stance":"positive","spans":[[0,56,0,56]]}}}
+{"id":"dev-16","split":"dev","family":"dev-16","text":"Ждать еду пришлось, а была ли она уже собрана, не знаю.","labels":{"handover":{"grade":1,"stance":"unclear","spans":[[0,55,0,55]]}}}
+{"id":"dev-17","split":"dev","family":"dev-17","text":"Готовил дома по их рецепту, заняло час.","labels":{}}
+{"id":"dev-18","split":"dev","family":"dev-18","text":"К концу обеда привезли новые столы.","labels":{}}
+{"id":"dev-19","split":"dev","family":"dev-19","text":"В банковском приложении две завершённые оплаты за один кофе.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,60,0,60]]}}}
+{"id":"dev-20","split":"dev","family":"dev-20","text":"Бариста повторил платёж. Обе суммы в итоге ушли со счёта.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,57,0,57]]}}}
+{"id":"dev-21","split":"dev","family":"dev-21","text":"К картоприёмнику подходила один раз, списаний в выписке оказалось два.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,70,0,70]]}}}
+{"id":"dev-22","split":"dev","family":"dev-22","text":"Дубликат оплаты за пирог банк подтвердил письменно.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,51,0,51]]}}}
+{"id":"dev-23","split":"dev","family":"dev-23","text":"Второе уведомление оказалось копией сообщения, списание одно.","labels":{"charge":{"grade":1,"stance":"denial","spans":[[0,61,0,61]]}}}
+{"id":"dev-24","split":"dev","family":"dev-24","text":"Дважды подтвердил код, итог по карте верный.","labels":{"charge":{"grade":1,"stance":"positive","spans":[[0,44,0,44]]}}}
+{"id":"dev-25","split":"dev","family":"dev-25","text":"Вторая операция пока висит как резерв.","labels":{"charge":{"grade":1,"stance":"unclear","spans":[[0,38,0,38]]}}}
+{"id":"dev-26","split":"dev","family":"dev-26","text":"Две подруги взяли по латте и платили порознь.","labels":{}}
+{"id":"dev-27","split":"dev","family":"dev-27","text":"Терминал напечатал рекламный купон.","labels":{}}
+{"id":"dev-28","split":"dev","family":"dev-28","text":"Заплатили за компот, дома его в пакете не обнаружили.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,53,0,53]]}}}
+{"id":"dev-29","split":"dev","family":"dev-29","text":"В счёте четыре коробочки, привезли три, четвёртая потерялась.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,61,0,61]]}}}
+{"id":"dev-30","split":"dev","family":"dev-30","text":"Взял обед с гарниром. Гарнир по дороге из кухни в пакет исчез.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,62,0,62]]}}}
+{"id":"dev-31","split":"dev","family":"dev-31","text":"Выдали заказ без купленного хлеба, пришлось возвращаться.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,57,0,57]]}}}
+{"id":"dev-32","split":"dev","family":"dev-32","text":"Проверила комплект у двери, всё из чека было на месте.","labels":{"missing":{"grade":1,"stance":"denial","spans":[[0,54,0,54]]}}}
+{"id":"dev-33","split":"dev","family":"dev-33","text":"Сначала искал трубочку, она лежала под салфетками.","labels":{"missing":{"grade":1,"stance":"positive","spans":[[0,50,0,50]]}}}
+{"id":"dev-34","split":"dev","family":"dev-34","text":"Не помню, включала ли наборная позиция соус; отдельного стаканчика не было.","labels":{"missing":{"grade":1,"stance":"unclear","spans":[[0,75,0,75]]}}}
+{"id":"dev-35","split":"dev","family":"dev-35","text":"Забыла шарф на вешалке, вечером забрала.","labels":{}}
+{"id":"dev-36","split":"dev","family":"dev-36","text":"Долго решал, какой хлеб взять.","labels":{}}
+{"id":"dev-37","split":"dev","family":"dev-37","text":"Пюре принесли почти ледяным.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,28,0,28]]}}}
+{"id":"dev-38","split":"dev","family":"dev-38","text":"На хлебе оказалось пятно плесени.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,33,0,33]]}}}
+{"id":"dev-39","split":"dev","family":"dev-39","text":"Соль в бульоне перебила весь вкус.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,34,0,34]]}}}
+{"id":"dev-40","split":"dev","family":"dev-40","text":"Омлет подгорел снизу до чёрной корки.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,37,0,37]]}}}
+{"id":"dev-41","split":"dev","family":"dev-41","text":"Борщ горячий и свежий, претензий к вкусу нет.","labels":{"food":{"grade":1,"stance":"denial","spans":[[0,45,0,45]]}}}
+{"id":"dev-42","split":"dev","family":"dev-42","text":"Рыбу специально попросила холодной, так и подали.","labels":{"food":{"grade":1,"stance":"positive","spans":[[0,49,0,49]]}}}
+{"id":"dev-43","split":"dev","family":"dev-43","text":"Соус непривычный, не понял, так ли задумано.","labels":{"food":{"grade":1,"stance":"unclear","spans":[[0,44,0,44]]}}}
+{"id":"dev-44","split":"dev","family":"dev-44","text":"Запах краски возле гардероба отвлекал.","labels":{}}
+{"id":"dev-45","split":"dev","family":"dev-45","text":"Блюдо на витрине было фарфоровым.","labels":{}}
+{"id":"dev-46","split":"dev","family":"dev-46","text":"На просьбу объяснить меню ответили «читать научись».","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,52,0,52]]}}}
+{"id":"dev-47","split":"dev","family":"dev-47","text":"Девушка за стойкой передразнила мой акцент.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,43,0,43]]}}}
+{"id":"dev-48","split":"dev","family":"dev-48","text":"Администратор повысил голос и выгнал меня за простой вопрос.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,60,0,60]]}}}
+{"id":"dev-49","split":"dev","family":"dev-49","text":"Официант отпустил обидную шутку в адрес моего сына.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,51,0,51]]}}}
+{"id":"dev-50","split":"dev","family":"dev-50","text":"Говорили спокойно, никто мне не хамил.","labels":{"staff":{"grade":1,"stance":"denial","spans":[[0,38,0,38]]}}}
+{"id":"dev-51","split":"dev","family":"dev-51","text":"Сотрудник терпеливо повторил названия начинок.","labels":{"staff":{"grade":1,"stance":"positive","spans":[[0,46,0,46]]}}}
+{"id":"dev-52","split":"dev","family":"dev-52","text":"Не расслышала фразу за шумом, не уверена, ко мне ли обращались.","labels":{"staff":{"grade":1,"stance":"unclear","spans":[[0,63,0,63]]}}}
+{"id":"dev-53","split":"dev","family":"dev-53","text":"За соседним столом гости громко спорили между собой.","labels":{}}
+{"id":"dev-54","split":"dev","family":"dev-54","text":"Рядом со стойкой забыли протереть пол.","labels":{}}
+{"id":"test-01","split":"test","family":"test-01","text":"Простояла с талоном двадцать минут, прежде чем кассир спросил, что буду.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,72,0,72]]}}}
+{"id":"test-02","split":"test","family":"test-02","text":"Перед стойкой собралась толпа. Пока заказ записали, у меня уже закончился перерыв.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,82,0,82]]}}}
+{"id":"test-03","split":"test","family":"test-03","text":"Встали выбирать завтрак первыми, но сотрудник не начинал оформление до смены ленты.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,83,0,83]]}}}
+{"id":"test-04","split":"test","family":"test-04","text":"Очиредь к кассе ползла так медленно, что меню я выучил наизусть.","labels":{"queue":{"grade":2,"stance":"complaint","spans":[[0,64,0,64]]}}}
+{"id":"test-05","split":"test","family":"test-05","text":"Я боялась очереди, однако до заказа дело дошло мгновенно.","labels":{"queue":{"grade":1,"stance":"denial","spans":[[0,57,0,57]]}}}
+{"id":"test-06","split":"test","family":"test-06","text":"Заказ приняли без паузы, ждать пришлось уже пока жарили.","labels":{"queue":{"grade":1,"stance":"positive","spans":[[0,56,0,56]]}}}
+{"id":"test-07","split":"test","family":"test-07","text":"Полчаса ожидания в кафе; ни чек, ни последовательность событий не сохранились.","labels":{"queue":{"grade":1,"stance":"unclear","spans":[[0,78,0,78]]}}}
+{"id":"test-08","split":"test","family":"test-08","text":"В очередь на мастер-класс записались онлайн.","labels":{}}
+{"id":"test-09","split":"test","family":"test-09","text":"Ждал свободного столика перед входом в зал.","labels":{}}
+{"id":"test-10","split":"test","family":"test-10","text":"Заказ собран, фамилия на наклейке моя. За стеклом он простоял ещё двенадцать минут.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,83,0,83]]}}}
+{"id":"test-11","split":"test","family":"test-11","text":"Готовые контейнеры были у сборщика в руках, но он отвлёкся и выдал их много позже.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,82,0,82]]}}}
+{"id":"test-12","split":"test","family":"test-12","text":"Сигнал пейджера означал готовность. На полке моя сумка была давно, но принесли её только после третьей просьбы.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,111,0,111]]}}}
+{"id":"test-13","split":"test","family":"test-13","text":"Молоко взбили и чашку поставили у окошка; я стоял напротив, а отдавать никто не спешил.","labels":{"handover":{"grade":2,"stance":"complaint","spans":[[0,87,0,87]]}}}
+{"id":"test-14","split":"test","family":"test-14","text":"Готовую порцию отдали тут же, заминка была пока запекали.","labels":{"handover":{"grade":1,"stance":"denial","spans":[[0,57,0,57]]}}}
+{"id":"test-15","split":"test","family":"test-15","text":"После сигнала про готовность потянулась к стойке и сразу получила кофе.","labels":{"handover":{"grade":1,"stance":"positive","spans":[[0,71,0,71]]}}}
+{"id":"test-16","split":"test","family":"test-16","text":"Ждали посылку с кухни, статус в приложении ни о чём не говорил.","labels":{"handover":{"grade":1,"stance":"unclear","spans":[[0,63,0,63]]}}}
+{"id":"test-17","split":"test","family":"test-17","text":"Выдача справок в соседнем здании до шести.","labels":{}}
+{"id":"test-18","split":"test","family":"test-18","text":"Повар предупредил, что рис варится полчаса.","labels":{}}
+{"id":"test-19","split":"test","family":"test-19","text":"За бутерброд прошли две окончательные транзакции с одинаковой суммой.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,69,0,69]]}}}
+{"id":"test-20","split":"test","family":"test-20","text":"Деньги сняло повторно за тот же стол, возврата пока нет.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,56,0,56]]}}}
+{"id":"test-21","split":"test","family":"test-21","text":"После сбоя попросили карту ещё раз; выписка спустя неделю подтвердила оба платежа.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,82,0,82]]}}}
+{"id":"test-22","split":"test","family":"test-22","text":"Списали х2 при единственном чеке, с этим и ушёл в банк.","labels":{"charge":{"grade":2,"stance":"complaint","spans":[[0,55,0,55]]}}}
+{"id":"test-23","split":"test","family":"test-23","text":"В приложении две строки, одна из них возврат, заплатили один раз.","labels":{"charge":{"grade":1,"stance":"denial","spans":[[0,65,0,65]]}}}
+{"id":"test-24","split":"test","family":"test-24","text":"Оповещения продублировались, но остаток уменьшился ровно на цену блюда.","labels":{"charge":{"grade":1,"stance":"positive","spans":[[0,71,0,71]]}}}
+{"id":"test-25","split":"test","family":"test-25","text":"Пришли два пуша, выписка пока недоступна.","labels":{"charge":{"grade":1,"stance":"unclear","spans":[[0,41,0,41]]}}}
+{"id":"test-26","split":"test","family":"test-26","text":"Два напитка разделили по разным чекам.","labels":{}}
+{"id":"test-27","split":"test","family":"test-27","text":"Розетка для зарядки у окна двойная.","labels":{}}
+{"id":"test-28","split":"test","family":"test-28","text":"Открыла ланчбокс на работе, а заказанный салат туда не положили.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,64,0,64]]}}}
+{"id":"test-29","split":"test","family":"test-29","text":"Из двух оплаченных круассанов в свёртке лежал лишь один.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,56,0,56]]}}}
+{"id":"test-30","split":"test","family":"test-30","text":"Пропала порция картошки из доставки. В бумажном чеке она значится.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,66,0,66]]}}}
+{"id":"test-31","split":"test","family":"test-31","text":"Бутылку воды посчитали, но курьер привёз только выпечку.","labels":{"missing":{"grade":2,"stance":"complaint","spans":[[0,56,0,56]]}}}
+{"id":"test-32","split":"test","family":"test-32","text":"Казалось, что нет пирожка, нашёл его во втором пакете.","labels":{"missing":{"grade":1,"stance":"denial","spans":[[0,54,0,54]]}}}
+{"id":"test-33","split":"test","family":"test-33","text":"Сверили набор с заказом, ничего не потерялось.","labels":{"missing":{"grade":1,"stance":"positive","spans":[[0,46,0,46]]}}}
+{"id":"test-34","split":"test","family":"test-34","text":"В рекламе видела ложку, непонятно, полагалась ли она к моему набору.","labels":{"missing":{"grade":1,"stance":"unclear","spans":[[0,68,0,68]]}}}
+{"id":"test-35","split":"test","family":"test-35","text":"Потерянную у стойки варежку вернули на следующий день.","labels":{}}
+{"id":"test-36","split":"test","family":"test-36","text":"Заказывал яблоко, вместо него положили грушу той же цены.","labels":{}}
+{"id":"test-37","split":"test","family":"test-37","text":"Курица внутри розовая и пахла сыростью.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,39,0,39]]}}}
+{"id":"test-38","split":"test","family":"test-38","text":"Морс закис, пить его невозможно.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,32,0,32]]}}}
+{"id":"test-39","split":"test","family":"test-39","text":"Лапша слиплась в комок и хрустела сухими краями.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,48,0,48]]}}}
+{"id":"test-40","split":"test","family":"test-40","text":"В булочке попался прогорклый орех.","labels":{"food":{"grade":2,"stance":"complaint","spans":[[0,34,0,34]]}}}
+{"id":"test-41","split":"test","family":"test-41","text":"Читал отзывы про кислый суп, мне подали отличный.","labels":{"food":{"grade":1,"stance":"denial","spans":[[0,49,0,49]]}}}
+{"id":"test-42","split":"test","family":"test-42","text":"Корочка у хлеба хрустящая, мякиш мягкий, всё как люблю.","labels":{"food":{"grade":1,"stance":"positive","spans":[[0,55,0,55]]}}}
+{"id":"test-43","split":"test","family":"test-43","text":"Перец чувствуется сильно, возможно, таким и должен быть рецепт.","labels":{"food":{"grade":1,"stance":"unclear","spans":[[0,63,0,63]]}}}
+{"id":"test-44","split":"test","family":"test-44","text":"Холодный ветер из двери мешал сидеть.","labels":{}}
+{"id":"test-45","split":"test","family":"test-45","text":"В меню забыли заменить фотографию десерта.","labels":{}}
+{"id":"test-46","split":"test","family":"test-46","text":"При гостях назвали меня безграмотным за ошибку в названии.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,58,0,58]]}}}
+{"id":"test-47","split":"test","family":"test-47","text":"Попросил салфетку, в ответ услышал, чтобы шёл куда подальше.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,60,0,60]]}}}
+{"id":"test-48","split":"test","family":"test-48","text":"Управляющий на замечание начал кричать и обзывать посетителей.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,62,0,62]]}}}
+{"id":"test-49","split":"test","family":"test-49","text":"Парень у кофемашины высмеял мою просьбу говорить чуть громче.","labels":{"staff":{"grade":2,"stance":"complaint","spans":[[0,61,0,61]]}}}
+{"id":"test-50","split":"test","family":"test-50","text":"Кассир извинился и вежливо разобрался в вопросе.","labels":{"staff":{"grade":1,"stance":"denial","spans":[[0,48,0,48]]}}}
+{"id":"test-51","split":"test","family":"test-51","text":"Народу много, но персонал общался уважительно весь вечер.","labels":{"staff":{"grade":1,"stance":"positive","spans":[[0,57,0,57]]}}}
+{"id":"test-52","split":"test","family":"test-52","text":"Услышала резкий ответ из кухни, адресата не видела.","labels":{"staff":{"grade":1,"stance":"unclear","spans":[[0,51,0,51]]}}}
+{"id":"test-53","split":"test","family":"test-53","text":"Посетитель в гардеробе нахамил своей спутнице.","labels":{}}
+{"id":"test-54","split":"test","family":"test-54","text":"Меню напечатано очень мелким шрифтом.","labels":{}}
+{"id":"dev-mixed","split":"dev","family":"dev-mixed","text":"Перед кассой мы полчаса ждали начала оформления. Потом собранные пакеты долго лежали на раздаче. Сам обед оказался вкусным.","labels":{"queue":{"grade":2,"stance":"mixed","spans":[[0,48,0,48]]},"handover":{"grade":2,"stance":"mixed","spans":[[49,96,49,96]]},"food":{"grade":1,"stance":"positive","spans":[[97,123,97,123]]}}}
+{"id":"test-mixed","split":"test","family":"test-mixed","text":"Мы приехали всей семьёй после утренней электрички, выбрали стол у окна и разложили вещи. Бабушке было удобно сидеть у стены, дети рассматривали рисунки на бумажных подставках, а я пошёл заказывать завтрак.  Работник не начинал принимать заказ, у стойки пришлось простоять почти весь большой перерыв.  Когда я вернулся за подносом, номер уже светился.  Готовые тарелки с нашим номером простояли передо мной до тех пор, пока я дважды не напомнил о себе.  Зато сотрудница зала выслушала спокойно и помогла найти свободное детское кресло.","labels":{"queue":{"grade":2,"stance":"mixed","spans":[[207,299,207,299]]},"handover":{"grade":2,"stance":"mixed","spans":[[352,451,352,451]]},"staff":{"grade":1,"stance":"positive","spans":[[453,534,452,534]]}}}
