@@ -116,6 +116,13 @@ const jsonPost = (value: unknown): RequestInit => ({
 function link(changes: Record<string, string>) {
 	const u = new URL(window.location.href);
 	if (
+		changes.view === "decisions" ||
+		(changes.view === "reviews" && u.searchParams.get("view") === "decisions")
+	) {
+		for (const k of [...evidenceFields, "offset", "review"])
+			u.searchParams.delete(k);
+	}
+	if (
 		"view" in changes ||
 		["source", "workspace", "snapshot", "aspectVersion"].some(
 			(k) => k in changes && changes[k] !== u.searchParams.get(k),

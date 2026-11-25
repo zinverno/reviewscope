@@ -24,10 +24,30 @@ export async function checkDecisions(
 	const page = await context.newPage();
 	context.setDefaultTimeout(15000);
 	const errors = [];
+	const reads = [];
+	page.on("response", async (response) => {
+		const path = new URL(response.url()).pathname;
+		if (path.includes("/decisions/")) {
+			const value = await response.json().catch(() => ({}));
+			const state = [
+				"queued",
+				"running",
+				"succeeded",
+				"failed",
+				"cancelled",
+			].includes(value.status)
+				? value.status
+				: "";
+			reads.push([response.status(), state]);
+		}
+	});
 	page.on("pageerror", (e) => errors.push(e.name));
 	try {
 		stage("create supported immutable version");
 		await page.goto(start);
+		await page
+			.getByRole("link", { name: "Выбрать аспект для оценки всего снимка" })
+			.press("Enter");
 		await page
 			.getByRole("button", { name: "Создать аспект", exact: true })
 			.press("Enter");
@@ -61,9 +81,12 @@ export async function checkDecisions(
 		const submit = page.getByRole("button", {
 			name: "Оценить все пригодные отзывы",
 		});
+		stage("intercept explicit launch");
 		await submit.press("Enter");
+		stage("observe lost response");
 		await page.locator(".evidence [role=alert]").waitFor();
 		await submit.waitFor();
+		stage("retry exact command");
 		const [repeat] = await Promise.all([
 			page.waitForResponse(
 				(r) =>
@@ -74,13 +97,19 @@ export async function checkDecisions(
 		]);
 		assert.deepEqual(repeat.request().postDataJSON(), body);
 		assert.equal(repeat.status(), 200);
-		assert.equal((await repeat.json()).id, id);
+		await page.waitForURL((url) => url.searchParams.get("decisionRun") === id);
+		stage("read completed summary");
 		const summary = page.getByRole("region", { name: "Итог оценки" });
 		await summary
 			.getByText(
 				/Принято 28, пригодно 27, обработано 27, без текста 1, не обработано 0/,
 			)
 			.waitFor({ timeout: 45000 });
+		stage("verify pages and filter");
+		if (media)
+			await summary.screenshot({
+				path: join(media, "aspect-decision-summary-" + engine + ".png"),
+			});
 		const list = page.getByRole("list", { name: "Решения по отзывам" });
 		assert.equal(await list.getByRole("link").count(), 25);
 		const firstIDs = new Set(await list.getByRole("link").allTextContents());
@@ -171,6 +200,18 @@ export async function checkDecisions(
 		assert.equal(await article.count(), 0);
 		assert.deepEqual(errors, []);
 		return detailURL;
+	} catch (error) {
+		if (media)
+			await page.screenshot({
+				path: join(media, "decision-failure-" + engine + ".png"),
+			});
+		stage(
+			"result diagnostic " +
+				JSON.stringify(reads.slice(-12)) +
+				" · " +
+				error.name,
+		);
+		throw error;
 	} finally {
 		await context.close();
 	}

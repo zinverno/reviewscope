@@ -20,7 +20,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import aspects, candidate_search, decisions, evidence, reviewer_context, signals, store, uploads
+from . import (
+    aspects,
+    candidate_search,
+    decisions,
+    evidence,
+    reviewer_context,
+    signals,
+    store,
+    uploads,
+)
 from .security import normalize, password_proof, server_key, session_proof
 
 LOG = logging.getLogger("reviewscope.access.requests")

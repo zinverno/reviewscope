@@ -57,6 +57,12 @@ type Page = SavedRun & {
 	definition: Frozen;
 	profile: string;
 	threshold_set: string;
+	runtime: {
+		python: string;
+		numpy: string;
+		sklearn: string;
+		dtype: string;
+	} | null;
 	profile_sha256: string | null;
 	rows_sha256: string | null;
 	manifest_sha256: string | null;
@@ -80,10 +86,21 @@ function ratio(n: number, d: number) {
 		? `${n}/${d} (${(n / d).toLocaleString("ru-RU", { style: "percent", maximumFractionDigits: 1 })})`
 		: `${n}/0 · нет знаменателя`;
 }
+function Quality() {
+	return (
+		<p>
+			Экспериментальный профиль требует ручной проверки. В отложенной авторской
+			синтетической выборке модель нашла 4 из 32 размеченных жалоб, включая 0 из
+			6 жалоб на очередь и 3 из 8 на выдачу готового заказа. Из 5 решений
+			«жалоба» верными были 4. Порог качества не пройден.
+		</p>
+	);
+}
 function Summary({ counts: c }: { counts: Counts }) {
 	return (
 		<section aria-label="Итог оценки">
-			<h3>Модель выделила жалобы в {c.N_complaints} отзывах</h3>
+			<h3>Отзывов с жалобой по оценке модели — {c.N_complaints}</h3>
+			<Quality />
 			<p>
 				Среди всех пригодных отзывов — {ratio(c.N_complaints, c.N_eligible)}.
 				Среди упоминаний аспекта — {ratio(c.N_complaints, c.N_mentioned)}.
@@ -122,6 +139,7 @@ export function AspectDecisions({
 	api,
 }: Props) {
 	const query = new URLSearchParams(search);
+	const project = query.get("project");
 	const aspect = query.get("aspect") || "",
 		version = query.get("aspectVersion") || "";
 	const run = query.get("decisionRun") || "",
@@ -166,6 +184,12 @@ export function AspectDecisions({
 						version_id: version,
 					});
 					const data = await api<Catalog>(`${route}?${binding}`, init);
+					if (
+						data.definition.aspect_id !== aspect ||
+						data.definition.version_id !== version ||
+						(project && data.definition.project_id !== project)
+					)
+						throw new Error("Определение недоступно в этом проекте.");
 					if (live) setCatalog(data);
 				} else {
 					const args = new URLSearchParams({
@@ -177,6 +201,7 @@ export function AspectDecisions({
 					const data = await api<Page>(`${route}/${run}?${args}`, init);
 					if (
 						data.id !== run ||
+						(project && data.definition.project_id !== project) ||
 						data.definition.aspect_id !== aspect ||
 						data.definition.version_id !== version ||
 						(member &&
@@ -220,6 +245,7 @@ export function AspectDecisions({
 		};
 	}, [
 		api,
+		project,
 		source,
 		route,
 		run,
@@ -295,18 +321,12 @@ export function AspectDecisions({
 					{page?.compute_state === "COMPLETE" && page.summary && (
 						<Summary counts={page.summary} />
 					)}
-					<p>
-						Экспериментальный профиль требует ручной проверки. В отложенной
-						авторской синтетической выборке модель нашла 4 из 32 размеченных
-						жалоб, включая 0 из 6 жалоб на очередь и 3 из 8 на выдачу готового
-						заказа. Из 5 решений «жалоба» верными были 4. Порог качества не
-						пройден.
-					</p>
+					{!page?.summary && <Quality />}
 					{page && page.compute_state !== "COMPLETE" && (
 						<p role="status">
 							Полного результата пока нет. Состояние {page.status} ·{" "}
-							{page.reason || page.stage}. Обработано {page.processed}, всего{" "}
-							{page.total ?? "пока неизвестно"}.
+							{page.reason || page.stage}. Обработано {page.processed},
+							пригодных отзывов {page.total ?? "пока неизвестно"}.
 						</p>
 					)}
 					<p>
@@ -361,6 +381,13 @@ export function AspectDecisions({
 								<>
 									<details>
 										<summary>Происхождение результата</summary>
+										{page.runtime && (
+											<p>
+												Python {page.runtime.python} · NumPy{" "}
+												{page.runtime.numpy} · scikit-learn{" "}
+												{page.runtime.sklearn} · {page.runtime.dtype}
+											</p>
+										)}
 										<p>
 											Запуск {run} · Набор порогов {page.threshold_set}
 										</p>

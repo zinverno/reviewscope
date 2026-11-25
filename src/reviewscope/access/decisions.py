@@ -74,6 +74,39 @@ class VerifiedText(BaseModel):
     text: str
 
 
+Count = Annotated[int, Field(ge=0, le=10000, strict=True)]
+Share = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+
+
+class DecisionSummary(aspects.Strict):
+    N_input: Count
+    N_accepted: Count
+    N_quarantine: Count
+    N_confirmed_duplicate: Count
+    N_excluded: Count
+    N_eligible: Count
+    N_evaluated: Count
+    N_not_evaluated: Count
+    N_mentioned: Count
+    N_not_mentioned: Count
+    N_topic_uncertain: Count
+    N_complaints: Count
+    N_mentioned_unclear: Count
+    N_mentioned_other: Count
+    N_uncertain: Count
+    by_outcome: dict[Outcome, Count]
+    coverage: Share | None
+    defined_coverage: Share | None
+    complaints_among_eligible: Share | None
+    complaints_among_mentions: Share | None
+    undefined_rates: dict[
+        Literal[
+            "coverage", "defined_coverage", "complaints_among_eligible", "complaints_among_mentions"
+        ],
+        Literal["NO_ELIGIBLE_REVIEWS", "NO_MENTIONS"],
+    ]
+
+
 class RunPage(BaseModel):
     id: UUID
     status: str
@@ -85,7 +118,8 @@ class RunPage(BaseModel):
     profile: str
     threshold_set: str
     compute_state: Literal["NOT_COMPUTED", "COMPLETE"]
-    summary: dict | None
+    runtime: dict[Literal["python", "numpy", "sklearn", "dtype"], str] | None = None
+    summary: DecisionSummary | None
     filtered_total: int | None
     rows: list[Row] = Field(max_length=25)
     evidence: VerifiedText | None = None
@@ -94,13 +128,6 @@ class RunPage(BaseModel):
     artifact_sha256: str | None = None
     rows_sha256: str | None = None
     profile_sha256: str | None = None
-
-
-def supports_definition(definition):
-    templates = json.loads(
-        files("reviewscope.resources").joinpath("decision-definitions.json").read_text()
-    )
-    return definition["origin"] == "manual" and definition["payload"] in templates.values()
 
 
 def excerpt(text, start, end):
@@ -135,6 +162,18 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     from .http import JobStatus, Strict
 
     base = "/api/v1/workspaces/{workspace}/snapshots/{snapshot}/decisions"
+    # Load public templates before the TLS frontend enters its filesystem sandbox.
+    try:
+        templates = json.loads(
+            files("reviewscope.resources").joinpath("decision-definitions.json").read_bytes()
+        )
+    except (OSError, ValueError):
+        templates = None
+
+    def supports_definition(definition):
+        if templates is None:
+            raise HTTPException(503)
+        return definition["origin"] == "manual" and definition["payload"] in templates.values()
 
     def require_tls(request):
         if local or request.url.scheme != "https":
@@ -253,9 +292,13 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                     "aspect-decision-1",
                 )
                 if (
-                    artifact_sha != page.artifact_sha256
+                    page.summary is None
+                    or doc.get("summary") != page.summary.model_dump()
+                    or artifact_sha != page.artifact_sha256
                     or doc.get("aspect_id") != str(page.definition.aspect_id)
                     or doc.get("version_id") != str(page.definition.version_id)
+                    or page.runtime is None
+                    or doc.get("runtime") != page.runtime
                     or doc.get("digest") != page.definition.digest
                     or any(
                         doc.get(field) != getattr(page, field)
@@ -265,7 +308,6 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                             "profile",
                             "profile_sha256",
                             "threshold_set",
-                            "summary",
                         )
                     )
                 ):

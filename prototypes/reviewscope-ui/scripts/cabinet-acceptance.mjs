@@ -104,6 +104,19 @@ async function test(type) {
 		await page.getByLabel("Рабочая область").selectOption(fixture.w);
 		await page.getByLabel("Источник", { exact: true }).selectOption(fixture.s);
 		const content = await context.storageState();
+		if (fixture.scenario === "decisions") {
+			const detailURL=await checkDecisions(browser,content,origin+"/cabinet/?"+new URLSearchParams(fixture.decisionScope),media,phase=>{stage=type.name()+" decision "+phase});
+			const detail=await context.newPage();
+			await detail.goto(detailURL);
+			const article=detail.getByRole("article",{name:"Решение по версии отзыва"});
+			await article.waitFor();
+			stage=type.name()+" decision session revocation";
+			await page.getByRole("button",{name:"Выйти"}).click();
+			await detail.bringToFront();
+			await article.waitFor({state:"detached",timeout:15000});
+			await context.close();
+			return;
+		}
 		// Record only after authentication and never persist browser storage or private headers.
 		const review = await browser.newContext({
 			storageState: content,
@@ -682,9 +695,6 @@ async function test(type) {
 		const derivedURL = await checkAspects(browser, content, origin+"/cabinet/?"+new URLSearchParams(fixture.aspectScope), media, fixture.rerankStatus, (phase) => {
 			stage = type.name() + " aspect " + phase;
 		});
-		const decisionURL = await checkDecisions(browser, content, origin+"/cabinet/?"+new URLSearchParams(fixture.decisionScope), media, (phase) => {
-			stage = type.name() + " decision " + phase;
-		});
 		stage = type.name() + " invalid fragment";
 		const invalidFragment = new URL(originalDetail);
 		invalidFragment.searchParams.set("fragment", "0".repeat(64));
@@ -718,10 +728,6 @@ async function test(type) {
 		const derivedTab=await signalsContext.newPage();
         await derivedTab.goto(derivedURL);
         await derivedTab.locator("mark").waitFor();
-        const decisionTab=await signalsContext.newPage();
-        await decisionTab.goto(decisionURL);
-        const decisionText=decisionTab.getByRole("article", { name: "Решение по версии отзыва" });
-        await decisionText.waitFor();
         const logoutTab = await signalsContext.newPage();
 		await logoutTab.goto(origin + "/cabinet/");
 		await logoutTab.getByRole("button", { name: "Выйти" }).click();
@@ -732,8 +738,6 @@ async function test(type) {
 			.waitFor({ state: "detached", timeout: 15000 });
 		await derivedTab.bringToFront();
         await derivedTab.locator("mark").waitFor({state:"detached",timeout:15000});
-        await decisionTab.bringToFront();
-        await decisionText.waitFor({state:"detached",timeout:15000});
         await candidatePage.reload();
         await candidatePage.getByRole("button", { name: "Войти" }).waitFor();
 		assert.equal(await candidatePage.locator("mark").count(), 0);
