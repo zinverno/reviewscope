@@ -20,7 +20,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import aspects, candidate_search, evidence, reviewer_context, signals, store, uploads
+from . import (
+    aspects,
+    candidate_search,
+    decisions,
+    evidence,
+    reviewer_context,
+    signals,
+    store,
+    uploads,
+)
 from .security import normalize, password_proof, server_key, session_proof
 
 LOG = logging.getLogger("reviewscope.access.requests")
@@ -151,6 +160,9 @@ class JobStatus(Run):
             "RESOURCE_LIMIT",
             "UNSUPPORTED_VERSION",
             "INTERNAL_ERROR",
+            "MODEL_UNAVAILABLE",
+            "UNSUPPORTED_DEFINITION",
+            "INVALID_PROFILE",
         ]
         | None
     )
@@ -281,7 +293,7 @@ def create_app():
                     and request.headers.get("content-type", "").split(";")[0] != "application/json"
                 ):
                     raise HTTPException(422)
-                if body and (aspect_write or request.url.path.endswith("/candidates")):
+                if body and (aspect_write or request.url.path.endswith(("/candidates", "/decisions"))):
                     def unique_fields(pairs):
                         fields = dict(pairs)
                         if len(fields) != len(pairs):
@@ -513,7 +525,7 @@ def create_app():
             revision = cur.fetchone()["version_num"]
             projection = {"metrics": None, "context": None}
             if revision != "0006_retention" and job["artifact_id"] is not None:
-                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank"} else "metrics"
+                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions"} else "metrics"
                 cur.execute(
                     f"SELECT {columns} FROM browser_summary WHERE workspace_id=%s AND run_id=%s AND artifact_id=%s",
                     (workspace, job["id"], job["artifact_id"]),
@@ -634,6 +646,7 @@ def create_app():
 
     uploads.install(app, authenticated, key, cookie, local)
     aspects.install(app, authenticated, local, read_contract, write_contract, errors)
+    decisions.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
     candidate_search.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
     signals.install(app, authenticated, key, cookie, local, read_contract, errors)
     evidence.install(app, authenticated, local, read_contract, errors)

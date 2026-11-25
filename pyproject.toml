@@ -41,7 +41,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-reviewscope = ["resources/*.txt", "embeddings/rerank_models.json"]
+reviewscope = ["resources/*.txt", "resources/decision-definitions.json", "resources/decision-lexical-v1.npz", "embeddings/rerank_models.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

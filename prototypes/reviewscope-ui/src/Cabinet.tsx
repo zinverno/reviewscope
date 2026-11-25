@@ -16,6 +16,7 @@ import {
 	SnapshotReviewerContext,
 	privateUuid,
 } from "./SnapshotReviewerContext";
+import { AspectDecisions } from "./AspectDecisions";
 import { Aspects } from "./Aspects";
 import { CandidateSearch } from "./CandidateSearch";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
@@ -114,6 +115,26 @@ const jsonPost = (value: unknown): RequestInit => ({
 });
 function link(changes: Record<string, string>) {
 	const u = new URL(window.location.href);
+	if (
+		changes.view === "decisions" ||
+		(changes.view === "reviews" && u.searchParams.get("view") === "decisions")
+	) {
+		for (const k of [...evidenceFields, "offset", "review"])
+			u.searchParams.delete(k);
+	}
+	if (
+		"view" in changes ||
+		["source", "workspace", "snapshot", "aspectVersion"].some(
+			(k) => k in changes && changes[k] !== u.searchParams.get(k),
+		)
+	)
+		for (const k of [
+			"decisionRun",
+			"decisionReview",
+			"decisionOutcome",
+			"decisionOffset",
+		])
+			u.searchParams.delete(k);
 	if ("candidateRun" in changes || "view" in changes)
 		u.searchParams.delete("rerankRun");
 	if (
@@ -861,6 +882,23 @@ function Cabinet() {
 							/>
 						) : (
 							<p>Нет доступа к определениям.</p>
+						)
+					) : query.get("view") === "decisions" ? (
+						snapshot &&
+						canWrite &&
+						candidateSource &&
+						(!source || source === candidateSource) ? (
+							<AspectDecisions
+								key={workspace + search}
+								workspace={w}
+								source={candidateSource}
+								snapshot={snapshot}
+								search={search}
+								api={api}
+								link={link}
+							/>
+						) : (
+							<p>Оценка недоступна в выбранной области.</p>
 						)
 					) : query.get("view") === "candidates" ? (
 						snapshot &&

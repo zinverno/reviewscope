@@ -100,9 +100,7 @@ def result(summary, rows, params, pulse):
     return doc
 
 
-def child(method, payload, pulse):
-    from operational.worker import JobError, linux_peak_kib
-
+def offline_environment():
     env = {
         k: os.environ[k]
         for k in ("PATH", "HOME", "PYTHONPATH", "HF_HOME", "HF_HUB_CACHE", "TMPDIR", "RS_RERANK_MODELS")
@@ -117,13 +115,19 @@ def child(method, payload, pulse):
         OMP_NUM_THREADS="1",
         OPENBLAS_NUM_THREADS="1",
     )
+    return env
+
+
+def child(method, payload, pulse):
+    from operational.worker import JobError, linux_peak_kib
+
     deadline = monotonic() + 120
     with subprocess.Popen(
         [sys.executable, "-m", "operational.candidate_worker", str(os.getpid()), method],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
-        env=env,
+        env=offline_environment(),
     ) as proc:
         with ThreadPoolExecutor(max_workers=1) as pool:
             reply = pool.submit(proc.communicate, encoded(payload))

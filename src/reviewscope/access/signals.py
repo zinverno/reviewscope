@@ -149,12 +149,45 @@ def read_selection(
     runs = cur.fetchall()
     if q.run_id is None:
         return dict(runs=runs, result=None, artifact_sha256=None)
-    job = store.job_status(cur, workspace, run=q.run_id)
+    doc, sha = read_artifact(
+        cur,
+        actor,
+        workspace,
+        snapshot,
+        q.source_id,
+        q.run_id,
+        request,
+        cookie,
+        key,
+        kind,
+        ticket_kind,
+        op,
+        schema,
+    )
+    return dict(runs=runs, result=doc, artifact_sha256=sha)
+
+
+def read_artifact(
+    cur,
+    actor,
+    workspace,
+    snapshot,
+    source,
+    run,
+    request,
+    cookie,
+    key,
+    kind,
+    ticket_kind,
+    op,
+    schema,
+):
+    job = store.job_status(cur, workspace, run=run)
     if job["job_kind"] != kind or job["snapshot_id"] != snapshot or not job["artifact_id"]:
         raise HTTPException(404)
     cur.execute("SELECT floor(extract(epoch FROM statement_timestamp()))::bigint+25 AS expires")
     expires = cur.fetchone()["expires"]
-    ids = list(map(str, (workspace, q.source_id, snapshot, q.run_id, actor)))
+    ids = list(map(str, (workspace, source, snapshot, run, actor)))
     payload = "|".join([ticket_kind, *ids, str(expires)]).encode()
     proof = session_proof(request.cookies[cookie], key()).encode()
     ticket = hashlib.sha256(
@@ -179,4 +212,4 @@ def read_selection(
     )
     if hashlib.sha256(raw).hexdigest() != job["sha256"]:
         raise HTTPException(503)
-    return dict(runs=runs, result=doc, artifact_sha256=job["sha256"])
+    return doc, job["sha256"]

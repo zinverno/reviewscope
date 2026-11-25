@@ -1,0 +1,33 @@
+{
+  "model": "pair",
+  "dataset": "repeated",
+  "accepted": 10000,
+  "excluded_blank": 0,
+  "loadavg_start": [
+    3.42822265625,
+    6.41650390625,
+    5.12158203125
+  ],
+  "aspect": "queue",
+  "eligible": 10000,
+  "unique_inputs": 2,
+  "corpus_sha256": "b224bb73d4cef82e9295724a50384269197b82ca21b1a7ba4eecc17479a63aad",
+  "evaluated": 10000,
+  "windows": 40000,
+  "encoded_tokens": 258,
+  "published": false,
+  "prepare_s": 10.125365945998055,
+  "unique_encoded": 3,
+  "encode_s": 0.3693965720012784,
+  "segment_s": 5.272894481997355,
+  "head_s": 0.055185877907206304,
+  "aggregate_s": 0.2873725059762364,
+  "cpu_s": 13.489137493,
+  "outputs_sha256": "935fdda1f9e342d2547a9156c8468b733eda54d13d252be5d75080d16eab0997",
+  "status": "COMPLETE",
+  "limit": null,
+  "exit_code": 0,
+  "wall_s": 19.1663475259993,
+  "sampled_child_peak_kib": 1616148,
+  "simultaneous_parent_child_peak_kib": 1730924
+}

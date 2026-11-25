@@ -1,0 +1,4107 @@
+{
+  "freeze_commit": "c03a640",
+  "selection_commit": "044637c",
+  "selection": "pair",
+  "labels": [
+    "complaint",
+    "mixed",
+    "denial",
+    "positive",
+    "neutral",
+    "unclear",
+    "not_mentioned",
+    "topic_uncertain"
+  ],
+  "source": "authored_synthetic",
+  "independent_real_labels": false,
+  "denominator_notes": "Every test review x six aspects. Undefined ratios are null because denominator is zero. Binary metrics exclude ambiguous gold polarity. Known-positive abstentions count as FN end-to-end; known-negative abstentions are reported separately. Macro averages include defined per-class values only.",
+  "split_support": {
+    "train": {
+      "complaint": 23,
+      "not_mentioned": 275,
+      "positive": 7,
+      "denial": 6,
+      "neutral": 6,
+      "mixed": 6,
+      "topic_uncertain": 2,
+      "unclear": 5
+    },
+    "cal": {
+      "complaint": 13,
+      "not_mentioned": 211,
+      "mixed": 6,
+      "denial": 6,
+      "positive": 6,
+      "neutral": 6,
+      "unclear": 1,
+      "topic_uncertain": 3
+    },
+    "test": {
+      "complaint": 26,
+      "not_mentioned": 329,
+      "denial": 7,
+      "positive": 7,
+      "neutral": 6,
+      "mixed": 6,
+      "unclear": 7,
+      "topic_uncertain": 7,
+      "unknown": 1
+    }
+  },
+  "cpu_model": "AMD Ryzen 5 5500U with Radeon Graphics",
+  "platform": "Linux-6.12.108-1-MANJARO-x86_64-with-glibc2.44",
+  "methods": {
+    "lexical": {
+      "metrics": {
+        "n": 396,
+        "evaluated": 396,
+        "defined": 396,
+        "coverage": 1.0,
+        "unknown": 1,
+        "unknown_polarity": 15,
+        "abstention_gold": {},
+        "complaint": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 28,
+          "tn": 348,
+          "abstained_negative": 0,
+          "known": 381,
+          "precision": 0.8,
+          "recall": 0.125,
+          "f1": 0.21621621621621623
+        },
+        "selective": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 28,
+          "tn": 348,
+          "abstained_negative": 0,
+          "known": 381,
+          "precision": 0.8,
+          "recall": 0.125,
+          "f1": 0.21621621621621623
+        },
+        "per_aspect": {
+          "queue": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 6,
+            "tn": 57,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": null,
+            "recall": 0.0,
+            "f1": 0.0,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "handover": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 5,
+            "tn": 54,
+            "abstained_negative": 0,
+            "known": 62,
+            "precision": 1.0,
+            "recall": 0.375,
+            "f1": 0.5454545454545454,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "charge": {
+            "tp": 0,
+            "fp": 1,
+            "fn": 4,
+            "tn": 58,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "missing": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 4,
+            "tn": 60,
+            "abstained_negative": 0,
+            "known": 65,
+            "precision": 1.0,
+            "recall": 0.2,
+            "f1": 0.3333333333333333,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "food": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 4,
+            "tn": 61,
+            "abstained_negative": 0,
+            "known": 65,
+            "precision": null,
+            "recall": 0.0,
+            "f1": 0.0,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "staff": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 5,
+            "tn": 58,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": null,
+            "recall": 0.0,
+            "f1": 0.0,
+            "n": 66,
+            "coverage": 1.0
+          }
+        },
+        "outcome": {
+          "matrix": {
+            "complaint": {
+              "complaint": 3,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 23,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "denial": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "mixed": {
+              "complaint": 1,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 5,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "neutral": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 6,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "not_mentioned": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 329,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "positive": {
+              "complaint": 1,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 6,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "topic_uncertain": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "unclear": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            }
+          },
+          "per_class": {
+            "complaint": {
+              "support": 26,
+              "precision": 0.6,
+              "recall": 0.11538461538461539,
+              "f1": 0.1935483870967742
+            },
+            "denial": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "mixed": {
+              "support": 6,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "neutral": {
+              "support": 6,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "not_mentioned": {
+              "support": 329,
+              "precision": 0.8435897435897436,
+              "recall": 1.0,
+              "f1": 0.9151599443671766
+            },
+            "positive": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "topic_uncertain": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "unclear": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            }
+          },
+          "macro": {
+            "precision": 0.7217948717948718,
+            "recall": 0.13942307692307693,
+            "f1": 0.13858854143299384
+          },
+          "micro_prf": 0.8405063291139241
+        },
+        "relevance": {
+          "matrix": {
+            "mentioned": {
+              "mentioned": 5,
+              "not_mentioned": 54,
+              "topic_uncertain": 0
+            },
+            "not_mentioned": {
+              "mentioned": 0,
+              "not_mentioned": 329,
+              "topic_uncertain": 0
+            },
+            "topic_uncertain": {
+              "mentioned": 0,
+              "not_mentioned": 7,
+              "topic_uncertain": 0
+            }
+          },
+          "per_class": {
+            "mentioned": {
+              "support": 59,
+              "precision": 1.0,
+              "recall": 0.0847457627118644,
+              "f1": 0.15625
+            },
+            "not_mentioned": {
+              "support": 329,
+              "precision": 0.8435897435897436,
+              "recall": 1.0,
+              "f1": 0.9151599443671766
+            },
+            "topic_uncertain": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            }
+          },
+          "macro": {
+            "precision": 0.9217948717948719,
+            "recall": 0.3615819209039548,
+            "f1": 0.35713664812239215
+          },
+          "micro_prf": 0.8455696202531645
+        },
+        "stance": {
+          "matrix": {
+            "complaint": {
+              "complaint": 3,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 23,
+              "positive": 0,
+              "unclear": 0
+            },
+            "denial": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "unclear": 0
+            },
+            "mixed": {
+              "complaint": 1,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 5,
+              "positive": 0,
+              "unclear": 0
+            },
+            "neutral": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 6,
+              "positive": 0,
+              "unclear": 0
+            },
+            "not_mentioned": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 0,
+              "positive": 0,
+              "unclear": 0
+            },
+            "positive": {
+              "complaint": 1,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 6,
+              "positive": 0,
+              "unclear": 0
+            },
+            "unclear": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "unclear": 0
+            }
+          },
+          "per_class": {
+            "complaint": {
+              "support": 26,
+              "precision": 0.6,
+              "recall": 0.11538461538461539,
+              "f1": 0.1935483870967742
+            },
+            "denial": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "mixed": {
+              "support": 6,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "neutral": {
+              "support": 6,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "not_mentioned": {
+              "support": 0,
+              "precision": 0.0,
+              "recall": null,
+              "f1": 0.0
+            },
+            "positive": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "unclear": {
+              "support": 7,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            }
+          },
+          "macro": {
+            "precision": 0.3,
+            "recall": 0.019230769230769232,
+            "f1": 0.027649769585253454
+          },
+          "micro_prf": 0.05084745762711865
+        },
+        "denial_fp": [
+          0,
+          7
+        ],
+        "mixed_recall": [
+          1,
+          6
+        ],
+        "tail_recall": [
+          0,
+          2
+        ],
+        "gate_pass": false,
+        "macro_aspect_complaint": {
+          "precision": 0.6666666666666666,
+          "recall": 0.09583333333333334,
+          "f1": 0.14646464646464646
+        }
+      },
+      "errors": [
+        {
+          "id": "test-001",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              84,
+              "Два поезда ушло с соседней платформы, прежде чем продавец вообще начал меня слушать."
+            ]
+          ]
+        },
+        {
+          "id": "test-002",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              85,
+              "Стояла с подносом у входа, заказ записать некому, через двадцать минут ушла голодная."
+            ]
+          ]
+        },
+        {
+          "id": "test-003",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              105,
+              "На единственном экране посетители по одному набирали блюда; пробиться к началу оформления было нереально."
+            ]
+          ]
+        },
+        {
+          "id": "test-007",
+          "aspect": "queue",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              98,
+              "Детский заказ начали оформлять быстро, а до приёма моего пришлось отстоять второй длиннющий хвост."
+            ]
+          ]
+        },
+        {
+          "id": "test-058",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              52,
+              "Для входа к кассе пришлось убить почти весь перерыв."
+            ]
+          ]
+        },
+        {
+          "id": "test-066",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              331,
+              428,
+              "Однако наш черёд назвать заказ в кассе наступил только после мучительных тридцати минут ожидания."
+            ]
+          ]
+        },
+        {
+          "id": "test-009",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              87,
+              "Фотку готового торта прислали ещё в полдень. В витрине его видела, забрала лишь к часу."
+            ]
+          ]
+        },
+        {
+          "id": "test-010",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              93,
+              "За стеклом давно лежала наша перевязанная коробка, ключ от окна раздачи искали четверть часа."
+            ]
+          ]
+        },
+        {
+          "id": "test-011",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              79,
+              "Чек позеленел. Наша еда уже запакована. Её носили мимо нас и никак не отдавали."
+            ]
+          ]
+        },
+        {
+          "id": "test-015",
+          "aspect": "handover",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            89
+          ],
+          "gold_spans": [
+            [
+              0,
+              89,
+              "Большую готовую коробку вынесли без промедления, но маленькую держали у себя до закрытия."
+            ]
+          ]
+        },
+        {
+          "id": "test-060",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              27,
+              86,
+              "За уже закрытым стаканом пришлось напоминать снова и снова."
+            ]
+          ]
+        },
+        {
+          "id": "test-065",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              396,
+              533,
+              "Всё это время наш уже подписанный, заклеенный и готовый к вручению пакет так и стоял одиноко за стойкой до моего требования его передать."
+            ]
+          ]
+        },
+        {
+          "id": "test-017",
+          "aspect": "charge",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              78,
+              "Разово поужинал, а кредитка похудела на два ужина, обе операции окончательные."
+            ]
+          ]
+        },
+        {
+          "id": "test-018",
+          "aspect": "charge",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              82,
+              "У банка на один и тот же чек две исполненных транзакции. Переплату пока не отдали."
+            ]
+          ]
+        },
+        {
+          "id": "test-019",
+          "aspect": "charge",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              60,
+              "Число оплат за одну лепёшку на выписке оказалось равно двум."
+            ]
+          ]
+        },
+        {
+          "id": "test-021",
+          "aspect": "charge",
+          "gold": "positive",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            57
+          ],
+          "gold_spans": [
+            [
+              0,
+              57,
+              "Хорошо, что один чай отразился в расходах ровно один раз."
+            ]
+          ]
+        },
+        {
+          "id": "test-023",
+          "aspect": "charge",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              79,
+              "Бизнес-ланч вчера посчитали дважды, за сегодняшний единственный платёж спасибо."
+            ]
+          ]
+        },
+        {
+          "id": "test-025",
+          "aspect": "missing",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              85,
+              "Фруктовую добавку включили в цену, а я её так и не нашла ни в одном отделении пакета."
+            ]
+          ]
+        },
+        {
+          "id": "test-027",
+          "aspect": "missing",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              69,
+              "На семью взяли четыре пирога, раскрыли дома только три — не долажили."
+            ]
+          ]
+        },
+        {
+          "id": "test-031",
+          "aspect": "missing",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              74,
+              "В одной сумке всё сошлось со списком, во второй не хватало купленной колы."
+            ]
+          ]
+        },
+        {
+          "id": "test-061",
+          "aspect": "missing",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              50,
+              "Заплатили и за закуску, в доставке она потерялась."
+            ]
+          ]
+        },
+        {
+          "id": "test-033",
+          "aspect": "food",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              54,
+              "Тесто посередине лепёшки липнет к пальцам, явно сырое."
+            ]
+          ]
+        },
+        {
+          "id": "test-034",
+          "aspect": "food",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              50,
+              "Горькое вчерашнее масло в пончиках отбило аппетит."
+            ]
+          ]
+        },
+        {
+          "id": "test-035",
+          "aspect": "food",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              54,
+              "Брал похлёбку погреться, а в тарелке ледяная жидкость."
+            ]
+          ]
+        },
+        {
+          "id": "test-039",
+          "aspect": "food",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              59,
+              "Верх гренки аппетитно хрустит, снизу горелая и несъедобная."
+            ]
+          ]
+        },
+        {
+          "id": "test-041",
+          "aspect": "staff",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              58,
+              "Кассир обозвал посетительницу нищенкой при оплате мелочью."
+            ]
+          ]
+        },
+        {
+          "id": "test-042",
+          "aspect": "staff",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              67,
+              "Человек в фартуке начал дразнить мой акцент, когда я спросила цену."
+            ]
+          ]
+        },
+        {
+          "id": "test-043",
+          "aspect": "staff",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              64,
+              "На фразу о сдаче мне швырнули вслед ругательство из-за прилавка."
+            ]
+          ]
+        },
+        {
+          "id": "test-047",
+          "aspect": "staff",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              70,
+              "Один работник посмеялся над моим ростом, другой поговорил с уважением."
+            ]
+          ]
+        },
+        {
+          "id": "test-061",
+          "aspect": "staff",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              51,
+              115,
+              "Жалобу на комплектность встретили словами «сам виноват, дурень»."
+            ]
+          ]
+        }
+      ],
+      "exact_repeat_sha256": "29b9a23ea2cb5e79b22387b886076c82b39d89c4f6a2798451a4bb02a192b2e9",
+      "fit_resources": {
+        "prepare_s": 0.010117450001416728,
+        "wall_s": 0.16473858400422614,
+        "cpu_s": 0.16360617600000005,
+        "fit_s": 0.07615826099936385,
+        "infer_s": 0.00033117501152446494,
+        "aggregate_s": 0.026841783997952007,
+        "encode_s": 0.04275171300832881,
+        "segment_s": 0.0006344099965645,
+        "windows": 582,
+        "tokens": null,
+        "unique_encoded": null,
+        "rss_kib": 259944,
+        "sklearn": "1.9.1",
+        "numpy": "2.5.3",
+        "ml_runtime": null,
+        "results": 252
+      },
+      "test_resources": [
+        {
+          "prepare_s": 0.012224432000948582,
+          "wall_s": 0.07880575599847361,
+          "cpu_s": 0.07164731099999999,
+          "fit_s": 0.0,
+          "infer_s": 0.00045491998753277585,
+          "aggregate_s": 0.004570944998704363,
+          "encode_s": 0.04141183800675208,
+          "segment_s": 0.0004178989984211512,
+          "windows": 438,
+          "tokens": null,
+          "unique_encoded": null,
+          "rss_kib": 242716,
+          "sklearn": "1.9.1",
+          "numpy": "2.5.3",
+          "ml_runtime": null,
+          "results": 396
+        },
+        {
+          "prepare_s": 0.01595736699528061,
+          "wall_s": 0.09617938999872422,
+          "cpu_s": 0.092381139,
+          "fit_s": 0.0,
+          "infer_s": 0.0006947719812160358,
+          "aggregate_s": 0.005972418999590445,
+          "encode_s": 0.051499400004104245,
+          "segment_s": 0.0006551179976668209,
+          "windows": 438,
+          "tokens": null,
+          "unique_encoded": null,
+          "rss_kib": 242800,
+          "sklearn": "1.9.1",
+          "numpy": "2.5.3",
+          "ml_runtime": null,
+          "results": 396
+        }
+      ]
+    },
+    "minilm": {
+      "metrics": {
+        "n": 396,
+        "evaluated": 396,
+        "defined": 391,
+        "coverage": 0.9873737373737373,
+        "unknown": 1,
+        "unknown_polarity": 15,
+        "abstention_gold": {
+          "topic_uncertain": 2,
+          "neutral": 1,
+          "unclear": 2
+        },
+        "complaint": {
+          "tp": 24,
+          "fp": 12,
+          "fn": 8,
+          "tn": 336,
+          "abstained_negative": 1,
+          "known": 381,
+          "precision": 0.6666666666666666,
+          "recall": 0.75,
+          "f1": 0.7058823529411765
+        },
+        "selective": {
+          "tp": 24,
+          "fp": 12,
+          "fn": 8,
+          "tn": 336,
+          "abstained_negative": 0,
+          "known": 380,
+          "precision": 0.6666666666666666,
+          "recall": 0.75,
+          "f1": 0.7058823529411765
+        },
+        "per_aspect": {
+          "queue": {
+            "tp": 3,
+            "fp": 3,
+            "fn": 3,
+            "tn": 54,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.5,
+            "recall": 0.5,
+            "f1": 0.5,
+            "n": 66,
+            "coverage": 0.9848484848484849
+          },
+          "handover": {
+            "tp": 6,
+            "fp": 3,
+            "fn": 2,
+            "tn": 51,
+            "abstained_negative": 0,
+            "known": 62,
+            "precision": 0.6666666666666666,
+            "recall": 0.75,
+            "f1": 0.7058823529411765,
+            "n": 66,
+            "coverage": 0.9848484848484849
+          },
+          "charge": {
+            "tp": 4,
+            "fp": 2,
+            "fn": 0,
+            "tn": 57,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.6666666666666666,
+            "recall": 1.0,
+            "f1": 0.8,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "missing": {
+            "tp": 4,
+            "fp": 1,
+            "fn": 1,
+            "tn": 59,
+            "abstained_negative": 0,
+            "known": 65,
+            "precision": 0.8,
+            "recall": 0.8,
+            "f1": 0.8,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "food": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 1,
+            "tn": 60,
+            "abstained_negative": 1,
+            "known": 65,
+            "precision": 1.0,
+            "recall": 0.75,
+            "f1": 0.8571428571428571,
+            "n": 66,
+            "coverage": 0.9848484848484849
+          },
+          "staff": {
+            "tp": 4,
+            "fp": 3,
+            "fn": 1,
+            "tn": 55,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.5714285714285714,
+            "recall": 0.8,
+            "f1": 0.6666666666666666,
+            "n": 66,
+            "coverage": 0.9696969696969697
+          }
+        },
+        "outcome": {
+          "matrix": {
+            "complaint": {
+              "complaint": 19,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "denial": {
+              "complaint": 3,
+              "denial": 1,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 2,
+              "positive": 1,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "mixed": {
+              "complaint": 5,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 1,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "neutral": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 1,
+              "topic_uncertain": 0,
+              "unclear": 1
+            },
+            "not_mentioned": {
+              "complaint": 6,
+              "denial": 1,
+              "mixed": 0,
+              "neutral": 1,
+              "not_mentioned": 321,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "positive": {
+              "complaint": 2,
+              "denial": 0,
+              "mixed": 1,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "topic_uncertain": {
+              "complaint": 2,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 3,
+              "positive": 0,
+              "topic_uncertain": 2,
+              "unclear": 0
+            },
+            "unclear": {
+              "complaint": 1,
+              "denial": 0,
+              "mixed": 1,
+              "neutral": 0,
+              "not_mentioned": 3,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 2
+            }
+          },
+          "per_class": {
+            "complaint": {
+              "support": 26,
+              "precision": 0.5,
+              "recall": 0.7307692307692307,
+              "f1": 0.59375
+            },
+            "denial": {
+              "support": 7,
+              "precision": 0.5,
+              "recall": 0.14285714285714285,
+              "f1": 0.2222222222222222
+            },
+            "mixed": {
+              "support": 6,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "neutral": {
+              "support": 6,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "not_mentioned": {
+              "support": 329,
+              "precision": 0.9304347826086956,
+              "recall": 0.9756838905775076,
+              "f1": 0.9525222551928784
+            },
+            "positive": {
+              "support": 7,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "topic_uncertain": {
+              "support": 7,
+              "precision": 1.0,
+              "recall": 0.2857142857142857,
+              "f1": 0.4444444444444444
+            },
+            "unclear": {
+              "support": 7,
+              "precision": 0.6666666666666666,
+              "recall": 0.2857142857142857,
+              "f1": 0.4
+            }
+          },
+          "macro": {
+            "precision": 0.44963768115942027,
+            "recall": 0.3025923544540566,
+            "f1": 0.3266173652324431
+          },
+          "micro_prf": 0.8734177215189873
+        },
+        "relevance": {
+          "matrix": {
+            "mentioned": {
+              "mentioned": 38,
+              "not_mentioned": 21,
+              "topic_uncertain": 0
+            },
+            "not_mentioned": {
+              "mentioned": 8,
+              "not_mentioned": 321,
+              "topic_uncertain": 0
+            },
+            "topic_uncertain": {
+              "mentioned": 2,
+              "not_mentioned": 3,
+              "topic_uncertain": 2
+            }
+          },
+          "per_class": {
+            "mentioned": {
+              "support": 59,
+              "precision": 0.7916666666666666,
+              "recall": 0.6440677966101694,
+              "f1": 0.7102803738317757
+            },
+            "not_mentioned": {
+              "support": 329,
+              "precision": 0.9304347826086956,
+              "recall": 0.9756838905775076,
+              "f1": 0.9525222551928784
+            },
+            "topic_uncertain": {
+              "support": 7,
+              "precision": 1.0,
+              "recall": 0.2857142857142857,
+              "f1": 0.4444444444444444
+            }
+          },
+          "macro": {
+            "precision": 0.907367149758454,
+            "recall": 0.6351553243006541,
+            "f1": 0.7024156911563662
+          },
+          "micro_prf": 0.9139240506329114
+        },
+        "stance": {
+          "matrix": {
+            "complaint": {
+              "complaint": 19,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 7,
+              "positive": 0,
+              "unclear": 0
+            },
+            "denial": {
+              "complaint": 3,
+              "denial": 1,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 2,
+              "positive": 1,
+              "unclear": 0
+            },
+            "mixed": {
+              "complaint": 5,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 1,
+              "positive": 0,
+              "unclear": 0
+            },
+            "neutral": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 1,
+              "unclear": 1
+            },
+            "not_mentioned": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 0,
+              "positive": 0,
+              "unclear": 0
+            },
+            "positive": {
+              "complaint": 2,
+              "denial": 0,
+              "mixed": 1,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 0,
+              "unclear": 0
+            },
+            "unclear": {
+              "complaint": 1,
+              "denial": 0,
+              "mixed": 1,
+              "neutral": 0,
+              "not_mentioned": 3,
+              "positive": 0,
+              "unclear": 2
+            }
+          },
+          "per_class": {
+            "complaint": {
+              "support": 26,
+              "precision": 0.6333333333333333,
+              "recall": 0.7307692307692307,
+              "f1": 0.6785714285714286
+            },
+            "denial": {
+              "support": 7,
+              "precision": 1.0,
+              "recall": 0.14285714285714285,
+              "f1": 0.25
+            },
+            "mixed": {
+              "support": 6,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "neutral": {
+              "support": 6,
+              "precision": null,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "not_mentioned": {
+              "support": 0,
+              "precision": 0.0,
+              "recall": null,
+              "f1": 0.0
+            },
+            "positive": {
+              "support": 7,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "unclear": {
+              "support": 7,
+              "precision": 0.6666666666666666,
+              "recall": 0.2857142857142857,
+              "f1": 0.4
+            }
+          },
+          "macro": {
+            "precision": 0.3833333333333333,
+            "recall": 0.1932234432234432,
+            "f1": 0.18979591836734697
+          },
+          "micro_prf": 0.3728813559322034
+        },
+        "denial_fp": [
+          3,
+          7
+        ],
+        "mixed_recall": [
+          5,
+          6
+        ],
+        "tail_recall": [
+          1,
+          2
+        ],
+        "gate_pass": false,
+        "macro_aspect_complaint": {
+          "precision": 0.7007936507936507,
+          "recall": 0.7666666666666667,
+          "f1": 0.7216153127917834
+        }
+      },
+      "errors": [
+        {
+          "id": "test-001",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              84,
+              "Два поезда ушло с соседней платформы, прежде чем продавец вообще начал меня слушать."
+            ]
+          ]
+        },
+        {
+          "id": "test-004",
+          "aspect": "queue",
+          "gold": "denial",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            81
+          ],
+          "gold_spans": [
+            [
+              0,
+              81,
+              "Не правда, что мы толкались перед заказом: к девушке с блокнотом подошли первыми."
+            ]
+          ]
+        },
+        {
+          "id": "test-007",
+          "aspect": "queue",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              98,
+              "Детский заказ начали оформлять быстро, а до приёма моего пришлось отстоять второй длиннющий хвост."
+            ]
+          ]
+        },
+        {
+          "id": "test-009",
+          "aspect": "queue",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            87
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-058",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              52,
+              "Для входа к кассе пришлось убить почти весь перерыв."
+            ]
+          ]
+        },
+        {
+          "id": "test-065",
+          "aspect": "queue",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            448,
+            533
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-002",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            85
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-013",
+          "aspect": "handover",
+          "gold": "positive",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            64
+          ],
+          "gold_spans": [
+            [
+              0,
+              64,
+              "Готовый ланч сам прыгнул ко мне в руки, так оперативно передали!"
+            ]
+          ]
+        },
+        {
+          "id": "test-015",
+          "aspect": "handover",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            89
+          ],
+          "gold_spans": [
+            [
+              0,
+              89,
+              "Большую готовую коробку вынесли без промедления, но маленькую держали у себя до закрытия."
+            ]
+          ]
+        },
+        {
+          "id": "test-016",
+          "aspect": "handover",
+          "gold": "unclear",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            86
+          ],
+          "gold_spans": [
+            [
+              0,
+              86,
+              "Нам передали готовый набор. Считается ли долгая церемония вручения задержкой, не знаю."
+            ]
+          ]
+        },
+        {
+          "id": "test-050",
+          "aspect": "handover",
+          "gold": "topic_uncertain",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            90
+          ],
+          "gold_spans": [
+            [
+              0,
+              90,
+              "«Ну и быстро же мы управились» — так и записал после сорока минут, этап вылетел из головы."
+            ]
+          ]
+        },
+        {
+          "id": "test-060",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              27,
+              86,
+              "За уже закрытым стаканом пришлось напоминать снова и снова."
+            ]
+          ]
+        },
+        {
+          "id": "test-065",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              396,
+              533,
+              "Всё это время наш уже подписанный, заклеенный и готовый к вручению пакет так и стоял одиноко за стойкой до моего требования его передать."
+            ]
+          ]
+        },
+        {
+          "id": "test-066",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            336,
+            428
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-020",
+          "aspect": "charge",
+          "gold": "denial",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            67
+          ],
+          "gold_spans": [
+            [
+              0,
+              67,
+              "Со счёта всё же не вычли повторную сумму: вторая операция отменена."
+            ]
+          ]
+        },
+        {
+          "id": "test-021",
+          "aspect": "charge",
+          "gold": "positive",
+          "outcome": "mixed",
+          "model_context": [
+            0,
+            57
+          ],
+          "gold_spans": [
+            [
+              0,
+              57,
+              "Хорошо, что один чай отразился в расходах ровно один раз."
+            ]
+          ]
+        },
+        {
+          "id": "test-023",
+          "aspect": "charge",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            79
+          ],
+          "gold_spans": [
+            [
+              0,
+              79,
+              "Бизнес-ланч вчера посчитали дважды, за сегодняшний единственный платёж спасибо."
+            ]
+          ]
+        },
+        {
+          "id": "test-011",
+          "aspect": "missing",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            79
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-031",
+          "aspect": "missing",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            74
+          ],
+          "gold_spans": [
+            [
+              0,
+              74,
+              "В одной сумке всё сошлось со списком, во второй не хватало купленной колы."
+            ]
+          ]
+        },
+        {
+          "id": "test-061",
+          "aspect": "missing",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              50,
+              "Заплатили и за закуску, в доставке она потерялась."
+            ]
+          ]
+        },
+        {
+          "id": "test-033",
+          "aspect": "food",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              54,
+              "Тесто посередине лепёшки липнет к пальцам, явно сырое."
+            ]
+          ]
+        },
+        {
+          "id": "test-039",
+          "aspect": "food",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            59
+          ],
+          "gold_spans": [
+            [
+              0,
+              59,
+              "Верх гренки аппетитно хрустит, снизу горелая и несъедобная."
+            ]
+          ]
+        },
+        {
+          "id": "test-040",
+          "aspect": "food",
+          "gold": "unclear",
+          "outcome": "mixed",
+          "model_context": [
+            0,
+            61
+          ],
+          "gold_spans": [
+            [
+              0,
+              61,
+              "Сметана кислит; это особенность рецепта или она уже прокисла?"
+            ]
+          ]
+        },
+        {
+          "id": "test-041",
+          "aspect": "staff",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              58,
+              "Кассир обозвал посетительницу нищенкой при оплате мелочью."
+            ]
+          ]
+        },
+        {
+          "id": "test-044",
+          "aspect": "staff",
+          "gold": "denial",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            47
+          ],
+          "gold_spans": [
+            [
+              0,
+              47,
+              "Зря пугали хамством, мне здесь никто не грубил."
+            ]
+          ]
+        },
+        {
+          "id": "test-045",
+          "aspect": "staff",
+          "gold": "positive",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            71
+          ],
+          "gold_spans": [
+            [
+              0,
+              71,
+              "Поговорили со мной удивительно бережно, несмотря на мой плохой русский."
+            ]
+          ]
+        },
+        {
+          "id": "test-047",
+          "aspect": "staff",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            70
+          ],
+          "gold_spans": [
+            [
+              0,
+              70,
+              "Один работник посмеялся над моим ростом, другой поговорил с уважением."
+            ]
+          ]
+        },
+        {
+          "id": "test-056",
+          "aspect": "staff",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            49
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-063",
+          "aspect": "staff",
+          "gold": "topic_uncertain",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            78
+          ],
+          "gold_spans": [
+            [
+              0,
+              78,
+              "У соседнего входа кто-то громко ругался, имел ли он отношение к кафе, не знаю."
+            ]
+          ]
+        }
+      ],
+      "exact_repeat_sha256": "0df72fb0f6604c959ac16deeda3bac0625d06484587b5e9f0f3671b63a7d5280",
+      "fit_resources": {
+        "prepare_s": 9.474862928997027,
+        "wall_s": 14.259897146002913,
+        "cpu_s": 10.688265105,
+        "fit_s": 0.4050848960032454,
+        "infer_s": 0.0010935859972960316,
+        "aggregate_s": 0.2716775199951371,
+        "encode_s": 4.019824099996185,
+        "segment_s": 0.0712362920094165,
+        "windows": 582,
+        "tokens": 2168,
+        "unique_encoded": 128,
+        "rss_kib": 1348404,
+        "sklearn": "1.9.1",
+        "numpy": "2.5.3",
+        "ml_runtime": "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0",
+        "results": 252
+      },
+      "test_resources": [
+        {
+          "prepare_s": 7.520858769996266,
+          "wall_s": 11.921659154999361,
+          "cpu_s": 9.786795598,
+          "fit_s": 0.0,
+          "infer_s": 0.014184061001287773,
+          "aggregate_s": 0.015390491993457545,
+          "encode_s": 4.202133752005466,
+          "segment_s": 0.05858573599107331,
+          "windows": 438,
+          "tokens": 2262,
+          "unique_encoded": 104,
+          "rss_kib": 1541220,
+          "sklearn": "1.9.1",
+          "numpy": "2.5.3",
+          "ml_runtime": "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0",
+          "results": 396
+        },
+        {
+          "prepare_s": 16.63294710199989,
+          "wall_s": 22.50468231299601,
+          "cpu_s": 16.39052592,
+          "fit_s": 0.0,
+          "infer_s": 0.049195403000339866,
+          "aggregate_s": 0.028543453001475427,
+          "encode_s": 5.382057517002977,
+          "segment_s": 0.08434698599012336,
+          "windows": 438,
+          "tokens": 2262,
+          "unique_encoded": 104,
+          "rss_kib": 1220800,
+          "sklearn": "1.9.1",
+          "numpy": "2.5.3",
+          "ml_runtime": "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0",
+          "results": 396
+        }
+      ]
+    },
+    "pair": {
+      "metrics": {
+        "n": 396,
+        "evaluated": 396,
+        "defined": 390,
+        "coverage": 0.9848484848484849,
+        "unknown": 1,
+        "unknown_polarity": 15,
+        "abstention_gold": {
+          "topic_uncertain": 2,
+          "neutral": 1,
+          "unclear": 3
+        },
+        "complaint": {
+          "tp": 24,
+          "fp": 22,
+          "fn": 8,
+          "tn": 326,
+          "abstained_negative": 1,
+          "known": 381,
+          "precision": 0.5217391304347826,
+          "recall": 0.75,
+          "f1": 0.6153846153846154
+        },
+        "selective": {
+          "tp": 24,
+          "fp": 22,
+          "fn": 8,
+          "tn": 326,
+          "abstained_negative": 0,
+          "known": 380,
+          "precision": 0.5217391304347826,
+          "recall": 0.75,
+          "f1": 0.6153846153846154
+        },
+        "per_aspect": {
+          "queue": {
+            "tp": 3,
+            "fp": 5,
+            "fn": 3,
+            "tn": 52,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.375,
+            "recall": 0.5,
+            "f1": 0.42857142857142855,
+            "n": 66,
+            "coverage": 0.9848484848484849
+          },
+          "handover": {
+            "tp": 7,
+            "fp": 8,
+            "fn": 1,
+            "tn": 46,
+            "abstained_negative": 0,
+            "known": 62,
+            "precision": 0.4666666666666667,
+            "recall": 0.875,
+            "f1": 0.6086956521739131,
+            "n": 66,
+            "coverage": 0.9848484848484849
+          },
+          "charge": {
+            "tp": 2,
+            "fp": 1,
+            "fn": 2,
+            "tn": 58,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.6666666666666666,
+            "recall": 0.5,
+            "f1": 0.5714285714285714,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "missing": {
+            "tp": 4,
+            "fp": 2,
+            "fn": 1,
+            "tn": 58,
+            "abstained_negative": 0,
+            "known": 65,
+            "precision": 0.6666666666666666,
+            "recall": 0.8,
+            "f1": 0.7272727272727273,
+            "n": 66,
+            "coverage": 1.0
+          },
+          "food": {
+            "tp": 4,
+            "fp": 1,
+            "fn": 0,
+            "tn": 59,
+            "abstained_negative": 1,
+            "known": 65,
+            "precision": 0.8,
+            "recall": 1.0,
+            "f1": 0.8888888888888888,
+            "n": 66,
+            "coverage": 0.9696969696969697
+          },
+          "staff": {
+            "tp": 4,
+            "fp": 5,
+            "fn": 1,
+            "tn": 53,
+            "abstained_negative": 0,
+            "known": 63,
+            "precision": 0.4444444444444444,
+            "recall": 0.8,
+            "f1": 0.5714285714285714,
+            "n": 66,
+            "coverage": 0.9696969696969697
+          }
+        },
+        "outcome": {
+          "matrix": {
+            "complaint": {
+              "complaint": 19,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 1,
+              "not_mentioned": 6,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "denial": {
+              "complaint": 3,
+              "denial": 2,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 2,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "mixed": {
+              "complaint": 5,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 1,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "neutral": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 1,
+              "not_mentioned": 3,
+              "positive": 1,
+              "topic_uncertain": 0,
+              "unclear": 1
+            },
+            "not_mentioned": {
+              "complaint": 15,
+              "denial": 2,
+              "mixed": 1,
+              "neutral": 2,
+              "not_mentioned": 307,
+              "positive": 2,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "positive": {
+              "complaint": 2,
+              "denial": 0,
+              "mixed": 1,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 0
+            },
+            "topic_uncertain": {
+              "complaint": 2,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 3,
+              "positive": 0,
+              "topic_uncertain": 2,
+              "unclear": 0
+            },
+            "unclear": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 0,
+              "topic_uncertain": 0,
+              "unclear": 3
+            }
+          },
+          "per_class": {
+            "complaint": {
+              "support": 26,
+              "precision": 0.41304347826086957,
+              "recall": 0.7307692307692307,
+              "f1": 0.5277777777777778
+            },
+            "denial": {
+              "support": 7,
+              "precision": 0.5,
+              "recall": 0.2857142857142857,
+              "f1": 0.36363636363636365
+            },
+            "mixed": {
+              "support": 6,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "neutral": {
+              "support": 6,
+              "precision": 0.25,
+              "recall": 0.16666666666666666,
+              "f1": 0.2
+            },
+            "not_mentioned": {
+              "support": 329,
+              "precision": 0.9303030303030303,
+              "recall": 0.9331306990881459,
+              "f1": 0.9317147192716236
+            },
+            "positive": {
+              "support": 7,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "topic_uncertain": {
+              "support": 7,
+              "precision": 1.0,
+              "recall": 0.2857142857142857,
+              "f1": 0.4444444444444444
+            },
+            "unclear": {
+              "support": 7,
+              "precision": 0.75,
+              "recall": 0.42857142857142855,
+              "f1": 0.5454545454545454
+            }
+          },
+          "macro": {
+            "precision": 0.4804183135704875,
+            "recall": 0.35382082456550545,
+            "f1": 0.37662848132309434
+          },
+          "micro_prf": 0.8455696202531645
+        },
+        "relevance": {
+          "matrix": {
+            "mentioned": {
+              "mentioned": 39,
+              "not_mentioned": 20,
+              "topic_uncertain": 0
+            },
+            "not_mentioned": {
+              "mentioned": 22,
+              "not_mentioned": 307,
+              "topic_uncertain": 0
+            },
+            "topic_uncertain": {
+              "mentioned": 2,
+              "not_mentioned": 3,
+              "topic_uncertain": 2
+            }
+          },
+          "per_class": {
+            "mentioned": {
+              "support": 59,
+              "precision": 0.6190476190476191,
+              "recall": 0.6610169491525424,
+              "f1": 0.639344262295082
+            },
+            "not_mentioned": {
+              "support": 329,
+              "precision": 0.9303030303030303,
+              "recall": 0.9331306990881459,
+              "f1": 0.9317147192716236
+            },
+            "topic_uncertain": {
+              "support": 7,
+              "precision": 1.0,
+              "recall": 0.2857142857142857,
+              "f1": 0.4444444444444444
+            }
+          },
+          "macro": {
+            "precision": 0.8497835497835498,
+            "recall": 0.6266206446516579,
+            "f1": 0.6718344753370499
+          },
+          "micro_prf": 0.8810126582278481
+        },
+        "stance": {
+          "matrix": {
+            "complaint": {
+              "complaint": 19,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 1,
+              "not_mentioned": 6,
+              "positive": 0,
+              "unclear": 0
+            },
+            "denial": {
+              "complaint": 3,
+              "denial": 2,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 2,
+              "positive": 0,
+              "unclear": 0
+            },
+            "mixed": {
+              "complaint": 5,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 1,
+              "positive": 0,
+              "unclear": 0
+            },
+            "neutral": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 1,
+              "not_mentioned": 3,
+              "positive": 1,
+              "unclear": 1
+            },
+            "not_mentioned": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 0,
+              "positive": 0,
+              "unclear": 0
+            },
+            "positive": {
+              "complaint": 2,
+              "denial": 0,
+              "mixed": 1,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 0,
+              "unclear": 0
+            },
+            "unclear": {
+              "complaint": 0,
+              "denial": 0,
+              "mixed": 0,
+              "neutral": 0,
+              "not_mentioned": 4,
+              "positive": 0,
+              "unclear": 3
+            }
+          },
+          "per_class": {
+            "complaint": {
+              "support": 26,
+              "precision": 0.6551724137931034,
+              "recall": 0.7307692307692307,
+              "f1": 0.6909090909090909
+            },
+            "denial": {
+              "support": 7,
+              "precision": 1.0,
+              "recall": 0.2857142857142857,
+              "f1": 0.4444444444444444
+            },
+            "mixed": {
+              "support": 6,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "neutral": {
+              "support": 6,
+              "precision": 0.5,
+              "recall": 0.16666666666666666,
+              "f1": 0.25
+            },
+            "not_mentioned": {
+              "support": 0,
+              "precision": 0.0,
+              "recall": null,
+              "f1": 0.0
+            },
+            "positive": {
+              "support": 7,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0
+            },
+            "unclear": {
+              "support": 7,
+              "precision": 0.75,
+              "recall": 0.42857142857142855,
+              "f1": 0.5454545454545454
+            }
+          },
+          "macro": {
+            "precision": 0.4150246305418719,
+            "recall": 0.2686202686202686,
+            "f1": 0.2758297258297258
+          },
+          "micro_prf": 0.423728813559322
+        },
+        "denial_fp": [
+          3,
+          7
+        ],
+        "mixed_recall": [
+          5,
+          6
+        ],
+        "tail_recall": [
+          2,
+          2
+        ],
+        "gate_pass": false,
+        "macro_aspect_complaint": {
+          "precision": 0.5699074074074074,
+          "recall": 0.7458333333333333,
+          "f1": 0.6327143066273501
+        }
+      },
+      "errors": [
+        {
+          "id": "test-001",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              84,
+              "Два поезда ушло с соседней платформы, прежде чем продавец вообще начал меня слушать."
+            ]
+          ]
+        },
+        {
+          "id": "test-004",
+          "aspect": "queue",
+          "gold": "denial",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            81
+          ],
+          "gold_spans": [
+            [
+              0,
+              81,
+              "Не правда, что мы толкались перед заказом: к девушке с блокнотом подошли первыми."
+            ]
+          ]
+        },
+        {
+          "id": "test-007",
+          "aspect": "queue",
+          "gold": "mixed",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              98,
+              "Детский заказ начали оформлять быстро, а до приёма моего пришлось отстоять второй длиннющий хвост."
+            ]
+          ]
+        },
+        {
+          "id": "test-009",
+          "aspect": "queue",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            87
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-058",
+          "aspect": "queue",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              52,
+              "Для входа к кассе пришлось убить почти весь перерыв."
+            ]
+          ]
+        },
+        {
+          "id": "test-062",
+          "aspect": "queue",
+          "gold": "denial",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            88
+          ],
+          "gold_spans": [
+            [
+              0,
+              88,
+              "Толпа в соседнем павильоне простояла час до заявки, у этой кассы я заказал без ожидания."
+            ]
+          ]
+        },
+        {
+          "id": "test-063",
+          "aspect": "queue",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            78
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-065",
+          "aspect": "queue",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            160
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-002",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            85
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-003",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            105
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-007",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "mixed",
+          "model_context": [
+            0,
+            98
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-013",
+          "aspect": "handover",
+          "gold": "positive",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            64
+          ],
+          "gold_spans": [
+            [
+              0,
+              64,
+              "Готовый ланч сам прыгнул ко мне в руки, так оперативно передали!"
+            ]
+          ]
+        },
+        {
+          "id": "test-015",
+          "aspect": "handover",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            89
+          ],
+          "gold_spans": [
+            [
+              0,
+              89,
+              "Большую готовую коробку вынесли без промедления, но маленькую держали у себя до закрытия."
+            ]
+          ]
+        },
+        {
+          "id": "test-027",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            69
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-028",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            71
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-050",
+          "aspect": "handover",
+          "gold": "topic_uncertain",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            90
+          ],
+          "gold_spans": [
+            [
+              0,
+              90,
+              "«Ну и быстро же мы управились» — так и записал после сорока минут, этап вылетел из головы."
+            ]
+          ]
+        },
+        {
+          "id": "test-060",
+          "aspect": "handover",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              27,
+              86,
+              "За уже закрытым стаканом пришлось напоминать снова и снова."
+            ]
+          ]
+        },
+        {
+          "id": "test-062",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            88
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-066",
+          "aspect": "handover",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            336,
+            428
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-017",
+          "aspect": "charge",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              78,
+              "Разово поужинал, а кредитка похудела на два ужина, обе операции окончательные."
+            ]
+          ]
+        },
+        {
+          "id": "test-019",
+          "aspect": "charge",
+          "gold": "complaint",
+          "outcome": "neutral",
+          "model_context": [
+            0,
+            60
+          ],
+          "gold_spans": [
+            [
+              0,
+              60,
+              "Число оплат за одну лепёшку на выписке оказалось равно двум."
+            ]
+          ]
+        },
+        {
+          "id": "test-021",
+          "aspect": "charge",
+          "gold": "positive",
+          "outcome": "mixed",
+          "model_context": [
+            0,
+            57
+          ],
+          "gold_spans": [
+            [
+              0,
+              57,
+              "Хорошо, что один чай отразился в расходах ровно один раз."
+            ]
+          ]
+        },
+        {
+          "id": "test-023",
+          "aspect": "charge",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            79
+          ],
+          "gold_spans": [
+            [
+              0,
+              79,
+              "Бизнес-ланч вчера посчитали дважды, за сегодняшний единственный платёж спасибо."
+            ]
+          ]
+        },
+        {
+          "id": "test-011",
+          "aspect": "missing",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            79
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-018",
+          "aspect": "missing",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            82
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-031",
+          "aspect": "missing",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            74
+          ],
+          "gold_spans": [
+            [
+              0,
+              74,
+              "В одной сумке всё сошлось со списком, во второй не хватало купленной колы."
+            ]
+          ]
+        },
+        {
+          "id": "test-061",
+          "aspect": "missing",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              50,
+              "Заплатили и за закуску, в доставке она потерялась."
+            ]
+          ]
+        },
+        {
+          "id": "test-039",
+          "aspect": "food",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            59
+          ],
+          "gold_spans": [
+            [
+              0,
+              59,
+              "Верх гренки аппетитно хрустит, снизу горелая и несъедобная."
+            ]
+          ]
+        },
+        {
+          "id": "test-054",
+          "aspect": "food",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            81
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-030",
+          "aspect": "staff",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            66
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-041",
+          "aspect": "staff",
+          "gold": "complaint",
+          "outcome": "not_mentioned",
+          "model_context": [
+            null,
+            null
+          ],
+          "gold_spans": [
+            [
+              0,
+              58,
+              "Кассир обозвал посетительницу нищенкой при оплате мелочью."
+            ]
+          ]
+        },
+        {
+          "id": "test-044",
+          "aspect": "staff",
+          "gold": "denial",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            47
+          ],
+          "gold_spans": [
+            [
+              0,
+              47,
+              "Зря пугали хамством, мне здесь никто не грубил."
+            ]
+          ]
+        },
+        {
+          "id": "test-045",
+          "aspect": "staff",
+          "gold": "positive",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            71
+          ],
+          "gold_spans": [
+            [
+              0,
+              71,
+              "Поговорили со мной удивительно бережно, несмотря на мой плохой русский."
+            ]
+          ]
+        },
+        {
+          "id": "test-047",
+          "aspect": "staff",
+          "gold": "mixed",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            70
+          ],
+          "gold_spans": [
+            [
+              0,
+              70,
+              "Один работник посмеялся над моим ростом, другой поговорил с уважением."
+            ]
+          ]
+        },
+        {
+          "id": "test-051",
+          "aspect": "staff",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            73
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-056",
+          "aspect": "staff",
+          "gold": "not_mentioned",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            49
+          ],
+          "gold_spans": []
+        },
+        {
+          "id": "test-063",
+          "aspect": "staff",
+          "gold": "topic_uncertain",
+          "outcome": "complaint",
+          "model_context": [
+            0,
+            78
+          ],
+          "gold_spans": [
+            [
+              0,
+              78,
+              "У соседнего входа кто-то громко ругался, имел ли он отношение к кафе, не знаю."
+            ]
+          ]
+        }
+      ],
+      "exact_repeat_sha256": "666218581c0c751dbb07af8837114cac2bb630c72260bf118a3f15a9219b0262",
+      "fit_resources": {
+        "prepare_s": 11.008145855004841,
+        "wall_s": 33.0499244820021,
+        "cpu_s": 27.568438821,
+        "fit_s": 0.6869004860127461,
+        "infer_s": 0.0007146220086724497,
+        "aggregate_s": 0.11694544499914628,
+        "encode_s": 21.100016748991038,
+        "segment_s": 0.1259850330025074,
+        "windows": 582,
+        "tokens": 23211,
+        "unique_encoded": 582,
+        "rss_kib": 1429340,
+        "sklearn": "1.9.1",
+        "numpy": "2.5.3",
+        "ml_runtime": "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0",
+        "results": 252
+      },
+      "test_resources": [
+        {
+          "prepare_s": 15.377396317002422,
+          "wall_s": 39.53033845799655,
+          "cpu_s": 28.618506821,
+          "fit_s": 0.0,
+          "infer_s": 0.019083204999333248,
+          "aggregate_s": 0.015536073995463084,
+          "encode_s": 23.674982290991466,
+          "segment_s": 0.3260763500002213,
+          "windows": 438,
+          "tokens": 20679,
+          "unique_encoded": 438,
+          "rss_kib": 1533940,
+          "sklearn": "1.9.1",
+          "numpy": "2.5.3",
+          "ml_runtime": "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0",
+          "results": 396
+        },
+        {
+          "prepare_s": 25.822427095998137,
+          "wall_s": 66.67427123899688,
+          "cpu_s": 37.977454064,
+          "fit_s": 0.0,
+          "infer_s": 0.0291223309977795,
+          "aggregate_s": 0.03194306399382185,
+          "encode_s": 36.20884400300565,
+          "segment_s": 4.141560918003961,
+          "windows": 438,
+          "tokens": 20679,
+          "unique_encoded": 438,
+          "rss_kib": 932836,
+          "sklearn": "1.9.1",
+          "numpy": "2.5.3",
+          "ml_runtime": "sentence-transformers=6.1.0,transformers=5.17.0,tokenizers=0.23.2,torch=2.14.0",
+          "results": 396
+        }
+      ]
+    }
+  },
+  "retrieval": {
+    "PR19": {
+      "queue": {
+        "10": {
+          "ids": [
+            "test-006",
+            "test-062",
+            "test-007",
+            "test-008",
+            "test-065",
+            "test-066",
+            "test-064",
+            "test-016",
+            "test-002",
+            "test-049"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 3,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 3,
+          "positives": 6,
+          "missing": [
+            "test-001",
+            "test-003",
+            "test-058"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-006",
+            "test-062",
+            "test-007",
+            "test-008",
+            "test-065",
+            "test-066",
+            "test-064",
+            "test-016",
+            "test-002",
+            "test-049",
+            "test-059",
+            "test-009",
+            "test-015",
+            "test-003",
+            "test-004",
+            "test-014",
+            "test-052",
+            "test-051",
+            "test-010",
+            "test-013",
+            "test-001",
+            "test-018",
+            "test-029",
+            "test-058",
+            "test-063",
+            "test-024",
+            "test-030",
+            "test-046",
+            "test-061",
+            "test-060",
+            "test-050",
+            "test-011",
+            "test-042",
+            "test-017",
+            "test-048",
+            "test-031",
+            "test-054",
+            "test-032",
+            "test-012",
+            "test-036",
+            "test-040",
+            "test-026",
+            "test-005",
+            "test-022",
+            "test-020",
+            "test-025",
+            "test-028",
+            "test-019",
+            "test-041",
+            "test-047"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 6,
+          "selected_model_tp_with_retrieval": 3,
+          "selected_model_tp_all": 3,
+          "positives": 6,
+          "missing": []
+        }
+      },
+      "handover": {
+        "10": {
+          "ids": [
+            "test-006",
+            "test-062",
+            "test-066",
+            "test-016",
+            "test-065",
+            "test-008",
+            "test-015",
+            "test-012",
+            "test-014",
+            "test-007"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 2,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 7,
+          "positives": 8,
+          "missing": [
+            "test-009",
+            "test-010",
+            "test-011",
+            "test-058",
+            "test-059",
+            "test-060"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-006",
+            "test-062",
+            "test-066",
+            "test-016",
+            "test-065",
+            "test-008",
+            "test-015",
+            "test-012",
+            "test-014",
+            "test-007",
+            "test-059",
+            "test-009",
+            "test-058",
+            "test-013",
+            "test-064",
+            "test-004",
+            "test-031",
+            "test-018",
+            "test-040",
+            "test-052",
+            "test-010",
+            "test-024",
+            "test-002",
+            "test-003",
+            "test-029",
+            "test-060",
+            "test-050",
+            "test-063",
+            "test-046",
+            "test-061",
+            "test-005",
+            "test-011",
+            "test-032",
+            "test-048",
+            "test-026",
+            "test-030",
+            "test-036",
+            "test-051",
+            "test-054",
+            "test-041",
+            "test-019",
+            "test-056",
+            "test-055",
+            "test-049",
+            "test-020",
+            "test-001",
+            "test-028",
+            "test-025",
+            "test-022",
+            "test-045"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 8,
+          "selected_model_tp_with_retrieval": 7,
+          "selected_model_tp_all": 7,
+          "positives": 8,
+          "missing": []
+        }
+      },
+      "charge": {
+        "10": {
+          "ids": [
+            "test-024",
+            "test-019",
+            "test-031",
+            "test-064",
+            "test-022",
+            "test-018",
+            "test-065",
+            "test-023",
+            "test-020",
+            "test-061"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 3,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 2,
+          "positives": 4,
+          "missing": [
+            "test-017"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-024",
+            "test-019",
+            "test-031",
+            "test-064",
+            "test-022",
+            "test-018",
+            "test-065",
+            "test-023",
+            "test-020",
+            "test-061",
+            "test-029",
+            "test-014",
+            "test-060",
+            "test-036",
+            "test-021",
+            "test-025",
+            "test-005",
+            "test-062",
+            "test-066",
+            "test-008",
+            "test-003",
+            "test-012",
+            "test-058",
+            "test-042",
+            "test-007",
+            "test-017",
+            "test-010",
+            "test-009",
+            "test-028",
+            "test-047",
+            "test-053",
+            "test-057",
+            "test-030",
+            "test-037",
+            "test-032",
+            "test-046",
+            "test-004",
+            "test-011",
+            "test-059",
+            "test-040",
+            "test-055",
+            "test-050",
+            "test-002",
+            "test-063",
+            "test-016",
+            "test-052",
+            "test-013",
+            "test-051",
+            "test-048",
+            "test-034"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 2,
+          "positives": 4,
+          "missing": []
+        }
+      },
+      "missing": {
+        "10": {
+          "ids": [
+            "test-006",
+            "test-062",
+            "test-008",
+            "test-064",
+            "test-030",
+            "test-066",
+            "test-058",
+            "test-004",
+            "test-032",
+            "test-016"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 0,
+          "selected_model_tp_with_retrieval": 0,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": [
+            "test-025",
+            "test-026",
+            "test-027",
+            "test-031",
+            "test-061"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-006",
+            "test-062",
+            "test-008",
+            "test-064",
+            "test-030",
+            "test-066",
+            "test-058",
+            "test-004",
+            "test-032",
+            "test-016",
+            "test-007",
+            "test-065",
+            "test-002",
+            "test-020",
+            "test-026",
+            "test-018",
+            "test-031",
+            "test-003",
+            "test-061",
+            "test-029",
+            "test-025",
+            "test-010",
+            "test-015",
+            "test-028",
+            "test-011",
+            "test-012",
+            "test-036",
+            "test-024",
+            "test-049",
+            "test-022",
+            "test-019",
+            "test-054",
+            "test-055",
+            "test-014",
+            "test-009",
+            "test-044",
+            "test-034",
+            "test-038",
+            "test-060",
+            "test-041",
+            "test-005",
+            "test-048",
+            "test-035",
+            "test-059",
+            "test-063",
+            "test-001",
+            "test-057",
+            "test-052",
+            "test-046",
+            "test-040"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 3,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": [
+            "test-027"
+          ]
+        }
+      },
+      "food": {
+        "10": {
+          "ids": [
+            "test-003",
+            "test-013",
+            "test-038",
+            "test-037",
+            "test-009",
+            "test-059",
+            "test-032",
+            "test-014",
+            "test-039",
+            "test-036"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 1,
+          "selected_model_tp_with_retrieval": 1,
+          "selected_model_tp_all": 4,
+          "positives": 4,
+          "missing": [
+            "test-033",
+            "test-034",
+            "test-035"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-003",
+            "test-013",
+            "test-038",
+            "test-037",
+            "test-009",
+            "test-059",
+            "test-032",
+            "test-014",
+            "test-039",
+            "test-036",
+            "test-015",
+            "test-016",
+            "test-017",
+            "test-033",
+            "test-053",
+            "test-029",
+            "test-022",
+            "test-011",
+            "test-054",
+            "test-028",
+            "test-025",
+            "test-004",
+            "test-060",
+            "test-056",
+            "test-061",
+            "test-046",
+            "test-005",
+            "test-066",
+            "test-063",
+            "test-043",
+            "test-055",
+            "test-048",
+            "test-024",
+            "test-006",
+            "test-058",
+            "test-012",
+            "test-040",
+            "test-052",
+            "test-034",
+            "test-035",
+            "test-065",
+            "test-030",
+            "test-027",
+            "test-064",
+            "test-051",
+            "test-020",
+            "test-007",
+            "test-008",
+            "test-018",
+            "test-026"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 4,
+          "selected_model_tp_all": 4,
+          "positives": 4,
+          "missing": []
+        }
+      },
+      "staff": {
+        "10": {
+          "ids": [
+            "test-041",
+            "test-063",
+            "test-047",
+            "test-045",
+            "test-066",
+            "test-043",
+            "test-044",
+            "test-061",
+            "test-008",
+            "test-024"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 3,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": [
+            "test-042"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-041",
+            "test-063",
+            "test-047",
+            "test-045",
+            "test-066",
+            "test-043",
+            "test-044",
+            "test-061",
+            "test-008",
+            "test-024",
+            "test-014",
+            "test-003",
+            "test-033",
+            "test-048",
+            "test-053",
+            "test-001",
+            "test-002",
+            "test-039",
+            "test-011",
+            "test-056",
+            "test-034",
+            "test-062",
+            "test-064",
+            "test-029",
+            "test-050",
+            "test-046",
+            "test-030",
+            "test-065",
+            "test-016",
+            "test-032",
+            "test-058",
+            "test-004",
+            "test-006",
+            "test-019",
+            "test-031",
+            "test-009",
+            "test-042",
+            "test-017",
+            "test-051",
+            "test-036",
+            "test-040",
+            "test-049",
+            "test-025",
+            "test-060",
+            "test-059",
+            "test-012",
+            "test-038",
+            "test-022",
+            "test-054",
+            "test-023"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 5,
+          "selected_model_tp_with_retrieval": 4,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": []
+        }
+      }
+    },
+    "PR21": {
+      "queue": {
+        "10": {
+          "ids": [
+            "test-066",
+            "test-008",
+            "test-002",
+            "test-006",
+            "test-065",
+            "test-007",
+            "test-064",
+            "test-062",
+            "test-016",
+            "test-049"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 3,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 3,
+          "positives": 6,
+          "missing": [
+            "test-001",
+            "test-003",
+            "test-058"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-066",
+            "test-003",
+            "test-008",
+            "test-051",
+            "test-002",
+            "test-012",
+            "test-006",
+            "test-065",
+            "test-005",
+            "test-047",
+            "test-050",
+            "test-014",
+            "test-007",
+            "test-052",
+            "test-064",
+            "test-015",
+            "test-017",
+            "test-046",
+            "test-029",
+            "test-062",
+            "test-059",
+            "test-058",
+            "test-020",
+            "test-063",
+            "test-030",
+            "test-013",
+            "test-048",
+            "test-001",
+            "test-031",
+            "test-009",
+            "test-041",
+            "test-016",
+            "test-010",
+            "test-004",
+            "test-049",
+            "test-042",
+            "test-060",
+            "test-061",
+            "test-022",
+            "test-028",
+            "test-018",
+            "test-024",
+            "test-011",
+            "test-054",
+            "test-032",
+            "test-036",
+            "test-025",
+            "test-019",
+            "test-026",
+            "test-040"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 6,
+          "selected_model_tp_with_retrieval": 3,
+          "selected_model_tp_all": 3,
+          "positives": 6,
+          "missing": []
+        }
+      },
+      "handover": {
+        "10": {
+          "ids": [
+            "test-012",
+            "test-014",
+            "test-065",
+            "test-066",
+            "test-006",
+            "test-016",
+            "test-015",
+            "test-008",
+            "test-062",
+            "test-007"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 2,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 7,
+          "positives": 8,
+          "missing": [
+            "test-009",
+            "test-010",
+            "test-011",
+            "test-058",
+            "test-059",
+            "test-060"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-012",
+            "test-014",
+            "test-065",
+            "test-066",
+            "test-064",
+            "test-058",
+            "test-006",
+            "test-016",
+            "test-029",
+            "test-015",
+            "test-002",
+            "test-013",
+            "test-045",
+            "test-051",
+            "test-008",
+            "test-005",
+            "test-018",
+            "test-030",
+            "test-048",
+            "test-020",
+            "test-050",
+            "test-031",
+            "test-055",
+            "test-062",
+            "test-061",
+            "test-063",
+            "test-024",
+            "test-003",
+            "test-007",
+            "test-052",
+            "test-001",
+            "test-022",
+            "test-004",
+            "test-056",
+            "test-060",
+            "test-028",
+            "test-046",
+            "test-010",
+            "test-009",
+            "test-041",
+            "test-049",
+            "test-019",
+            "test-032",
+            "test-059",
+            "test-025",
+            "test-026",
+            "test-036",
+            "test-054",
+            "test-011",
+            "test-040"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 8,
+          "selected_model_tp_with_retrieval": 7,
+          "selected_model_tp_all": 7,
+          "positives": 8,
+          "missing": []
+        }
+      },
+      "charge": {
+        "10": {
+          "ids": [
+            "test-018",
+            "test-024",
+            "test-064",
+            "test-020",
+            "test-019",
+            "test-031",
+            "test-022",
+            "test-023",
+            "test-061",
+            "test-065"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 3,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 2,
+          "positives": 4,
+          "missing": [
+            "test-017"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-018",
+            "test-024",
+            "test-064",
+            "test-012",
+            "test-020",
+            "test-017",
+            "test-019",
+            "test-008",
+            "test-029",
+            "test-031",
+            "test-022",
+            "test-048",
+            "test-014",
+            "test-023",
+            "test-030",
+            "test-021",
+            "test-051",
+            "test-005",
+            "test-066",
+            "test-058",
+            "test-050",
+            "test-002",
+            "test-060",
+            "test-003",
+            "test-052",
+            "test-016",
+            "test-061",
+            "test-059",
+            "test-065",
+            "test-062",
+            "test-011",
+            "test-042",
+            "test-013",
+            "test-010",
+            "test-004",
+            "test-055",
+            "test-009",
+            "test-025",
+            "test-047",
+            "test-057",
+            "test-007",
+            "test-037",
+            "test-053",
+            "test-036",
+            "test-063",
+            "test-028",
+            "test-034",
+            "test-032",
+            "test-046",
+            "test-040"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 2,
+          "selected_model_tp_all": 2,
+          "positives": 4,
+          "missing": []
+        }
+      },
+      "missing": {
+        "10": {
+          "ids": [
+            "test-030",
+            "test-064",
+            "test-066",
+            "test-008",
+            "test-058",
+            "test-006",
+            "test-016",
+            "test-062",
+            "test-032",
+            "test-004"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 0,
+          "selected_model_tp_with_retrieval": 0,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": [
+            "test-025",
+            "test-026",
+            "test-027",
+            "test-031",
+            "test-061"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-030",
+            "test-031",
+            "test-012",
+            "test-014",
+            "test-064",
+            "test-029",
+            "test-002",
+            "test-005",
+            "test-066",
+            "test-061",
+            "test-008",
+            "test-018",
+            "test-058",
+            "test-044",
+            "test-038",
+            "test-006",
+            "test-052",
+            "test-020",
+            "test-048",
+            "test-015",
+            "test-059",
+            "test-003",
+            "test-041",
+            "test-065",
+            "test-016",
+            "test-019",
+            "test-011",
+            "test-022",
+            "test-001",
+            "test-036",
+            "test-062",
+            "test-032",
+            "test-004",
+            "test-024",
+            "test-025",
+            "test-054",
+            "test-046",
+            "test-035",
+            "test-057",
+            "test-007",
+            "test-063",
+            "test-009",
+            "test-055",
+            "test-010",
+            "test-049",
+            "test-028",
+            "test-060",
+            "test-034",
+            "test-026",
+            "test-040"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 3,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": [
+            "test-027"
+          ]
+        }
+      },
+      "food": {
+        "10": {
+          "ids": [
+            "test-038",
+            "test-039",
+            "test-003",
+            "test-014",
+            "test-032",
+            "test-013",
+            "test-037",
+            "test-009",
+            "test-059",
+            "test-036"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 1,
+          "selected_model_tp_with_retrieval": 1,
+          "selected_model_tp_all": 4,
+          "positives": 4,
+          "missing": [
+            "test-033",
+            "test-034",
+            "test-035"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-038",
+            "test-048",
+            "test-056",
+            "test-064",
+            "test-033",
+            "test-043",
+            "test-052",
+            "test-012",
+            "test-060",
+            "test-039",
+            "test-003",
+            "test-053",
+            "test-035",
+            "test-051",
+            "test-063",
+            "test-030",
+            "test-005",
+            "test-061",
+            "test-029",
+            "test-028",
+            "test-014",
+            "test-055",
+            "test-058",
+            "test-020",
+            "test-022",
+            "test-034",
+            "test-017",
+            "test-027",
+            "test-015",
+            "test-040",
+            "test-032",
+            "test-024",
+            "test-013",
+            "test-066",
+            "test-011",
+            "test-018",
+            "test-008",
+            "test-065",
+            "test-016",
+            "test-006",
+            "test-037",
+            "test-054",
+            "test-009",
+            "test-046",
+            "test-059",
+            "test-004",
+            "test-007",
+            "test-025",
+            "test-036",
+            "test-026"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 4,
+          "selected_model_tp_all": 4,
+          "positives": 4,
+          "missing": []
+        }
+      },
+      "staff": {
+        "10": {
+          "ids": [
+            "test-041",
+            "test-047",
+            "test-063",
+            "test-045",
+            "test-043",
+            "test-044",
+            "test-061",
+            "test-066",
+            "test-008",
+            "test-024"
+          ],
+          "n": 10,
+          "eligible": 66,
+          "matched": 4,
+          "selected_model_tp_with_retrieval": 3,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": [
+            "test-042"
+          ]
+        },
+        "50": {
+          "ids": [
+            "test-041",
+            "test-047",
+            "test-002",
+            "test-063",
+            "test-064",
+            "test-048",
+            "test-017",
+            "test-050",
+            "test-051",
+            "test-045",
+            "test-043",
+            "test-038",
+            "test-044",
+            "test-012",
+            "test-014",
+            "test-016",
+            "test-058",
+            "test-006",
+            "test-031",
+            "test-061",
+            "test-003",
+            "test-029",
+            "test-030",
+            "test-033",
+            "test-066",
+            "test-049",
+            "test-053",
+            "test-046",
+            "test-039",
+            "test-042",
+            "test-065",
+            "test-056",
+            "test-008",
+            "test-023",
+            "test-001",
+            "test-011",
+            "test-060",
+            "test-059",
+            "test-036",
+            "test-009",
+            "test-022",
+            "test-032",
+            "test-004",
+            "test-054",
+            "test-019",
+            "test-062",
+            "test-034",
+            "test-024",
+            "test-025",
+            "test-040"
+          ],
+          "n": 50,
+          "eligible": 66,
+          "matched": 5,
+          "selected_model_tp_with_retrieval": 4,
+          "selected_model_tp_all": 4,
+          "positives": 5,
+          "missing": []
+        }
+      }
+    }
+  }
+}

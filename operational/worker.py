@@ -14,7 +14,7 @@ from time import monotonic
 
 import psycopg
 
-from operational import candidate_worker, rerank_worker, signals
+from operational import candidate_worker, decision_worker, rerank_worker, signals
 from operational.delivery_objects import (
     DeliveryError,
     encoded,
@@ -69,9 +69,9 @@ def connect():
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
             AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
-                AND c.relname IN ('aspect','aspect_version') AND (NOT row_security_active(c.oid)
+                AND c.relname IN ('aspect','aspect_version','decision_binding','decision_row') AND (NOT row_security_active(c.oid)
                 OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE')))
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank')
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -107,6 +107,7 @@ def summarize(conn, claim, info, directory, pulse):
     w, r, _token = claim
     filters = info["filters"]
     require(filters.get("format") == FORMAT, "UNSUPPORTED_FORMAT")
+    is_decision = info["kind"] == decision_worker.KIND
     is_candidate = info["kind"] == candidate_worker.KIND
     is_rerank = info["kind"] == rerank_worker.KIND
     is_signals = info["kind"] == signals.KIND
@@ -115,6 +116,7 @@ def summarize(conn, claim, info, directory, pulse):
         in {
             (KIND, "1", "summary-1", "unused", VERSION),
             (signals.KIND, "1", "signals-1", "unused", VERSION),
+            (decision_worker.KIND, "1", decision_worker.SCHEMA, decision_worker.PROFILE, VERSION),
             (rerank_worker.KIND, "1", rerank_worker.SCHEMA, rerank_worker.PROFILE, VERSION),
             (candidate_worker.KIND, "1", "candidate-search-1", "unused", VERSION),
             (candidate_worker.KIND, "1", "candidate-search-1", "minilm-pr04", VERSION),
@@ -139,7 +141,8 @@ def summarize(conn, claim, info, directory, pulse):
     )
     hashes = {k: receipt[k + "_sha256"] for k in ("mapping", "passport", "coverage")}
     hashes["file"] = info["file_sha256"]
-    verify = partial(pulse, "verify", 0, total)
+    denominator = info["decision"]["eligible"] if is_decision else total
+    verify = partial(pulse, "verify", 0, denominator)
     verify()
     read_source(directory, hashes["file"], MAX_BYTES, verify)
     mapping, passport, coverage = [
@@ -177,12 +180,12 @@ def summarize(conn, claim, info, directory, pulse):
         compare(filters)
         n = 0
         while n < total:
-            pulse("summarize", n, total)
+            pulse("summarize", 0 if is_decision else n, denominator)
             rows = conn.execute(
                 "SELECT * FROM job_versions(%s,%s,%s,%s)", (*claim, ids[n - 1] if n else None)
             ).fetchall()
             if not rows:
-                pulse("summarize", n, total)
+                pulse("summarize", 0 if is_decision else n, denominator)
                 raise JobError("INTEGRITY_ERROR")
             for (row,) in rows:
                 require(
@@ -215,7 +218,7 @@ def summarize(conn, claim, info, directory, pulse):
                         if kind in ("local", "invalid", "missing")
                         else "ineligible_event_basis"
                     ] += 1
-                if is_candidate or is_rerank:
+                if is_candidate or is_rerank or is_decision:
                     projected.append((row["version_id"],row["content_sha256"],row["text"] or ""))
                 if is_signals:
                     item = signals.projection(row, rate, issue)
@@ -226,6 +229,8 @@ def summarize(conn, claim, info, directory, pulse):
                     projected.append(item)
                 n += 1
         require(not stream.read(1) and actual.hexdigest() == info["snapshot_sha256"])
+    if is_decision:
+        return decision_worker.result(conn, claim, info, projected, pulse)
     exclusions["missing_reviewer"] = counts["unknown_author"]
     exclusions["missing_text"] = total - counts["usable_text"]
     summary = {
@@ -367,7 +372,7 @@ def process(conn, job, stopping):
             if not available:
                 # Commit the cancellation/revocation decision in this transaction.
                 outcome = step("INTEGRITY_ERROR")
-            elif info["kind"] in (candidate_worker.KIND,rerank_worker.KIND):
+            elif info["kind"] in (candidate_worker.KIND,rerank_worker.KIND,decision_worker.KIND):
                 outcome = step("WORKER_STOPPED" if stopping.is_set() else None)
             if outcome == "running":
                 if info["kind"] == rerank_worker.KIND:
@@ -386,6 +391,7 @@ def process(conn, job, stopping):
                 verify_file(directory, digest, len(data))
                 projection = {
                     signals.KIND: "rs.signals_projection",
+                    decision_worker.KIND: "rs.decision_projection",
                     rerank_worker.KIND: "rs.candidate_projection",
                     candidate_worker.KIND: "rs.candidate_projection",
                 }.get(info["kind"], "rs.summary_projection")

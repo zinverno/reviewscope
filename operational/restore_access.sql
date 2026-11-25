@@ -24,14 +24,19 @@ WITH roles AS (
  pg_get_expr(p.polqual,c.oid),pg_get_expr(p.polwithcheck,c.oid)) FROM pg_policy p JOIN rels c ON c.oid=p.polrelid
  UNION ALL SELECT jsonb_build_array('aspect_constraint',c.relname,k.conname,pg_get_constraintdef(k.oid))
  FROM pg_constraint k JOIN rels c ON c.oid=k.conrelid
- WHERE c.relname IN ('aspect','aspect_version') OR k.confrelid=to_regclass('public.aspect_version')
+ WHERE c.relname IN ('aspect','aspect_version','decision_binding','decision_row') OR k.confrelid=to_regclass('public.aspect_version')
  OR (c.relname='analysis_run' AND strpos(pg_get_constraintdef(k.oid),'bound_')>0)
  UNION ALL SELECT jsonb_build_array('aspect_trigger',c.relname,pg_get_triggerdef(t.oid),t.tgenabled)
  FROM pg_trigger t JOIN rels c ON c.oid=t.tgrelid WHERE NOT t.tgisinternal
- AND (c.relname IN ('aspect','aspect_version') OR t.tgname='verify_aspect_publication')
+ AND (c.relname IN ('aspect','aspect_version','decision_binding','decision_row') OR t.tgname IN ('verify_aspect_publication','verify_decision_publication','clear_decision_stage'))
  UNION ALL SELECT jsonb_build_array('aspect_generated',c.relname,a.attname,pg_get_expr(d.adbin,d.adrelid))
  FROM pg_attrdef d JOIN rels c ON c.oid=d.adrelid JOIN pg_attribute a ON (a.attrelid,a.attnum)=(c.oid,d.adnum)
  WHERE a.attgenerated<>'' AND (c.relname='aspect_version' OR c.relname='analysis_run' AND starts_with(a.attname,'bound_'))
+ UNION ALL SELECT jsonb_build_array('decision_admission',a.attnotnull,pg_get_expr(d.adbin,d.adrelid))
+ FROM pg_attrdef d JOIN rels c ON c.oid=d.adrelid JOIN pg_attribute a ON (a.attrelid,a.attnum)=(c.oid,d.adnum)
+ WHERE c.relname='browser_admission' AND a.attname='decision_allowed'
+ UNION ALL SELECT jsonb_build_array('decision_outcomes',array_agg(e.enumlabel ORDER BY e.enumsortorder))
+ FROM pg_enum e WHERE e.enumtypid=to_regtype('public.decision_outcome') HAVING count(*)>0
  UNION ALL SELECT jsonb_build_array('role',r.rolname,r.rolcanlogin,r.rolsuper,r.rolinherit,r.rolcreaterole,r.rolcreatedb,
  r.rolreplication,r.rolbypassrls) FROM pg_roles r JOIN roles ON r.oid=roles.oid
  UNION ALL SELECT jsonb_build_array('membership',pg_get_userbyid(m.roleid),pg_get_userbyid(m.member),m.admin_option,

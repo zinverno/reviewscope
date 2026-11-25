@@ -37,6 +37,7 @@ export type EvidenceResult = {
 	rows: Row[];
 };
 type Target = {
+	project_id: string;
 	source_id: string;
 	source_label: string;
 	location_id: string;
@@ -234,6 +235,9 @@ export function ReviewEvidence({
 		};
 	}, [api, workspace, snapshot, grantSource, key]);
 	const targetSource = result?.source_id ?? params.get("source");
+	const targetProject = targets.find(
+		(t) => t.source_id === targetSource,
+	)?.project_id;
 	const uniqueSources = [
 		...new Map(targets.map((t) => [t.source_id, t])).values(),
 	];
@@ -278,6 +282,25 @@ export function ReviewEvidence({
 					>
 						Поиск кандидатов по снимку
 					</a>
+					{targetProject && (
+						<>
+							{" · "}
+							<a
+								href={link({
+									view: "aspects",
+									project: targetProject,
+									source: result.source_id,
+									snapshot,
+									aspect: "",
+									aspectVersion: "",
+									proposal: "",
+									aspectPage: "",
+								})}
+							>
+								Выбрать аспект для оценки всего снимка
+							</a>
+						</>
+					)}
 				</p>
 			)}
 			{matching?.error ? (

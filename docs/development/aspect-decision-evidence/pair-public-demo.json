@@ -1,0 +1,32 @@
+{
+  "model": "pair",
+  "dataset": "public-demo",
+  "accepted": 1058,
+  "excluded_blank": 0,
+  "loadavg_start": [
+    5.171875,
+    7.88720703125,
+    5.3330078125
+  ],
+  "aspect": "queue",
+  "eligible": 1058,
+  "unique_inputs": 1033,
+  "corpus_sha256": "cea8e59602e15923d9a42c48d07af8955706a6b2f9a754de8f1d60bcadf23752",
+  "evaluated": 576,
+  "windows": 1595,
+  "encoded_tokens": 117387,
+  "published": false,
+  "prepare_s": 13.424958818002779,
+  "unique_encoded": 1595,
+  "encode_s": 100.20920462199138,
+  "segment_s": 0.5680001380169415,
+  "head_s": 0.020511562994215637,
+  "aggregate_s": 0.01925533002213342,
+  "cpu_s": 107.110449905,
+  "status": "RESOURCE_LIMIT",
+  "limit": "wall",
+  "exit_code": -9,
+  "wall_s": 120.1938940359978,
+  "sampled_child_peak_kib": 1460944,
+  "simultaneous_parent_child_peak_kib": 1499592
+}

@@ -1,3 +1,4 @@
+import { checkDecisions } from "./decision-acceptance.mjs";
 import { checkAspects } from "./aspect-acceptance.mjs";
 import {
 	checkPublicReviewer,
@@ -103,6 +104,19 @@ async function test(type) {
 		await page.getByLabel("Рабочая область").selectOption(fixture.w);
 		await page.getByLabel("Источник", { exact: true }).selectOption(fixture.s);
 		const content = await context.storageState();
+		if (fixture.scenario === "decisions") {
+			const detailURL=await checkDecisions(browser,content,origin+"/cabinet/?"+new URLSearchParams(fixture.decisionScope),media,phase=>{stage=type.name()+" decision "+phase});
+			const detail=await context.newPage();
+			await detail.goto(detailURL);
+			const article=detail.getByRole("article",{name:"Решение по версии отзыва"});
+			await article.waitFor();
+			stage=type.name()+" decision session revocation";
+			await page.getByRole("button",{name:"Выйти"}).click();
+			await detail.bringToFront();
+			await article.waitFor({state:"detached",timeout:15000});
+			await context.close();
+			return;
+		}
 		// Record only after authentication and never persist browser storage or private headers.
 		const review = await browser.newContext({
 			storageState: content,

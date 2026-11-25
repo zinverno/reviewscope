@@ -1,0 +1,283 @@
+{
+  "probe": "decision-storage-10k",
+  "profile": "deterministic_test_scorer",
+  "rows": 10000,
+  "pages": 400,
+  "stage_s": 1.009,
+  "input_s": 0.314,
+  "publish_s": 0.123,
+  "stage_row_bytes": 2740000,
+  "manifest_bytes": 1552,
+  "max_response_bytes": 10969,
+  "plans": [
+    {
+      "analyzed": false,
+      "mode": "force_generic_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": false,
+      "ms": 21.29,
+      "rows": 25.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 20
+    },
+    {
+      "analyzed": false,
+      "mode": "force_generic_plan",
+      "filter": null,
+      "offset": 9975,
+      "detail": false,
+      "ms": 8.23,
+      "rows": 10000.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 442
+    },
+    {
+      "analyzed": false,
+      "mode": "force_generic_plan",
+      "filter": "denial",
+      "offset": 25,
+      "detail": false,
+      "ms": 3.78,
+      "rows": 297.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 15
+    },
+    {
+      "analyzed": false,
+      "mode": "force_generic_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": true,
+      "ms": 4.23,
+      "rows": 1.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 3
+    },
+    {
+      "analyzed": false,
+      "mode": "force_custom_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": false,
+      "ms": 23.32,
+      "rows": 25.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 20
+    },
+    {
+      "analyzed": false,
+      "mode": "force_custom_plan",
+      "filter": null,
+      "offset": 9975,
+      "detail": false,
+      "ms": 15.37,
+      "rows": 10000.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 442
+    },
+    {
+      "analyzed": false,
+      "mode": "force_custom_plan",
+      "filter": "denial",
+      "offset": 25,
+      "detail": false,
+      "ms": 14.29,
+      "rows": 297.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 15
+    },
+    {
+      "analyzed": false,
+      "mode": "force_custom_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": true,
+      "ms": 10.87,
+      "rows": 1.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 3
+    },
+    {
+      "analyzed": true,
+      "mode": "force_generic_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": false,
+      "ms": 23.08,
+      "rows": 25.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 20
+    },
+    {
+      "analyzed": true,
+      "mode": "force_generic_plan",
+      "filter": null,
+      "offset": 9975,
+      "detail": false,
+      "ms": 7.59,
+      "rows": 10000.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 442
+    },
+    {
+      "analyzed": true,
+      "mode": "force_generic_plan",
+      "filter": "denial",
+      "offset": 25,
+      "detail": false,
+      "ms": 3.61,
+      "rows": 50.0,
+      "indexes": [
+        "decision_outcome_page"
+      ],
+      "blocks": 15
+    },
+    {
+      "analyzed": true,
+      "mode": "force_generic_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": true,
+      "ms": 3.07,
+      "rows": 1.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 3
+    },
+    {
+      "analyzed": true,
+      "mode": "force_custom_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": false,
+      "ms": 22.29,
+      "rows": 25.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 20
+    },
+    {
+      "analyzed": true,
+      "mode": "force_custom_plan",
+      "filter": null,
+      "offset": 9975,
+      "detail": false,
+      "ms": 22.0,
+      "rows": 10000.0,
+      "indexes": [
+        "Seq Scan"
+      ],
+      "blocks": 358
+    },
+    {
+      "analyzed": true,
+      "mode": "force_custom_plan",
+      "filter": "denial",
+      "offset": 25,
+      "detail": false,
+      "ms": 10.48,
+      "rows": 50.0,
+      "indexes": [
+        "decision_outcome_page"
+      ],
+      "blocks": 15
+    },
+    {
+      "analyzed": true,
+      "mode": "force_custom_plan",
+      "filter": null,
+      "offset": 0,
+      "detail": true,
+      "ms": 9.82,
+      "rows": 1.0,
+      "indexes": [
+        "decision_row_pkey"
+      ],
+      "blocks": 3
+    }
+  ],
+  "input_plans": [
+    {
+      "mode": "force_generic_plan",
+      "analyzed": false,
+      "seconds": 0.2626,
+      "scans": [
+        {
+          "index": null,
+          "rows": 10000.0,
+          "loops": 1,
+          "blocks": 527
+        }
+      ]
+    },
+    {
+      "mode": "force_custom_plan",
+      "analyzed": false,
+      "seconds": 0.232,
+      "scans": [
+        {
+          "index": null,
+          "rows": 10000.0,
+          "loops": 1,
+          "blocks": 527
+        }
+      ]
+    },
+    {
+      "mode": "force_generic_plan",
+      "analyzed": true,
+      "seconds": 0.236,
+      "scans": [
+        {
+          "index": null,
+          "rows": 10000.0,
+          "loops": 1,
+          "blocks": 527
+        }
+      ]
+    },
+    {
+      "mode": "force_custom_plan",
+      "analyzed": true,
+      "seconds": 0.2304,
+      "scans": [
+        {
+          "index": null,
+          "rows": 10000.0,
+          "loops": 1,
+          "blocks": 527
+        }
+      ]
+    }
+  ],
+  "source_commit": "42c241d8874da7966e95d32e7f85a0c2d4eb52d7",
+  "fixture": "PR19 repeated file, 4 MiB, 10000 accepted versions; deterministic test scores",
+  "postgres": "PostgreSQL 18.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 16.2.1 20260810, 64-bit",
+  "command": "bash operational/test-isolated.sh -s --tb=short -k decision_10k_membership_and_pages",
+  "request_rows": 10000,
+  "staging_batch_limit": 64,
+  "sql_statement_timeout_ms": 10000
+}

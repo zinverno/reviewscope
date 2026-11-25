@@ -1,0 +1,821 @@
+{
+  "source_commit": "d8d63ed8343d6c79648e7a23064e888e1f36063c",
+  "platform": "Linux x86_64 / Ryzen 5 5500U / 12 logical CPUs / PostgreSQL 18.6; concurrent local verification",
+  "worker_runtime": {
+    "python": "3.14.7",
+    "numpy": "2.5.3",
+    "sklearn": "1.9.1",
+    "dtype": "float64"
+  },
+  "current": {
+    "a": {
+      "probe": "decision-profile",
+      "fixture": "a",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 3,
+      "eligible": 3,
+      "seconds": 1.9615770899981726,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 42.52,
+          "peak_rss_kib": 53744,
+          "db_backend_peak_rss_kib": 36904
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 9.402799332747236e-05,
+          "cpu_s": 1.19901935,
+          "feature_s": 0.008130690999678336,
+          "head_s": 0.00014547500177286565,
+          "load_s": 0.004081650993612129,
+          "peak_rss_kib": 215980,
+          "rows": 3,
+          "score_wall_s": 0.008408726003835909,
+          "scored_windows": 3,
+          "segmentation_s": 1.1021002137567848e-05,
+          "unique_scored": 3,
+          "stage_s": 0.005904901001485996,
+          "staged_bytes": 1106,
+          "parent_compute_cpu_s": 0.00442819099999997
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 3,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 1587.66,
+          "peak_rss_kib": 54004,
+          "db_backend_peak_rss_kib": 37436
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 3,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 11.95,
+          "peak_rss_kib": 54416,
+          "db_backend_peak_rss_kib": 37984
+        }
+      ],
+      "input_bytes": 548,
+      "first_s": 0.054188344001886435,
+      "first_bytes": 3553,
+      "last_s": 0.03208410699880915,
+      "last_bytes": 3553,
+      "artifact_bytes": 1542,
+      "counts": {
+        "not_mentioned": 3
+      },
+      "summary": {
+        "N_input": 3,
+        "N_accepted": 3,
+        "N_quarantine": 0,
+        "N_confirmed_duplicate": 0,
+        "N_excluded": 0,
+        "N_eligible": 3,
+        "N_evaluated": 3,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 3,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 3,
+          "excluded_blank": 0,
+          "topic_uncertain": 0
+        },
+        "coverage": 1.0,
+        "defined_coverage": 1.0,
+        "complaints_among_eligible": 0.0,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    },
+    "b": {
+      "probe": "decision-profile",
+      "fixture": "b",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 6,
+      "eligible": 6,
+      "seconds": 1.863060083000164,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 46.75,
+          "peak_rss_kib": 55372,
+          "db_backend_peak_rss_kib": 35756
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 0.00015534299018327147,
+          "cpu_s": 1.139987415,
+          "feature_s": 0.008923759000026621,
+          "head_s": 0.00021738900250056759,
+          "load_s": 0.0017206869961228222,
+          "peak_rss_kib": 212204,
+          "rows": 6,
+          "score_wall_s": 0.009370130006573163,
+          "scored_windows": 6,
+          "segmentation_s": 1.6029996913857758e-05,
+          "unique_scored": 6,
+          "stage_s": 0.005984351002553012,
+          "staged_bytes": 2214,
+          "parent_compute_cpu_s": 0.0038507519999999573
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 6,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 1461.98,
+          "peak_rss_kib": 55372,
+          "db_backend_peak_rss_kib": 36340
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 6,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 11.43,
+          "peak_rss_kib": 55372,
+          "db_backend_peak_rss_kib": 36940
+        }
+      ],
+      "input_bytes": 1052,
+      "first_s": 0.05028467800002545,
+      "first_bytes": 4661,
+      "last_s": 0.03347393999865744,
+      "last_bytes": 4661,
+      "artifact_bytes": 1542,
+      "counts": {
+        "not_mentioned": 6
+      },
+      "summary": {
+        "N_input": 6,
+        "N_accepted": 6,
+        "N_quarantine": 0,
+        "N_confirmed_duplicate": 0,
+        "N_excluded": 0,
+        "N_eligible": 6,
+        "N_evaluated": 6,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 6,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 6,
+          "excluded_blank": 0,
+          "topic_uncertain": 0
+        },
+        "coverage": 1.0,
+        "defined_coverage": 1.0,
+        "complaints_among_eligible": 0.0,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    },
+    "problematic": {
+      "probe": "decision-profile",
+      "fixture": "problematic",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 0,
+      "eligible": 0,
+      "seconds": 2.2178801039990503,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 35.76,
+          "peak_rss_kib": 53508,
+          "db_backend_peak_rss_kib": 35824
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 0.0,
+          "cpu_s": 1.316439359,
+          "feature_s": 0.0,
+          "head_s": 0.0,
+          "load_s": 0.002781649003736675,
+          "peak_rss_kib": 213032,
+          "rows": 6,
+          "score_wall_s": 6.080997991375625e-06,
+          "scored_windows": 0,
+          "segmentation_s": 0.0,
+          "unique_scored": 0,
+          "stage_s": 0.006754633999662474,
+          "staged_bytes": 2041,
+          "parent_compute_cpu_s": 0.004279138999999987
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 1822.31,
+          "peak_rss_kib": 53824,
+          "db_backend_peak_rss_kib": 36452
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 11.71,
+          "peak_rss_kib": 54272,
+          "db_backend_peak_rss_kib": 37112
+        }
+      ],
+      "input_bytes": 469,
+      "first_s": 0.06356687899824465,
+      "first_bytes": 4616,
+      "last_s": 0.03776669900253182,
+      "last_bytes": 4616,
+      "artifact_bytes": 1676,
+      "counts": {
+        "excluded_blank": 6
+      },
+      "summary": {
+        "N_input": 12,
+        "N_accepted": 6,
+        "N_quarantine": 5,
+        "N_confirmed_duplicate": 1,
+        "N_excluded": 6,
+        "N_eligible": 0,
+        "N_evaluated": 0,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 0,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 0,
+          "excluded_blank": 6,
+          "topic_uncertain": 0
+        },
+        "coverage": null,
+        "defined_coverage": null,
+        "complaints_among_eligible": null,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "coverage": "NO_ELIGIBLE_REVIEWS",
+          "defined_coverage": "NO_ELIGIBLE_REVIEWS",
+          "complaints_among_eligible": "NO_ELIGIBLE_REVIEWS",
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    },
+    "context": {
+      "probe": "decision-profile",
+      "fixture": "context",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 4,
+      "eligible": 4,
+      "seconds": 2.016516222000064,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 35.26,
+          "peak_rss_kib": 53448,
+          "db_backend_peak_rss_kib": 35604
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 0.0003907570062438026,
+          "cpu_s": 1.210166171,
+          "feature_s": 0.018798628996592015,
+          "head_s": 0.00020764100190717727,
+          "load_s": 0.0018745369961834513,
+          "peak_rss_kib": 212412,
+          "rows": 5,
+          "score_wall_s": 0.019478091999189928,
+          "scored_windows": 61,
+          "segmentation_s": 3.611899592215195e-05,
+          "unique_scored": 3,
+          "stage_s": 0.006719417993735988,
+          "staged_bytes": 1813,
+          "parent_compute_cpu_s": 0.004531505999999963
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 4,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 1615.33,
+          "peak_rss_kib": 53836,
+          "db_backend_peak_rss_kib": 36352
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 4,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 13.32,
+          "peak_rss_kib": 54276,
+          "db_backend_peak_rss_kib": 36916
+        }
+      ],
+      "input_bytes": 12129,
+      "first_s": 0.05977577599696815,
+      "first_bytes": 4260,
+      "last_s": 0.046318804998009,
+      "last_bytes": 4260,
+      "artifact_bytes": 1542,
+      "counts": {
+        "not_mentioned": 4,
+        "excluded_blank": 1
+      },
+      "summary": {
+        "N_input": 5,
+        "N_accepted": 5,
+        "N_quarantine": 0,
+        "N_confirmed_duplicate": 0,
+        "N_excluded": 1,
+        "N_eligible": 4,
+        "N_evaluated": 4,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 4,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 4,
+          "excluded_blank": 1,
+          "topic_uncertain": 0
+        },
+        "coverage": 1.0,
+        "defined_coverage": 1.0,
+        "complaints_among_eligible": 0.0,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    },
+    "public-demo": {
+      "probe": "decision-profile",
+      "fixture": "public-demo",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 1058,
+      "eligible": 1058,
+      "seconds": 4.176545941998484,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 53.98,
+          "peak_rss_kib": 53856,
+          "db_backend_peak_rss_kib": 36716
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 0.04050174810254248,
+          "cpu_s": 2.431071979,
+          "feature_s": 0.7685431820209487,
+          "head_s": 0.040558194945333526,
+          "load_s": 0.008490590000292286,
+          "peak_rss_kib": 213072,
+          "rows": 1058,
+          "score_wall_s": 0.8588577210102812,
+          "scored_windows": 2662,
+          "segmentation_s": 0.004643312837288249,
+          "unique_scored": 1033,
+          "stage_s": 0.38901433999853907,
+          "staged_bytes": 390229,
+          "parent_compute_cpu_s": 0.084182435
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 1058,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 3692.67,
+          "peak_rss_kib": 55896,
+          "db_backend_peak_rss_kib": 39116
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 1058,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 21.63,
+          "peak_rss_kib": 56336,
+          "db_backend_peak_rss_kib": 39776
+        }
+      ],
+      "input_bytes": 535480,
+      "first_s": 0.07198817900643917,
+      "first_bytes": 11692,
+      "last_s": 0.038951153997913934,
+      "last_bytes": 5425,
+      "artifact_bytes": 1560,
+      "counts": {
+        "not_mentioned": 1058
+      },
+      "summary": {
+        "N_input": 1058,
+        "N_accepted": 1058,
+        "N_quarantine": 0,
+        "N_confirmed_duplicate": 0,
+        "N_excluded": 0,
+        "N_eligible": 1058,
+        "N_evaluated": 1058,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 1058,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 1058,
+          "excluded_blank": 0,
+          "topic_uncertain": 0
+        },
+        "coverage": 1.0,
+        "defined_coverage": 1.0,
+        "complaints_among_eligible": 0.0,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    },
+    "repeated-10k": {
+      "probe": "decision-profile",
+      "fixture": "repeated-10k",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 10000,
+      "eligible": 10000,
+      "seconds": 28.31061065800168,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 278.45,
+          "peak_rss_kib": 56032,
+          "db_backend_peak_rss_kib": 37908
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 0.00016786700143711641,
+          "cpu_s": 1.878745939,
+          "feature_s": 0.01296725701104151,
+          "head_s": 0.00022024499776307493,
+          "load_s": 0.010095849000208545,
+          "peak_rss_kib": 218856,
+          "rows": 10000,
+          "score_wall_s": 0.01734320203831885,
+          "scored_windows": 8,
+          "segmentation_s": 1.8053993699140847e-05,
+          "unique_scored": 2,
+          "stage_s": 2.015958466945449,
+          "staged_bytes": 3680313,
+          "parent_compute_cpu_s": 0.6220222879999999
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 10000,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 26857.05,
+          "peak_rss_kib": 57328,
+          "db_backend_peak_rss_kib": 51816
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 10000,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 404.19,
+          "peak_rss_kib": 57328,
+          "db_backend_peak_rss_kib": 133296
+        }
+      ],
+      "input_bytes": 4194304,
+      "first_s": 0.7467467459937325,
+      "first_bytes": 11684,
+      "last_s": 0.05018122099863831,
+      "last_bytes": 11684,
+      "artifact_bytes": 1566,
+      "counts": {
+        "not_mentioned": 10000
+      },
+      "summary": {
+        "N_input": 10000,
+        "N_accepted": 10000,
+        "N_quarantine": 0,
+        "N_confirmed_duplicate": 0,
+        "N_excluded": 0,
+        "N_eligible": 10000,
+        "N_evaluated": 10000,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 10000,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 10000,
+          "excluded_blank": 0,
+          "topic_uncertain": 0
+        },
+        "coverage": 1.0,
+        "defined_coverage": 1.0,
+        "complaints_among_eligible": 0.0,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    },
+    "diverse-10k": {
+      "probe": "decision-profile",
+      "fixture": "diverse-10k",
+      "status": "succeeded",
+      "reason": null,
+      "processed": 10000,
+      "eligible": 10000,
+      "seconds": 51.720148718006385,
+      "events": [
+        {
+          "event": "worker_stage",
+          "stage": "verify",
+          "processed": 0,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 193.47,
+          "peak_rss_kib": 55956,
+          "db_backend_peak_rss_kib": 39152
+        },
+        {
+          "event": "decision_resources",
+          "aggregate_s": 0.4099431999711669,
+          "cpu_s": 9.260388192,
+          "feature_s": 6.109173920180183,
+          "head_s": 0.5023502390977228,
+          "load_s": 0.011258601996814832,
+          "peak_rss_kib": 222884,
+          "rows": 10000,
+          "score_wall_s": 7.197644792016945,
+          "scored_windows": 11428,
+          "segmentation_s": 0.040763552562566474,
+          "unique_scored": 10000,
+          "stage_s": 23.744522096021683,
+          "staged_bytes": 3689370,
+          "parent_compute_cpu_s": 0.6896552590000001
+        },
+        {
+          "event": "worker_stage",
+          "stage": "summarize",
+          "processed": 10000,
+          "attempt": 1,
+          "outcome": "completed",
+          "duration_ms": 49216.17,
+          "peak_rss_kib": 58348,
+          "db_backend_peak_rss_kib": 47904
+        },
+        {
+          "event": "worker_stage",
+          "stage": "publish",
+          "processed": 10000,
+          "attempt": 1,
+          "outcome": "succeeded",
+          "duration_ms": 985.72,
+          "peak_rss_kib": 58348,
+          "db_backend_peak_rss_kib": 125884
+        }
+      ],
+      "input_bytes": 2560456,
+      "first_s": 0.825669491001463,
+      "first_bytes": 11710,
+      "last_s": 0.05024118300207192,
+      "last_bytes": 11703,
+      "artifact_bytes": 1566,
+      "counts": {
+        "not_mentioned": 10000
+      },
+      "summary": {
+        "N_input": 10000,
+        "N_accepted": 10000,
+        "N_quarantine": 0,
+        "N_confirmed_duplicate": 0,
+        "N_excluded": 0,
+        "N_eligible": 10000,
+        "N_evaluated": 10000,
+        "N_not_evaluated": 0,
+        "N_mentioned": 0,
+        "N_not_mentioned": 10000,
+        "N_topic_uncertain": 0,
+        "N_complaints": 0,
+        "N_mentioned_unclear": 0,
+        "N_mentioned_other": 0,
+        "N_uncertain": 0,
+        "by_outcome": {
+          "mixed": 0,
+          "denial": 0,
+          "neutral": 0,
+          "unclear": 0,
+          "positive": 0,
+          "complaint": 0,
+          "not_mentioned": 10000,
+          "excluded_blank": 0,
+          "topic_uncertain": 0
+        },
+        "coverage": 1.0,
+        "defined_coverage": 1.0,
+        "complaints_among_eligible": 0.0,
+        "complaints_among_mentions": null,
+        "undefined_rates": {
+          "complaints_among_mentions": "NO_MENTIONS"
+        }
+      }
+    }
+  },
+  "prior": {
+    "a": {
+      "seconds": 2.376242815000296,
+      "input_bytes": 548,
+      "eligible": 3,
+      "processed": 3,
+      "status": "succeeded",
+      "first_s": 0.06600053599686362,
+      "last_s": 0.040651426003023516
+    },
+    "b": {
+      "seconds": 3.614349059993401,
+      "input_bytes": 1052,
+      "eligible": 6,
+      "processed": 6,
+      "status": "succeeded",
+      "first_s": 0.06132046499988064,
+      "last_s": 0.03869922200101428
+    },
+    "problematic": {
+      "seconds": 3.467788316003862,
+      "input_bytes": 469,
+      "eligible": 0,
+      "processed": 0,
+      "status": "succeeded",
+      "first_s": 0.0760746950036264,
+      "last_s": 0.038817034001112916
+    },
+    "context": {
+      "seconds": 2.9483428970052046,
+      "input_bytes": 12129,
+      "eligible": 4,
+      "processed": 4,
+      "status": "succeeded",
+      "first_s": 0.05889719299739227,
+      "last_s": 0.043276859003526624
+    },
+    "public-demo": {
+      "seconds": 3.148441922996426,
+      "input_bytes": 535480,
+      "eligible": 1058,
+      "processed": 1058,
+      "status": "succeeded",
+      "first_s": 0.056635064000147395,
+      "last_s": 0.035735568999371026
+    },
+    "repeated-10k": {
+      "seconds": 17.379080995997356,
+      "input_bytes": 4194304,
+      "eligible": 10000,
+      "processed": 10000,
+      "status": "succeeded",
+      "first_s": 0.09824736900191056,
+      "last_s": 0.03897537099692272
+    },
+    "diverse-10k": {
+      "seconds": 15.607586949998222,
+      "input_bytes": 2560456,
+      "eligible": 10000,
+      "processed": 10000,
+      "status": "succeeded",
+      "first_s": 0.08536587099661119,
+      "last_s": 0.04737195299821906
+    }
+  },
+  "previous_refusal": {
+    "probe": "decision-profile",
+    "fixture": "repeated-10k",
+    "status": "failed",
+    "reason": "RESOURCE_LIMIT",
+    "processed": 0,
+    "eligible": null,
+    "seconds": 16.930412150999473,
+    "events": [
+      {
+        "event": "worker_stage",
+        "stage": "verify",
+        "processed": 0,
+        "attempt": 1,
+        "outcome": "failed",
+        "duration_ms": 10336.97,
+        "peak_rss_kib": 52780,
+        "db_backend_peak_rss_kib": 41448
+      }
+    ],
+    "input_bytes": 4194304,
+    "first_s": 1.9942261109972605,
+    "first_bytes": 1620
+  },
+  "quality_labels": "none; resource inputs only",
+  "coverage_scope": "one frozen manual queue definition; SQL and actual classifier"
+}

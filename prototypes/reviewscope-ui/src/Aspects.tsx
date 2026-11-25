@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import templates from "../../../src/reviewscope/resources/decision-definitions.json";
 import demo from "./overview.synthetic.json";
 
 export type Api = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -224,6 +225,9 @@ export function Aspects({
 		}
 	}
 	const detail = data?.detail;
+	const [template, setTemplate] = useState<keyof typeof templates | "">("");
+	const initial =
+		detail?.payload ?? (template ? templates[template] : undefined);
 	const change = { aspect: "", aspectVersion: "", aspectPage: "" };
 	return (
 		<section className="evidence" style={{ overflowWrap: "anywhere" }}>
@@ -268,6 +272,9 @@ export function Aspects({
 						<>
 							<Definition value={detail} />
 							<a href={link({ ...change, proposal: "" })}>К списку аспектов</a>{" "}
+							{q.get("snapshot") && (
+								<a href={link({ view: "decisions" })}>Оценка по всему снимку</a>
+							)}{" "}
 							{!detail.archived && q.get("snapshot") && (
 								<a
 									href={link({
@@ -329,7 +336,27 @@ export function Aspects({
 										{aspect ? "Создать следующую версию" : "Создать аспект"}
 									</button>
 								) : (
-									<form onSubmit={save}>
+									<form onSubmit={save} key={template}>
+										{!detail && !proposal && (
+											<label>
+												Начальное определение
+												<select
+													value={template}
+													onChange={(e) =>
+														setTemplate(
+															e.target.value as keyof typeof templates | "",
+														)
+													}
+												>
+													<option value="">Ввести вручную</option>
+													{Object.entries(templates).map(([id, payload]) => (
+														<option key={id} value={id}>
+															{payload.name} · экспериментальный профиль
+														</option>
+													))}
+												</select>
+											</label>
+										)}
 										<p>
 											Опишите границы своими словами. Не вставляйте персональные
 											данные и цитаты из реальных отзывов.
@@ -340,7 +367,7 @@ export function Aspects({
 												name="name"
 												maxLength={120}
 												required
-												defaultValue={detail?.payload.name}
+												defaultValue={initial?.name}
 											/>
 										</label>
 										<label>
@@ -350,7 +377,7 @@ export function Aspects({
 												name="definition"
 												maxLength={2000}
 												required
-												defaultValue={detail?.payload.definition}
+												defaultValue={initial?.definition}
 											/>
 										</label>
 										{(["include", "exclude"] as const).map((group) => (
@@ -360,7 +387,7 @@ export function Aspects({
 												<textarea
 													name={group}
 													required
-													defaultValue={detail?.payload[group].join("\n")}
+													defaultValue={initial?.[group].join("\n")}
 												/>
 											</label>
 										))}
