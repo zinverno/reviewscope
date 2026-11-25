@@ -87,7 +87,14 @@ def cli(label):
         and all(isinstance(v, (int, float)) for k, v in p.items() if k != "event")
         for p in profiles
     )
-    events = [e for e in events if e not in profiles]
+    decisions = [e for e in events if e.get("event") == "decision_resources"]
+    assert all(
+        set(e) == {"event", "rows", "unique_scored", "load_s", "score_wall_s", "cpu_s",
+                   "peak_rss_kib", "stage_s", "staged_bytes"}
+        and all(isinstance(v, (int, float)) for k, v in e.items() if k != "event")
+        for e in decisions
+    )
+    events = [e for e in events if e not in profiles and e not in decisions]
     assert result.stderr == b"" and events
     assert all(
         set(e)
