@@ -91,6 +91,8 @@ def role_id(encoding_id, role):
 
 
 class CandidateIndex:
+    alternative_e5 = False
+
     def __init__(self, scope, docs, mode="lexical", encoder=None, *, whole=False):
         if mode not in MODES or mode != "lexical" and encoder is None:
             raise ValueError("NOT_RUN_MISSING_BACKEND" if encoder is None else "INVALID_MODE")
@@ -120,7 +122,12 @@ class CandidateIndex:
         if mode in {"dense", "hybrid"}:
             from reviewscope.embeddings.sentence_transformer import SentenceTransformerProvider
 
-            if encoder.contract != SentenceTransformerProvider().contract:
+            if self.alternative_e5:
+                from reviewscope.embeddings.rerank import E5
+
+                if type(encoder) is not E5:
+                    raise ValueError("INCOMPATIBLE_ENCODING")
+            elif encoder.contract != SentenceTransformerProvider().contract:
                 raise ValueError("INCOMPATIBLE_ENCODING")
             self.dense_id = encoder.contract.encoding_id
 
@@ -135,7 +142,7 @@ class CandidateIndex:
             self.manifest.update(
                 dense=asdict(encoder.contract),
                 tokenizer=self.dense_id,
-                document_role=role_id(self.dense_id, "document"),
+                document_role=self.role_id("document"),
             )
         self.eligible = self.truncated = 0
         members = []
@@ -220,6 +227,11 @@ class CandidateIndex:
         ) + (self.dense.nbytes if self.dense is not None else 0)
         self.manifest["index_sha256"] = digest([scope, self.manifest])
 
+    def role_id(self, role):
+        if self.alternative_e5:
+            return digest([self.dense_id, role, "passage: " if role == "document" else "query: "])
+        return role_id(self.dense_id, role)
+
     def search(self, query, k, role="query_to_passage"):
         if (
             role not in ROLES
@@ -235,10 +247,12 @@ class CandidateIndex:
         if self.dense_id:
             if self.encoder.contract.encoding_id != self.dense_id:
                 raise ValueError("INCOMPATIBLE_ENCODING")
-            if self.encoder.token_count(query) > 128:
+            count = self.encoder.query_count if self.alternative_e5 else self.encoder.token_count
+            if count(query) > 128:
                 raise ValueError("QUERY_TOKEN_LIMIT")
             if self.dense is not None:
-                dense_query = unit_dense(self.encoder.encode([query]), 1, self.encoder.contract.dim)
+                encode = self.encoder.encode_query if self.alternative_e5 else self.encoder.encode
+                dense_query = unit_dense(encode([query]), 1, self.encoder.contract.dim)
         encoded_at = perf_counter()
         scores = {}
         if sparse_query is not None:
@@ -309,7 +323,7 @@ class CandidateIndex:
             index=self.manifest,
             query_sha256=text_sha(query),
             role=role,
-            query_role_id=role_id(self.dense_id, role) if self.dense_id else None,
+            query_role_id=self.role_id(role) if self.dense_id else None,
             mode=self.mode,
             k=k,
             reviewed_count=self.total,
@@ -321,3 +335,9 @@ class CandidateIndex:
             candidates=hits,
             shortfall="eligible channel candidates exhausted" if len(selected) < k else None,
         )
+
+
+class E5CandidateIndex(CandidateIndex):
+    """Offline experimental namespace, separate from candidate-search-1."""
+
+    alternative_e5 = True

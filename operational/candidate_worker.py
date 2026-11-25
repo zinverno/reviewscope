@@ -67,8 +67,6 @@ def compute(scope, rows, params):
 
 
 def result(summary, rows, params, pulse):
-    from operational.worker import JobError, linux_peak_kib
-
     scope = {
         key: summary[key]
         for key in (
@@ -81,49 +79,8 @@ def result(summary, rows, params, pulse):
             "coverage",
         )
     }
-    env = {
-        k: os.environ[k]
-        for k in ("PATH", "HOME", "PYTHONPATH", "HF_HOME", "HF_HUB_CACHE", "TMPDIR")
-        if k in os.environ
-    }
-    env.update(
-        HF_HUB_OFFLINE="1",
-        TRANSFORMERS_OFFLINE="1",
-        HF_HUB_DISABLE_TELEMETRY="1",
-        HF_HUB_DISABLE_PROGRESS_BARS="1",
-        TOKENIZERS_PARALLELISM="false",
-        OMP_NUM_THREADS="1",
-        OPENBLAS_NUM_THREADS="1",
-    )
-    deadline = monotonic() + 120
-    # The encoder receives only PR-19 inputs. Bind the definition in the parent before hashing.
     search_params = {k: params[k] for k in ("query", "mode", "role", "k")}
-    with subprocess.Popen(
-        [sys.executable, "-m", "operational.candidate_worker", str(os.getpid())],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        env=env,
-    ) as proc:
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            reply = pool.submit(proc.communicate, encoded([scope, rows, search_params]))
-            try:
-                while True:
-                    try:
-                        raw, _ = reply.result(timeout=1)
-                        break
-                    except TimeoutError:
-                        pulse()
-                        if monotonic() >= deadline or (linux_peak_kib(proc.pid) or 0) > 2 * 1024**2:
-                            raise JobError("RESOURCE_LIMIT") from None
-            finally:
-                if proc.poll() is None:
-                    proc.kill()
-    if proc.returncode == 3:
-        raise JobError("RESOURCE_LIMIT")
-    if proc.returncode != 0 or len(raw) > MAX_RESULT:
-        raise JobError("INTEGRITY_ERROR")
-    doc = json.loads(raw)
+    doc = child("candidate", [scope, rows, search_params], pulse)
     diagnostics = doc.pop("diagnostics", {})
     doc.update(
         **scope,
@@ -143,12 +100,67 @@ def result(summary, rows, params, pulse):
     return doc
 
 
+def child(method, payload, pulse):
+    from operational.worker import JobError, linux_peak_kib
+
+    env = {
+        k: os.environ[k]
+        for k in ("PATH", "HOME", "PYTHONPATH", "HF_HOME", "HF_HUB_CACHE", "TMPDIR", "RS_RERANK_MODELS")
+        if k in os.environ
+    }
+    env.update(
+        HF_HUB_OFFLINE="1",
+        TRANSFORMERS_OFFLINE="1",
+        HF_HUB_DISABLE_TELEMETRY="1",
+        HF_HUB_DISABLE_PROGRESS_BARS="1",
+        TOKENIZERS_PARALLELISM="false",
+        OMP_NUM_THREADS="1",
+        OPENBLAS_NUM_THREADS="1",
+    )
+    deadline = monotonic() + 120
+    with subprocess.Popen(
+        [sys.executable, "-m", "operational.candidate_worker", str(os.getpid()), method],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    ) as proc:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            reply = pool.submit(proc.communicate, encoded(payload))
+            try:
+                while True:
+                    try:
+                        raw, _ = reply.result(timeout=1)
+                        break
+                    except TimeoutError:
+                        pulse()
+                        if monotonic() >= deadline or (linux_peak_kib(proc.pid) or 0) > 2 * 1024**2:
+                            raise JobError("RESOURCE_LIMIT") from None
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+    if proc.returncode == 3 or (method == "rerank" and monotonic() >= deadline):
+        raise JobError("RESOURCE_LIMIT")
+    if proc.returncode != 0 or len(raw) > MAX_RESULT:
+        raise JobError("INTEGRITY_ERROR")
+    return json.loads(raw)
+
+
 if __name__ == "__main__":
     # Stop private computation if the lease-owning worker dies, including during model loading.
     if ctypes.CDLL(None).prctl(1, signal.SIGKILL, 0, 0, 0) != 0 or os.getppid() != int(sys.argv[1]):
         sys.exit(1)
     try:
-        payload = encoded(compute(*json.load(sys.stdin)))
+        if sys.argv[2] == "rerank":
+            from operational.rerank_worker import compute as run
+        else:
+            run = compute
+        payload = encoded(run(*json.load(sys.stdin)))
+        if sys.argv[2] == "rerank":
+            from operational.worker import linux_peak_kib
+
+            if (linux_peak_kib("self") or 0) > 2 * 1024**2:
+                sys.exit(3)
         if len(payload) > MAX_RESULT:
             sys.exit(3)
         sys.stdout.buffer.write(payload)

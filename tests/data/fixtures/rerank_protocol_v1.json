@@ -1,0 +1,289 @@
+{
+  "schema": "rerank-authored-1",
+  "annotation_source": "authored_smoke",
+  "absent_aspect": "judged off-topic, grade 0; explicit null means unknown",
+  "topic": "grades 1 and 2",
+  "split_scope": "one separate index per split",
+  "base": "0913881c4ab6d44b11366647343be851027e15a2",
+  "methods": [
+    "whole_lexical",
+    "whole_minilm",
+    "fragment_lexical",
+    "fragment_minilm",
+    "hybrid_minilm",
+    "fragment_e5",
+    "hybrid_e5",
+    "rerank_minilm",
+    "rerank_e5"
+  ],
+  "budgets": {
+    "cabinet": [
+      10,
+      40
+    ],
+    "research": [
+      50,
+      200
+    ],
+    "k": [
+      1,
+      3,
+      5,
+      10,
+      20,
+      50
+    ],
+    "seconds": 120,
+    "rss_mib": 2048,
+    "artifact_bytes": 65536
+  },
+  "method": "PR19 ranking contract, whole PR05 tie. E5 uses 128 including prefix and specials, masked mean/L2, passage corpus and query prefix for both query modes. Compare offset tuples across models. Cross encoder on exact query and complete parent context in saved pool, no truncation. Max 512 tokens including pair specials; query and anchor individually <=128. Batch 8 CPU FP32, one raw logit. Sort descending then fragment ID ascending. Review by best fragment.",
+  "models": {
+    "minilm": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+    "e5": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "ce": "1427fd652930e4ba29e8149678df786c240d8825"
+  },
+  "primary": "test macro nDCG@5 (2^grade-1), separately by query role, cabinet budget; full judgments only",
+  "gate": "each mode delta >=0.05 over hybrid_minilm; recall@10 delta >=-0.02, no pool loss, critical queue/handover or negation/span regression veto, <=5s warm full 40 pairs and within all caps. Minimum independent human evidence for changing default. No tuning even on dev.",
+  "secondary": "grade2 Recall/MRR/precision, grade2 exact span coverage first anchor and all available retrieved context, topic precision, denial/unclear top5. Effective K distinct reviews. Missing denom -> null; incomplete qrels excluded.",
+  "uncertainty": "paired six aspect families, descriptive deltas only (N=6)",
+  "fallback": "all-or-nothing. Preserve parent. Missing weights/backend, incompatible model, token/budget overrun have explicit status; invalid provenance denies publication.",
+  "aspects": [
+    {
+      "id": "queue",
+      "version": "1",
+      "definition": "Задержка до того, как сотрудник начинает принимать заказ.",
+      "include": "Стояли перед кассой, заказ ещё не оформляли.",
+      "exclude": "Долгое приготовление после оплаты."
+    },
+    {
+      "id": "handover",
+      "version": "1",
+      "definition": "Задержка передачи клиенту уже готового заказа.",
+      "include": "Пакет собран и отмечен готовым, но его не выдают.",
+      "exclude": "Ожидание, пока блюдо приготовят."
+    },
+    {
+      "id": "charge",
+      "version": "1",
+      "definition": "Повторное списание за одну и ту же покупку.",
+      "include": "Две проведённые операции за один чек.",
+      "exclude": "Два разных заказа или только попытка платежа."
+    },
+    {
+      "id": "missing",
+      "version": "1",
+      "definition": "В полученном заказе отсутствует заказанная позиция.",
+      "include": "В пакете нет оплаченного напитка.",
+      "exclude": "Забытая личная вещь либо неверный вкус."
+    },
+    {
+      "id": "food",
+      "version": "1",
+      "definition": "Дефект вкуса, свежести, температуры либо приготовления самого блюда.",
+      "include": "Пересоленный или сырой продукт.",
+      "exclude": "Сервис и внешний вид помещения."
+    },
+    {
+      "id": "staff",
+      "version": "1",
+      "definition": "Грубое или унизительное общение сотрудника с посетителем.",
+      "include": "Оскорбление и насмешка в ответ на вопрос.",
+      "exclude": "Невнимательность без разговора."
+    }
+  ],
+  "queries": [
+    {
+      "id": "queue-0",
+      "split": "dev",
+      "aspect": "queue",
+      "family": "queue",
+      "role": "query_to_passage",
+      "query": "Где пришлось ждать начала оформления заказа?"
+    },
+    {
+      "id": "queue-1",
+      "split": "dev",
+      "aspect": "queue",
+      "family": "queue",
+      "role": "text_to_text",
+      "query": "Мы топтались у меню, а принять заказ было некому."
+    },
+    {
+      "id": "queue-2",
+      "split": "test",
+      "aspect": "queue",
+      "family": "queue",
+      "role": "query_to_passage",
+      "query": "Очередь перед приёмом заказа тянулась слишком долго"
+    },
+    {
+      "id": "queue-3",
+      "split": "test",
+      "aspect": "queue",
+      "family": "queue",
+      "role": "text_to_text",
+      "query": "До нас у стойки никак не доходил черёд."
+    },
+    {
+      "id": "handover-0",
+      "split": "dev",
+      "aspect": "handover",
+      "family": "handover",
+      "role": "query_to_passage",
+      "query": "Проблемы с выдачей уже готовой еды"
+    },
+    {
+      "id": "handover-1",
+      "split": "dev",
+      "aspect": "handover",
+      "family": "handover",
+      "role": "text_to_text",
+      "query": "Смотрю на свой собранный пакет за стеклом, забрать не дают."
+    },
+    {
+      "id": "handover-2",
+      "split": "test",
+      "aspect": "handover",
+      "family": "handover",
+      "role": "query_to_passage",
+      "query": "Когда задержали передачу готового заказа?"
+    },
+    {
+      "id": "handover-3",
+      "split": "test",
+      "aspect": "handover",
+      "family": "handover",
+      "role": "text_to_text",
+      "query": "На экране давно зелёный номер, а коробку мне всё не отдавали."
+    },
+    {
+      "id": "charge-0",
+      "split": "dev",
+      "aspect": "charge",
+      "family": "charge",
+      "role": "query_to_passage",
+      "query": "Повторная оплата по одному чеку"
+    },
+    {
+      "id": "charge-1",
+      "split": "dev",
+      "aspect": "charge",
+      "family": "charge",
+      "role": "text_to_text",
+      "query": "В выписке за единственный обед две одинаковые расходные операции."
+    },
+    {
+      "id": "charge-2",
+      "split": "test",
+      "aspect": "charge",
+      "family": "charge",
+      "role": "query_to_passage",
+      "query": "За одну покупку деньги сняли несколько раз"
+    },
+    {
+      "id": "charge-3",
+      "split": "test",
+      "aspect": "charge",
+      "family": "charge",
+      "role": "text_to_text",
+      "query": "Один раз приложил карту, а баланс уменьшился на цену двух обедов."
+    },
+    {
+      "id": "missing-0",
+      "split": "dev",
+      "aspect": "missing",
+      "family": "missing",
+      "role": "query_to_passage",
+      "query": "Оплаченный товар забыли положить"
+    },
+    {
+      "id": "missing-1",
+      "split": "dev",
+      "aspect": "missing",
+      "family": "missing",
+      "role": "text_to_text",
+      "query": "Разобрали доставку дома, из чека не нашли десерт."
+    },
+    {
+      "id": "missing-2",
+      "split": "test",
+      "aspect": "missing",
+      "family": "missing",
+      "role": "query_to_passage",
+      "query": "В полученном заказе чего-то не хватало"
+    },
+    {
+      "id": "missing-3",
+      "split": "test",
+      "aspect": "missing",
+      "family": "missing",
+      "role": "text_to_text",
+      "query": "Принёс пакет из кафе, а купленного супа внутри нет."
+    },
+    {
+      "id": "food-0",
+      "split": "dev",
+      "aspect": "food",
+      "family": "food",
+      "role": "query_to_passage",
+      "query": "Еду испортили при приготовлении"
+    },
+    {
+      "id": "food-1",
+      "split": "dev",
+      "aspect": "food",
+      "family": "food",
+      "role": "text_to_text",
+      "query": "Надкусил кусочек, середина холодная и совсем сырая."
+    },
+    {
+      "id": "food-2",
+      "split": "test",
+      "aspect": "food",
+      "family": "food",
+      "role": "query_to_passage",
+      "query": "Что было не так с качеством блюда?"
+    },
+    {
+      "id": "food-3",
+      "split": "test",
+      "aspect": "food",
+      "family": "food",
+      "role": "text_to_text",
+      "query": "Пришлось оставить обед на тарелке, всё горчило."
+    },
+    {
+      "id": "staff-0",
+      "split": "dev",
+      "aspect": "staff",
+      "family": "staff",
+      "role": "query_to_passage",
+      "query": "Грубость персонала в разговоре"
+    },
+    {
+      "id": "staff-1",
+      "split": "dev",
+      "aspect": "staff",
+      "family": "staff",
+      "role": "text_to_text",
+      "query": "Спросила состав соуса и в ответ услышала издёвку."
+    },
+    {
+      "id": "staff-2",
+      "split": "test",
+      "aspect": "staff",
+      "family": "staff",
+      "role": "query_to_passage",
+      "query": "Сотрудник разговаривал с гостем оскорбительно"
+    },
+    {
+      "id": "staff-3",
+      "split": "test",
+      "aspect": "staff",
+      "family": "staff",
+      "role": "text_to_text",
+      "query": "Обратился за помощью, а кассир начал передразнивать меня."
+    }
+  ]
+}

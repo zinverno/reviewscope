@@ -114,6 +114,8 @@ const jsonPost = (value: unknown): RequestInit => ({
 });
 function link(changes: Record<string, string>) {
 	const u = new URL(window.location.href);
+	if ("candidateRun" in changes || "view" in changes)
+		u.searchParams.delete("rerankRun");
 	if (
 		["workspace", "source", "snapshot"].some(
 			(k) => k in changes && changes[k] !== u.searchParams.get(k),
@@ -133,6 +135,7 @@ function link(changes: Record<string, string>) {
 			"proposal",
 			"candidateRun",
 			"candidateSource",
+			"rerankRun",
 			"fragment",
 			"fromSignals",
 			"contextSource",

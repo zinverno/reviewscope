@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from . import PRIVATE_BINDS_SAFE
 from .ledger import SCOPED, LedgerError, gate
 from .security import ROLES, permits
 
@@ -48,7 +49,7 @@ def transaction(engine):
                     AND NOT has_schema_privilege(current_user,'public','CREATE')
                     AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
                     AND (SELECT array_agg(version_num) FROM public.alembic_version)
-                        IN (ARRAY['0006_retention']::varchar[], ARRAY['0007_browser_delivery']::varchar[], ARRAY['0008_review_evidence']::varchar[], ARRAY['0009_overview']::varchar[], ARRAY['0010_signals']::varchar[], ARRAY['0011_reviewer_context']::varchar[], ARRAY['0012_candidate_search']::varchar[], ARRAY['0013_reviewer_context_plan']::varchar[], ARRAY['0014_aspects']::varchar[])
+                        IN (ARRAY['0006_retention']::varchar[], ARRAY['0007_browser_delivery']::varchar[], ARRAY['0008_review_evidence']::varchar[], ARRAY['0009_overview']::varchar[], ARRAY['0010_signals']::varchar[], ARRAY['0011_reviewer_context']::varchar[], ARRAY['0012_candidate_search']::varchar[], ARRAY['0013_reviewer_context_plan']::varchar[], ARRAY['0014_aspects']::varchar[], ARRAY['0015_rerank']::varchar[])
                     AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
                     AND (to_regclass('public.browser_delivery') IS NULL OR
                         (row_security_active(to_regclass('public.browser_delivery'))
@@ -154,11 +155,6 @@ def job_status(cur, workspace, *, run=None, snapshot=None):
 
 def private_binds(cur):
     # Check before sending the private bind value to PostgreSQL.
-    cur.execute("""SELECT current_setting('log_parameter_max_length_on_error')='0'
-        AND (current_setting('log_parameter_max_length')='0' OR (
-          current_setting('log_statement')='none' AND current_setting('log_min_duration_statement')='-1'
-          AND current_setting('log_min_duration_sample')='-1'
-          AND current_setting('log_transaction_sample_rate')::float=0))
-        AND coalesce(current_setting('pgaudit.log_parameter',true),'off')='off' AS safe""")
+    cur.execute(PRIVATE_BINDS_SAFE)
     if not cur.fetchone()["safe"]:
         raise HTTPException(503)

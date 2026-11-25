@@ -340,13 +340,18 @@ def admit_signal_fixture(db, w, snapshot, kind):
 
 @pytest.mark.parametrize(
     ("kind", "bound"),
-    [(worker.KIND, False), (worker.signals.KIND, False),
-     (worker.candidate_worker.KIND, False), (worker.candidate_worker.KIND, True)],
+    [
+        (worker.KIND, False),
+        (worker.signals.KIND, False),
+        (worker.candidate_worker.KIND, False),
+        (worker.candidate_worker.KIND, True),
+        (worker.rerank_worker.KIND, True),
+    ],
 )
-def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind, bound):
+def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind, bound, tmp_path, monkeypatch):
     client, path, w, a, _, root, _ = jobs
     admit_signal_fixture(db, w, a, kind)
-    if kind == worker.candidate_worker.KIND:
+    if kind in (worker.candidate_worker.KIND, worker.rerank_worker.KIND):
         (source,) = db.execute(
             """INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,candidate_allowed)
             SELECT s.workspace_id,s.source_id,b.file_sha256,true,true FROM snapshot s JOIN import_batch b ON
@@ -375,6 +380,24 @@ def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind, bound):
         )
         assert reply.status_code == 202
         run = reply.json()["id"]
+        if kind == worker.rerank_worker.KIND:
+            from operational.tests.test_browser_delivery import importer
+
+            monkeypatch.delenv("RS_RERANK_MODELS", raising=False)
+            assert cli("crash-test-parent") == "succeeded"
+            route = path.removesuffix("/runs") + f"/snapshots/{a}/candidates/{run}/rerank"
+            with importer(tmp_path, monkeypatch):
+                reply = client.post(
+                    route,
+                    json=dict(
+                        source_id=str(source),
+                        idempotency_key=str(uuid4()),
+                        profile="mmarco-context-logit-v1",
+                    ),
+                    headers=CSRF,
+                )
+                assert reply.status_code == 202, reply.text
+                run=reply.json()["id"]
     else:
         run, _ = enqueue(client, path, a, kind=kind)
     # Capture a real live generation without placing its nonce in logs.
@@ -431,7 +454,7 @@ with worker.connect() as conn: worker.process(conn,job,Event())
                 p.kill()
                 p.wait()
         (orphan,) = set((root / str(w) / "sha256").iterdir()) - before
-        assert db.execute("SELECT count(*) FROM artifact").fetchone() == (0,)
+        assert db.execute("SELECT count(*) FROM artifact WHERE run_id=%s",(run,)).fetchone() == (0,)
         assert client.get(path + f"/{run}/status").json()["status"] == "running"
         deadline = time.monotonic() + 22
         while time.monotonic() < deadline:
@@ -446,7 +469,7 @@ with worker.connect() as conn: worker.process(conn,job,Event())
         time.sleep(1.05)
         assert cli("restart-after-SIGKILL") == "succeeded"
         assert publish_cas(one, old, orphan.name, size, info["manifest"]) == "stale"
-        assert db.execute("SELECT checksum,size_bytes FROM artifact").fetchall() == [
+        assert db.execute("SELECT checksum,size_bytes FROM artifact WHERE run_id=%s",(run,)).fetchall() == [
             (orphan.name, size)
         ]
         final = client.get(path + f"/{run}/status").json()
