@@ -678,7 +678,7 @@ async function test(type) {
 					path: join(media, "candidates-" + type.name() + ".png"),
 				});
 		stage = type.name() + " versioned aspect";
-		await checkAspects(browser, content, originalDetail.href, media, (phase) => {
+		const derivedURL = await checkAspects(browser, content, origin+"/cabinet/?"+new URLSearchParams(fixture.aspectScope), media, (phase) => {
 			stage = type.name() + " aspect " + phase;
 		});
 		stage = type.name() + " invalid fragment";
@@ -711,7 +711,10 @@ async function test(type) {
 		stage = type.name() + " session revocation";
 		await candidatePage.goto(originalDetail.href);
 		await candidatePage.locator("mark").waitFor();
-		const logoutTab = await signalsContext.newPage();
+		const derivedTab=await signalsContext.newPage();
+        await derivedTab.goto(derivedURL);
+        await derivedTab.locator("mark").waitFor();
+        const logoutTab = await signalsContext.newPage();
 		await logoutTab.goto(origin + "/cabinet/");
 		await logoutTab.getByRole("button", { name: "Выйти" }).click();
 		await logoutTab.getByRole("button", { name: "Войти" }).waitFor();
@@ -719,8 +722,10 @@ async function test(type) {
 		await candidatePage
 			.locator("mark")
 			.waitFor({ state: "detached", timeout: 15000 });
-		await candidatePage.reload();
-		await candidatePage.getByRole("button", { name: "Войти" }).waitFor();
+		await derivedTab.bringToFront();
+        await derivedTab.locator("mark").waitFor({state:"detached",timeout:15000});
+        await candidatePage.reload();
+        await candidatePage.getByRole("button", { name: "Войти" }).waitFor();
 		assert.equal(await candidatePage.locator("mark").count(), 0);
 		await signalsContext.close();
 	} finally {

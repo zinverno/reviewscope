@@ -1,6 +1,7 @@
 """Scoped POST and immutable result selection in the local TLS cabinet."""
 
 import hashlib
+import json
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -13,6 +14,34 @@ from .evidence import EvidencePage, Filters, evidence_page
 KIND = "snapshot_candidate_search_v1"
 Mode = Literal["lexical", "dense", "hybrid"]
 Role = Literal["query_to_passage", "text_to_text"]
+
+
+class RerankScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: UUID
+
+
+class RerankRequest(RerankScope):
+    idempotency_key: UUID
+    profile: Literal["mmarco-context-logit-v1"]
+
+
+class Rank(BaseModel):
+    fragment_id: str = Field(pattern="^[0-9a-f]{64}$")
+    pre_rank: int = Field(ge=1)
+    rank: int = Field(ge=1, le=40)
+    review_rank: int = Field(ge=1, le=10)
+    score: float = Field(allow_inf_nan=False)
+
+
+class RerankView(BaseModel):
+    status: Literal["queued", "running", "failed", "cancelled", "READY", "BASELINE_RETAINED"]
+    reason: str | None = None
+    ranking: list[Rank] = Field(max_length=40)
+    runtime: str | None = None
+    revision: str | None = None
+    parent_sha256: str | None = None
+    result_sha256: str | None = None
 
 
 class CandidateRequest(BaseModel):
@@ -247,3 +276,147 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                     raise HTTPException(503)
                 listing["evidence"] = detail
             return BoundListing.model_validate(listing) if "definition" in listing else listing
+
+    derived = route + "/{parent}/rerank"
+
+    def parent_result(cur, actor, workspace, snapshot, parent, source, request):
+        sel = Selection(source_id=source, run_id=parent)
+        listing = signals.read_selection(
+            cur,
+            actor,
+            workspace,
+            snapshot,
+            sel,
+            request,
+            cookie,
+            key,
+            KIND,
+            "candidate-search-1",
+            "read_candidates",
+            "candidate-search-1",
+        )
+        doc = listing["result"]
+        if doc.get("status") != "READY" or not doc.get("aspect"):
+            raise HTTPException(409)
+        return listing
+
+    @app.post(
+        derived,
+        status_code=202,
+        response_model=JobStatus,
+        openapi_extra=write_contract,
+        responses=errors,
+    )
+    def rerank_start(
+        workspace: UUID,
+        snapshot: UUID,
+        parent: UUID,
+        data: RerankRequest,
+        request: Request,
+        response: Response,
+        _: Annotated[Strict, Query()],
+    ):
+        if local or request.url.scheme != "https":
+            raise HTTPException(403)
+        with authenticated(request) as (cur, actor):
+            store.authorize(cur, actor, workspace, "start_analysis")
+            store.private_binds(cur)
+            cur.execute(
+                "SELECT * FROM enqueue_rerank(%s,%s,%s,%s,%s,%s)",
+                (workspace, data.source_id, snapshot, parent, data.idempotency_key, data.profile),
+            )
+            row = cur.fetchone()
+            if row["code"] not in (200, 202):
+                raise HTTPException(row["code"])
+            parent_result(cur, actor, workspace, snapshot, parent, data.source_id, request)
+            response.status_code = row["code"]
+            return store.job_status(cur, workspace, run=row["run_id"])
+
+    @app.get(derived + "/{run}", openapi_extra=read_contract, responses=errors)
+    def rerank_read(
+        workspace: UUID,
+        snapshot: UUID,
+        parent: UUID,
+        run: UUID,
+        request: Request,
+        q: Annotated[RerankScope, Query()],
+    ) -> RerankView:
+        if local or request.url.scheme != "https":
+            raise HTTPException(403)
+        with authenticated(request) as (cur, actor):
+            store.authorize(cur, actor, workspace, "review_evidence")
+            cur.execute(
+                "SELECT rerank_visible(%s,%s,%s,%s,%s) AS allowed",
+                (workspace, q.source_id, snapshot, parent, run),
+            )
+            if not cur.fetchone()["allowed"]:
+                raise HTTPException(404)
+            saved = parent_result(cur, actor, workspace, snapshot, parent, q.source_id, request)
+            job = store.job_status(cur, workspace, run=run)
+            view = dict(status=job["status"], reason=job["reason"], ranking=[])
+            if job["status"] != "succeeded":
+                return RerankView.model_validate(view)
+            derived_result = signals.read_selection(
+                cur,
+                actor,
+                workspace,
+                snapshot,
+                Selection(source_id=q.source_id, run_id=run),
+                request,
+                cookie,
+                key,
+                "snapshot_rerank_v1",
+                "candidate-rerank-1",
+                "read_rerank",
+                "candidate-rerank-1",
+            )
+            doc = derived_result["result"]
+            baseline = saved["result"]
+            for record, excluded in (
+                (doc, {"result_sha256"}),
+                (baseline, {"result_sha256", "run_id"}),
+            ):
+                canonical = json.dumps(
+                    {k: v for k, v in record.items() if k not in excluded},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode()
+                if hashlib.sha256(canonical).hexdigest() != record.get("result_sha256"):
+                    raise HTTPException(503)
+            if (
+                doc.get("parent_run_id") != str(parent)
+                or doc.get("parent_sha256") != saved["artifact_sha256"]
+                or doc.get("parent_result_sha256") != baseline["result_sha256"]
+                or any(
+                    doc.get(k) != baseline[k]
+                    for k in ("query_sha256", "aspect", "manifest_sha256", "snapshot_sha256")
+                )
+                or doc.get("profile") != "mmarco-context-logit-v1"
+            ):
+                raise HTTPException(503)
+            view = RerankView.model_validate(doc)
+            hits = {h["fragment_id"]: h for h in baseline["candidates"]}
+            if view.status == "READY":
+                if (
+                    len(view.ranking) != len(hits)
+                    or {h.fragment_id for h in view.ranking} != hits.keys()
+                ):
+                    raise HTTPException(503)
+                reviews = {}
+                for i, h in enumerate(
+                    sorted(view.ranking, key=lambda r: (-r.score, r.fragment_id)), 1
+                ):
+                    original = hits[h.fragment_id]
+                    if (
+                        view.ranking[i - 1] != h
+                        or h.pre_rank != original["rank"]
+                        or h.rank != i
+                        or h.review_rank
+                        != reviews.setdefault(original["version_id"], len(reviews) + 1)
+                    ):
+                        raise HTTPException(503)
+            elif view.status != "BASELINE_RETAINED" or view.ranking or not view.reason:
+                raise HTTPException(503)
+            return view

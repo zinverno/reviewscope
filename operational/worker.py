@@ -14,7 +14,7 @@ from time import monotonic
 
 import psycopg
 
-from operational import candidate_worker, signals
+from operational import candidate_worker, rerank_worker, signals
 from operational.delivery_objects import (
     DeliveryError,
     encoded,
@@ -71,7 +71,7 @@ def connect():
             AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
                 AND c.relname IN ('aspect','aspect_version') AND (NOT row_security_active(c.oid)
                 OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE')))
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects')
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -108,12 +108,14 @@ def summarize(conn, claim, info, directory, pulse):
     filters = info["filters"]
     require(filters.get("format") == FORMAT, "UNSUPPORTED_FORMAT")
     is_candidate = info["kind"] == candidate_worker.KIND
+    is_rerank = info["kind"] == rerank_worker.KIND
     is_signals = info["kind"] == signals.KIND
     require(
         (info["kind"], info["version"], info["definition"], info["model"], info["procedure"])
         in {
             (KIND, "1", "summary-1", "unused", VERSION),
             (signals.KIND, "1", "signals-1", "unused", VERSION),
+            (rerank_worker.KIND, "1", rerank_worker.SCHEMA, rerank_worker.PROFILE, VERSION),
             (candidate_worker.KIND, "1", "candidate-search-1", "unused", VERSION),
             (candidate_worker.KIND, "1", "candidate-search-1", "minilm-pr04", VERSION),
         },
@@ -213,7 +215,7 @@ def summarize(conn, claim, info, directory, pulse):
                         if kind in ("local", "invalid", "missing")
                         else "ineligible_event_basis"
                     ] += 1
-                if is_candidate:
+                if is_candidate or is_rerank:
                     projected.append((row["version_id"],row["content_sha256"],row["text"] or ""))
                 if is_signals:
                     item = signals.projection(row, rate, issue)
@@ -269,6 +271,21 @@ def summarize(conn, claim, info, directory, pulse):
             "NO_PERIOD_COMPARISON",
         ],
     }
+    if is_rerank:
+        raw = read_source(
+            directory,
+            info["candidate"]["parent_sha256"],
+            65536,
+            partial(pulse, "summarize", total, total),
+            keep=True,
+        )
+        summary = rerank_worker.result(
+            summary,
+            projected,
+            info["candidate"],
+            json.loads(raw),
+            partial(pulse, "summarize", total, total),
+        )
     if is_candidate:
         summary = candidate_worker.result(
             summary, projected, info["candidate"], partial(pulse, "summarize", total, total)
@@ -339,7 +356,7 @@ def process(conn, job, stopping):
             certified_space(gate(cur), claim[0], info["root"])
         directory = object_directory(Path(info["root"]), claim[0], create=False)
         value = summarize(conn, claim, info, directory, pulse)
-        if info["kind"] == candidate_worker.KIND:
+        if info["kind"] in (candidate_worker.KIND,rerank_worker.KIND):
             require(value.get("aspect") == info["candidate"].get("aspect"))
         data = encoded(value) + b"\n"
         require(len(data) <= signals.LIMIT, "RESOURCE_LIMIT")
@@ -350,13 +367,26 @@ def process(conn, job, stopping):
             if not available:
                 # Commit the cancellation/revocation decision in this transaction.
                 outcome = step("INTEGRITY_ERROR")
-            elif info["kind"] == candidate_worker.KIND:
+            elif info["kind"] in (candidate_worker.KIND,rerank_worker.KIND):
                 outcome = step("WORKER_STOPPED" if stopping.is_set() else None)
             if outcome == "running":
+                if info["kind"] == rerank_worker.KIND:
+                    from reviewscope.access import PRIVATE_BINDS_SAFE
+
+                    require(conn.execute(PRIVATE_BINDS_SAFE).fetchone()[0], "ACCESS_REVOKED")
+                    parent = read_source(
+                        directory,
+                        info["candidate"]["parent_sha256"],
+                        65536,
+                        lambda: None,
+                        keep=True,
+                    )
+                    conn.execute("SELECT set_config('rs.rerank_parent',%s,true)",(parent.decode(),))
                 digest = publish(directory, (data,))
                 verify_file(directory, digest, len(data))
                 projection = {
                     signals.KIND: "rs.signals_projection",
+                    rerank_worker.KIND: "rs.candidate_projection",
                     candidate_worker.KIND: "rs.candidate_projection",
                 }.get(info["kind"], "rs.summary_projection")
                 conn.execute("SELECT set_config(%s,%s,true)", (projection, data.decode("utf-8")))

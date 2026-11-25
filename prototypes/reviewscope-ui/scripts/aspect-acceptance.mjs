@@ -19,6 +19,7 @@ export async function checkAspects(browser, storageState, start, media, stage) {
 			: route.abort(),
 	);
 	const page = await context.newPage();
+	let derivedURL;
 	context.setDefaultTimeout(10000);
 	try {
 		stage("open");
@@ -89,6 +90,55 @@ export async function checkAspects(browser, storageState, start, media, stage) {
 			0,
 		);
 		assert(!decodeURIComponent(page.url()).includes("готов"));
+		stage("rerank frozen v1");
+		const [reply] = await Promise.all([
+			page.waitForResponse(
+				(r) =>
+					r.request().method() === "POST" &&
+					new URL(r.url()).pathname.endsWith("/rerank"),
+			),
+			page
+				.getByRole("button", { name: "Переранжировать найденные кандидаты" })
+				.press("Enter"),
+		]);
+		assert.equal(reply.status(), 202);
+		stage("read derived result");
+		await page
+			.getByText(/Переранжирование · (BASELINE_RETAINED|READY)/)
+			.waitFor({ timeout: 30000 });
+		await card.getByText(title + " · v1").waitFor();
+		await page.reload();
+		await page
+			.getByRole("link", { name: "Открыть исходный порядок" })
+			.waitFor();
+		await page
+			.getByRole("link", { name: /Фрагмент .*отзыв/ })
+			.first()
+			.press("Enter");
+		await page.locator("mark").waitFor();
+		derivedURL = page.url();
+		for (const width of [320, 390, 1366, 1920]) {
+			await page.setViewportSize({ width, height: 768 });
+			assert(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth <= innerWidth + 1,
+				),
+			);
+		}
+		if (media)
+			await page.screenshot({ path: join(media, "rerank-" + engine + ".png") });
+		await page
+			.getByRole("link", { name: "Открыть исходный порядок" })
+			.press("Enter");
+		await card.getByText(title + " · v1").waitFor();
+		const invalid = new URL(derivedURL);
+		invalid.searchParams.set(
+			"rerankRun",
+			"00000000-0000-0000-0000-000000000000",
+		);
+		await page.goto(invalid.href);
+		await page.locator(".evidence [role=alert]").waitFor();
+		assert.equal(await page.locator("mark").count(), 0);
 		stage("proposal");
 		await page.goto(origin + "/cabinet/?view=legacy");
 		await page
@@ -108,4 +158,5 @@ export async function checkAspects(browser, storageState, start, media, stage) {
 	}
 	if (media)
 		await page.video().saveAs(join(media, "aspect-" + engine + ".webm"));
+	return derivedURL;
 }

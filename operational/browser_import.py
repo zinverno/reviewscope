@@ -106,7 +106,11 @@ def connection():
 
 
 def read_signals(msg):
-    candidate = msg['op'] == 'read_candidates'
+    function, schema = {
+        "read_signals": ("signal_object", SCHEMA),
+        "read_candidates": ("candidate_object", "candidate-search-1"),
+        "read_rerank": ("rerank_object", "candidate-rerank-1"),
+    }[msg["op"]]
     if set(msg) != {"op", "workspace", "source", "snapshot", "run", "actor", "expires", "ticket"}:
         raise UploadError("scope_denied")
     ids = [UUID(msg[k]) for k in ("workspace", "source", "snapshot", "run", "actor")]
@@ -116,7 +120,7 @@ def read_signals(msg):
         ).fetchone()[0]:
             raise UploadError("importer_unavailable")
         row = conn.execute(
-            ("SELECT * FROM candidate_object(%s,%s,%s,%s,%s,%s,%s)" if candidate else "SELECT * FROM signal_object(%s,%s,%s,%s,%s,%s,%s)"),
+            f"SELECT * FROM {function}(%s,%s,%s,%s,%s,%s,%s)",
             (*ids, msg["expires"], msg["ticket"]),
         ).fetchone()
         if row is None:
@@ -130,7 +134,7 @@ def read_signals(msg):
             raise UploadError("importer_unavailable")
         doc = json.loads(raw)
         if (
-            doc["schema"] != ("candidate-search-1" if candidate else SCHEMA)
+            doc["schema"] != schema
             or doc["manifest_sha256"] != manifest
             or [doc[k] for k in ("workspace_id", "source_id", "snapshot_id", "run_id")]
             != list(map(str, ids[:4]))
@@ -146,7 +150,7 @@ class Handler(socketserver.StreamRequestHandler):
         limit = 4096
         try:
             msg = read_json(self.rfile)
-            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates")
+            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank")
             parts = () if signal_read else tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
             if self.rfile.read(1):
                 raise UploadError("invalid_upload")

@@ -32,7 +32,19 @@ type Result = {
 	k: number;
 	candidates: Hit[];
 };
+type Rerank = {
+	status: string;
+	reason: string | null;
+	ranking: {
+		fragment_id: string;
+		pre_rank: number;
+		rank: number;
+		review_rank: number;
+		score: number;
+	}[];
+};
 type Listing = {
+	rerank?: Rerank;
 	definition?: Frozen;
 	query?: string;
 	evidence?: EvidenceResult;
@@ -85,6 +97,7 @@ export function CandidateSearch({
 	const params = new URLSearchParams(search);
 	const run = params.get("candidateRun") ?? "",
 		fragment = params.get("fragment") ?? "";
+	const derived = params.get("rerankRun") || "";
 	const aspect = params.get("aspect") || "",
 		version = params.get("aspectVersion") || "";
 	const [state, setState] = useState<{
@@ -97,6 +110,7 @@ export function CandidateSearch({
 	const [notice, setNotice] = useState(""),
 		[busy, setBusy] = useState(false);
 	const [reload, setReload] = useState(0);
+	const rerankKey = useRef<{ run: string; key: string } | null>(null);
 	const pending = useRef<{ body: string; key: string } | null>(null);
 	useEffect(() => {
 		if (reload > 0) setState(undefined);
@@ -120,10 +134,18 @@ export function CandidateSearch({
 				const status = listing.runs.find((r) => r.id === run)?.status;
 				if (run && !status) throw new Error("Запуск недоступен.");
 				let parts: string[] | undefined, full: string | undefined;
+				if (derived && status !== "succeeded")
+					throw new Error("Исходный запуск недоступен.");
 				if (status === "succeeded") {
 					filter.set("run_id", run);
 					if (fragment) filter.set("fragment_id", fragment);
 					const verified = await api<Listing>(`${route}?${filter}`, init);
+					if (derived) {
+						listing.rerank = await api<Rerank>(
+							`${route}/${run}/rerank/${derived}?source_id=${source}`,
+							init,
+						);
+					}
 					listing.result = verified.result;
 					listing.definition = verified.definition;
 					listing.query = verified.query;
@@ -156,7 +178,11 @@ export function CandidateSearch({
 				} else if (fragment) throw new Error("Фрагмент недоступен.");
 				if (live) {
 					setState({ listing, parts, full, chosen });
-					if (status === "queued" || status === "running")
+					if (
+						status === "queued" ||
+						status === "running" ||
+						["queued", "running"].includes(listing.rerank?.status ?? "")
+					)
 						timer = setTimeout(read, 1200);
 					else if (fragment || chosen || listing.definition)
 						timer = setTimeout(read, 5000);
@@ -195,6 +221,7 @@ export function CandidateSearch({
 		snapshot,
 		run,
 		fragment,
+		derived,
 		reload,
 		project,
 		aspect,
@@ -247,6 +274,39 @@ export function CandidateSearch({
 	}
 	const listing = state?.listing,
 		doc = listing?.result;
+	async function startRerank() {
+		const address = location.href;
+		if (rerankKey.current?.run !== run)
+			rerankKey.current = { run, key: crypto.randomUUID() };
+		setBusy(true);
+		try {
+			const job = await api<{ id: string }>(`${route}/${run}/rerank`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					source_id: source,
+					profile: "mmarco-context-logit-v1",
+					idempotency_key: rerankKey.current.key,
+				}),
+			});
+			if (location.href === address)
+				location.assign(link({ rerankRun: job.id, fragment: "" }));
+		} catch (e) {
+			setNotice((e as Error).message);
+			setState(undefined);
+			setReload((n) => n + 1);
+		} finally {
+			setBusy(false);
+		}
+	}
+	const ranks = new Map(
+		listing?.rerank?.ranking.map((r) => [r.fragment_id, r]),
+	);
+	const ordered = [...(doc?.candidates ?? [])].sort(
+		(a, b) =>
+			(ranks.get(a.fragment_id)?.rank ?? a.rank) -
+			(ranks.get(b.fragment_id)?.rank ?? b.rank),
+	);
 	const selected = doc?.candidates.find((h) => h.fragment_id === fragment);
 	const status = listing?.runs.find((r) => r.id === run)?.status;
 	return (
@@ -411,6 +471,33 @@ export function CandidateSearch({
 									{doc.fragment_count}. В выдаче {doc.retrieved_review_count}{" "}
 									разных отзывов и {doc.candidate_count} фрагментов.
 								</p>
+								{listing.definition &&
+									(derived ? (
+										<>
+											<p role="status">
+												Переранжирование · {listing.rerank?.status}{" "}
+												{listing.rerank?.reason}.{" "}
+												{listing.rerank?.status === "BASELINE_RETAINED" &&
+													"Сохранён исходный порядок."}
+											</p>
+											<a href={link({ rerankRun: "", fragment: "" })}>
+												Открыть исходный порядок
+											</a>
+										</>
+									) : (
+										<>
+											<p>
+												Профиль mmarco-context-logit-v1. Поиск не расширяется.
+											</p>
+											<button
+												type="button"
+												disabled={busy}
+												onClick={startRerank}
+											>
+												Переранжировать найденные кандидаты
+											</button>
+										</>
+									))}
 								{selected && state?.parts && (
 									<article aria-label="Фрагмент кандидата">
 										<h3>Область кандидата в контексте</h3>
@@ -441,7 +528,10 @@ export function CandidateSearch({
 									>
 										<thead>
 											<tr>
-												<th scope="col">Ранг</th>
+												<th scope="col">Исходный ранг</th>
+												{ranks.size > 0 && (
+													<th scope="col">Новый ранг · отзыв · raw logit</th>
+												)}
 												<th scope="col">
 													{doc.mode === "hybrid" ? "Оценка RRF" : "Сходство"}
 												</th>
@@ -450,7 +540,7 @@ export function CandidateSearch({
 											</tr>
 										</thead>
 										<tbody>
-											{doc.candidates.map((h) => (
+											{ordered.map((h) => (
 												<tr key={h.fragment_id}>
 													<td>
 														<a
@@ -462,6 +552,13 @@ export function CandidateSearch({
 															Фрагмент {h.rank} · отзыв {h.review_rank}
 														</a>
 													</td>
+													{ranks.size > 0 && (
+														<td>
+															{ranks.get(h.fragment_id)?.rank} ·{" "}
+															{ranks.get(h.fragment_id)?.review_rank} ·{" "}
+															{ranks.get(h.fragment_id)?.score.toFixed(4)}
+														</td>
+													)}
 													<td>{h.score.toFixed(4)}</td>
 													<td>
 														{Object.entries(h.channels).map(([c, v]) => (

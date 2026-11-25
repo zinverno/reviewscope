@@ -298,6 +298,31 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
             hashlib.sha256((long_fixture / "data").read_bytes()).hexdigest(),
         ),
     )
+    # Both browsers exercise their own bound searches under the normal 20 jobs/workspace/hour budget.
+    from operational.tests.test_deliveries import csv
+    from operational.tests.test_schema import bind_place
+
+    aw, ap, source = scope(db, source_key="synthetic")
+    for place in ("p1", "p2"):
+        bind_place(db, aw, ap, source, place)
+    db.execute("UPDATE workspace SET delivery_object_root=%s WHERE id=%s", (str(object_root), aw))
+    db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'owner','active')", (aw, actor))
+    db.execute(
+        "INSERT INTO workspace_membership SELECT %s,principal_id,'analyst','active' FROM delivery_authorization WHERE source_id=%s",
+        (aw, s),
+    )
+    db.execute(
+        "INSERT INTO delivery_authorization SELECT %s,%s,operator_login,principal_id FROM delivery_authorization WHERE source_id=%s",
+        (aw, source, s),
+    )
+    aspect_args = [
+        str(aw) if x == str(w) else str(source) if x == str(s) else x for x in registration
+    ]
+    aspect_snap = call(aspect_args + csv("a") + ["--apply"])["snapshot_id"]
+    db.execute(
+        "INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,candidate_allowed) VALUES (%s,%s,%s,true,true)",
+        (aw, source, hashlib.sha256((FIX / "a.csv").read_bytes()).hexdigest()),
+    )
     author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)
     cert, tls = tmp_path / "cert.pem", tmp_path / "tls.pem"
     ca, ca_key = tmp_path / "ca.pem", tmp_path / "ca.key"
@@ -447,6 +472,7 @@ with tempfile.TemporaryFile() as stage:
                 s=str(s),
                 csv=str(FIX.resolve()),
                 json=str(j),
+                aspectScope=dict(workspace=str(aw),source=str(source),candidateSource=str(source),snapshot=aspect_snap,view="candidates"),
                 longSnapshot=long_snapshot,
                 authorSnapshot=author_snapshot,
                 authorVersions=author_versions[:2],
@@ -454,6 +480,7 @@ with tempfile.TemporaryFile() as stage:
             )
             # Exercise the offline-unavailable state in both browsers with a fresh cache.
             worker_env = os.environ | {"HF_HUB_CACHE": str(tmp_path / "empty-model-cache")}
+            worker_env.pop("RS_RERANK_MODELS", None)
             native = subprocess.Popen(
                 ["node", "scripts/cabinet-acceptance.mjs"],
                 cwd=ui,
@@ -508,7 +535,7 @@ with tempfile.TemporaryFile() as stage:
         db.execute(
             "SELECT input_count,accepted_count,rejected_count,confirmed_duplicate_count FROM import_batch"
         ).fetchall()
-    ) == [(3, 3, 0, 0), (6, 6, 0, 0), (8, 5, 2, 1), (12, 6, 5, 1), (28, 28, 0, 0)]
+    ) == [(3, 3, 0, 0), (3, 3, 0, 0), (6, 6, 0, 0), (8, 5, 2, 1), (12, 6, 5, 1), (28, 28, 0, 0)]
 
 
 def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811

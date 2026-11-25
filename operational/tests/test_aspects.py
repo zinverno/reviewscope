@@ -425,6 +425,20 @@ def test_aspect_restore(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         candidate = f"{ROOT}/workspaces/{w}/snapshots/{snap}/candidates"
         rid = post(web, candidate, request, 202)["id"]
         assert cli("archive-bound") == "succeeded"
+        with importer(tmp_path, monkeypatch):
+            rr = post(
+                web,
+                f"{candidate}/{rid}/rerank",
+                dict(
+                    source_id=str(src),
+                    idempotency_key=str(uuid4()),
+                    profile="mmarco-context-logit-v1",
+                ),
+                202,
+            )["id"]
+            with monkeypatch.context() as mp:
+                mp.delenv("RS_RERANK_MODELS", raising=False)
+                assert cli("archive-rerank")=="succeeded"
         base = f"{route}/{saved['aspect_id']}"
         v2 = post(
             web,
@@ -456,6 +470,13 @@ def test_aspect_restore(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
                 for line in z.read("rows/analysis_run.jsonl").splitlines()
                 if json.loads(line)["id"] == rid
             )
+            derivative = next(
+                json.loads(line)
+                for line in z.read("rows/analysis_run.jsonl").splitlines()
+                if json.loads(line)["id"] == rr
+            )
+            assert derivative["candidate_params"]["parent_run_id"] == rid
+            assert hashlib.sha256(z.read("objects/"+derivative["candidate_params"]["parent_sha256"])).hexdigest()==derivative["candidate_params"]["parent_sha256"]
             assert run["candidate_params"]["aspect"]["version_id"] == saved["version_id"]
         archive = tmp_path / "before.dump"
         subprocess.run(["pg_dump", "-Fc", "-f", archive], check=True)
