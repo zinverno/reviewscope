@@ -424,6 +424,15 @@ def verify_access_permissions(conn, approved):
         raise DeliveryError("access_review_required") from None
 
 
+HUMAN_TABLES = (
+    "human_review_event",
+    "human_review_plan",
+    "human_plan_member",
+    "human_review_result",
+    "human_result_member",
+)
+
+
 def verify_catalog(conn):
     broken = one(
         conn,
@@ -456,6 +465,15 @@ def verify_catalog(conn):
             ELSE b.manifest IS NOT NULL OR j.status<>'running' AND EXISTS(SELECT FROM decision_row d
             WHERE (d.workspace_id,d.run_id)=(b.workspace_id,b.run_id)) END)"""), "decision_catalog_mismatch")
 
+    if one(conn, "SELECT to_regclass('public.human_review_event') IS NOT NULL"):
+        require(not one(conn, """SELECT EXISTS (
+            SELECT FROM (
+                SELECT workspace_id,run_id FROM human_review_event
+                UNION SELECT workspace_id,run_id FROM human_review_plan
+                UNION SELECT workspace_id,run_id FROM human_review_result
+            ) h WHERE human_integrity(workspace_id,run_id) IS NOT TRUE)"""),
+            "human_catalog_mismatch")
+
 
 def verify_restore_roles(admin):
     scoped = SCOPED
@@ -473,6 +491,14 @@ def verify_restore_roles(admin):
             AND c.oid IN ('decision_binding'::regclass,'decision_row'::regclass)
             AND has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))"""),
             "restore_roles_unverified")
+    if one(admin, "SELECT to_regclass('public.human_review_event') IS NOT NULL"):
+        scoped = [*scoped, *HUMAN_TABLES]
+        require(one(admin, """SELECT NOT EXISTS (SELECT FROM pg_roles r,pg_class c
+            WHERE r.rolname IN ('rs_runtime','rs_worker','rs_upload')
+            AND c.relnamespace='public'::regnamespace AND c.relname=ANY(%s)
+            AND (has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')
+                OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER')))""",
+            (list(HUMAN_TABLES),)), "restore_roles_unverified")
     allowed = admin.execute(
         """SELECT count(*)=3 AND bool_and(NOT (rolsuper OR rolbypassrls OR rolcreatedb
             OR rolcreaterole OR rolreplication) AND NOT EXISTS
@@ -495,7 +521,7 @@ def verify_restore_roles(admin):
         (scoped, scoped),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 

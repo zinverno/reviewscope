@@ -78,7 +78,8 @@ def cabinet(db, path, signing_key, *, size=None, allow=True, inputs=None):
     pwd = secrets.token_urlsafe(24)
     provision(db, "annotator", pwd, signing_key, workspace=w)
     with TestClient(create_app(), base_url=ORIGIN) as web:
-        assert login(web, "annotator", pwd).status_code == 204
+        signed_in = login(web, "annotator", pwd)
+        assert signed_in.status_code == 204
         saved = create(web, f"{ROOT}/workspaces/{w}/projects/{p}/aspects", A)
         proof = session_proof(web.cookies[COOKIE], signing_key)
         with runtime(w, proof) as reader:
@@ -142,7 +143,7 @@ def stage(conn, claim, rows):
 def publish(conn, claim, n, root):
     doc = query(conn, "decision_manifest(%s,%s,%s)", claim)
     doc["runtime"] = dict(python="0", numpy="0", sklearn="0", dtype="test-double")
-    raw = encoded(doc)
+    raw = encoded(doc) + b"\n"  # The object broker verifies the worker's canonical file bytes.
     sha = hashlib.sha256(raw).hexdigest()
     assert publish_object(root / str(claim[0]) / "sha256", (raw,)) == sha
     with conn.transaction():
@@ -327,6 +328,8 @@ def test_decision_read_during_publication(db, tmp_path, key):  # noqa: F811
 
 @pytest.mark.parametrize("kind", ["source", "project", "workspace"])
 def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
+    from operational.tests import human_lifecycle as human
+
     with cabinet(db, tmp_path, key) as (s, reader, proof, root, web, p), worker.connect() as conn:
         w = s[0]
         rows = scores(db, s)
@@ -334,6 +337,13 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         claim = conn.execute("SELECT * FROM claim_job()").fetchone()[:3]
         stage(conn, claim, rows)
         doc = publish(conn, claim, 6, root)
+        db.execute("UPDATE browser_admission SET human_review_allowed=true WHERE source_id=%s", (s[1],))
+        selected_version = next(row["version_id"] for row in rows if row["outcome"] == "not_mentioned")
+        ids = human.write_history(reader, s, run, selected_version)
+        neighbor, other_run, other_result = human.neighbor(db, root, web, s, proof, conn, tmp_path)
+        new_password = secrets.token_urlsafe(32)
+        provision(db, "restored-reader", new_password, key, workspace=neighbor, role="analyst")
+        old_session = proof
         _, unfinished = enqueue(reader, s)
         other = conn.execute("SELECT * FROM claim_job()").fetchone()[:3]
         assert stage(conn, other, rows[:2]) == 2
@@ -343,6 +353,7 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         out.mkdir(mode=0o700)
         operator("export", "--request", req["id"], "--root", root, "--owner-handoff", out)
         with ZipFile(out / (req["id"] + ".zip")) as z:
+            human.assert_owner_export(z, run, ids, doc)
             bindings = [
                 json.loads(line) for line in z.read("rows/decision_binding.jsonl").splitlines()
             ]
@@ -352,14 +363,25 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
             exported = [json.loads(line) for line in z.read("rows/decision_row.jsonl").splitlines()]
             assert len(exported) == 8 and all(r["run_id"] == str(run) for r in exported)
             assert all("text" not in r for r in exported)
+        if kind == "source":
+            db.execute("UPDATE browser_admission SET human_review_allowed=false WHERE source_id=%s", (s[1],))
+            withheld = ask(web, w, kind, selected, "export")
+            operator("export", "--request", withheld["id"], "--root", root, "--owner-handoff", out)
+            with ZipFile(out / (withheld["id"] + ".zip")) as z:
+                for table in human.HUMAN_TABLES:
+                    assert not z.read(f"rows/{table}.jsonl")
+                assert z.read("rows/decision_row.jsonl")
+            db.execute("UPDATE browser_admission SET human_review_allowed=true WHERE source_id=%s", (s[1],))
         backup = tmp_path / "before.dump"
         subprocess.run(["pg_dump", "-Fc", "-f", backup], check=True)
-        frozen = freeze_objects(root, tmp_path, [w])
+        frozen = freeze_objects(root, tmp_path, [w, neighbor])
         req = ask(web, w, kind, selected, "erase")
         assert (
             req["report"]["tables"]["decision_binding"] == 2
             and req["report"]["tables"]["decision_row"] == 10
         )
+        assert {name: req["report"]["tables"][name] for name in human.HUMAN_TABLES} == dict(
+            zip(human.HUMAN_TABLES, [1, 1, 6, 1, 1], strict=True))
         operator(
             "confirm",
             "--request",
@@ -369,8 +391,10 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
             "--root",
             root,
         )
+        assert query(reader, "human_history(%s,%s,%s,%s,%s,0)", (*s[:3], run, selected_version)) is None
         operator("purge", "--request", req["id"], "--root", root)
-        assert query(db, "count(*) FROM decision_row", ()) == 0
+        assert query(db, "count(*) FROM decision_row WHERE workspace_id=%s", (w,)) == 0
+        human.assert_remaining(db, run, other_run, other_result)
         proof, seal = read_witness()["sha256"], capture_access(db)
         with (
             fresh_restore_cluster(monkeypatch, backup) as (_, name),
@@ -379,12 +403,26 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
             target.execute(
                 sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(name))
             )
-            assert query(target, "count(*) FROM decision_row", ()) == 10
+            assert query(target, "count(*) FROM decision_row WHERE workspace_id=%s", (w,)) == 10
+            assert query(target, "count(*) FROM human_review_event WHERE run_id=%s", (run,)) == 1
             token = prepare_copy(target, frozen, generation("decisions"), proof, seal)
             recover(target, proof, [token], seal)
-            assert query(target, "count(*) FROM decision_row", ()) == 0
-            assert query(target, "count(*) FROM decision_binding", ()) == 0
-            assert query(target, "count(*) FROM aspect_version", ()) == int(kind == "source")
+            human.assert_remaining(target, run, other_run, other_result)
+            neighbor_source, neighbor_snapshot = target.execute(
+                "SELECT source_id,snapshot_id FROM decision_binding WHERE run_id=%s", (other_run,)
+            ).fetchone()
+            args = (neighbor, neighbor_source, neighbor_snapshot, other_run, other_result["id"])
+            with runtime(neighbor, old_session) as stale:
+                assert query(stale, "human_result(%s,%s,%s,%s,%s,0)", args) is None
+            assert query(target, "count(*) FROM access_session WHERE revoked_at IS NULL", ()) == 0
+            with TestClient(create_app(), base_url=ORIGIN) as restored_web:
+                signed_in = login(restored_web, "restored-reader", new_password)
+                assert signed_in.status_code == 204
+                with runtime(neighbor, session_proof(restored_web.cookies[COOKIE], key)) as fresh:
+                    assert query(fresh, "human_result(%s,%s,%s,%s,%s,0)", args) == other_result
+            assert query(target, "count(*) FROM decision_row WHERE workspace_id=%s", (w,)) == 0
+            assert query(target, "count(*) FROM decision_binding WHERE workspace_id=%s", (w,)) == 0
+            assert query(target, "count(*) FROM aspect_version WHERE workspace_id=%s", (w,)) == int(kind == "source")
 
 
 @pytest.mark.parametrize(

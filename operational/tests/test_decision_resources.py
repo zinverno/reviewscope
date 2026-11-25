@@ -212,3 +212,7 @@ def test_decision_profile_resource(db, tmp_path, monkeypatch, key, fixture):  # 
                 default=float,
             )
         )
+        if fixture == "diverse-10k":
+            from operational.tests.human_profile import observe
+
+            observe(db, client, src, w, f"{route}/{run}", [v for v, _ in originals])

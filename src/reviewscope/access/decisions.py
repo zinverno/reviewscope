@@ -158,6 +158,45 @@ def verify_evidence(row, text):
     return primary, counter
 
 
+def verify_artifact(cur, actor, workspace, snapshot, source, run, request, cookie, key, page):
+    doc, artifact_sha = signals.read_artifact(
+        cur,
+        actor,
+        workspace,
+        snapshot,
+        source,
+        run,
+        request,
+        cookie,
+        key,
+        "snapshot_aspect_decision_v1",
+        "aspect-decision-1",
+        "read_decisions",
+        "aspect-decision-1",
+    )
+    if (
+        page.summary is None
+        or doc.get("summary") != page.summary.model_dump()
+        or artifact_sha != page.artifact_sha256
+        or doc.get("aspect_id") != str(page.definition.aspect_id)
+        or doc.get("version_id") != str(page.definition.version_id)
+        or page.runtime is None
+        or doc.get("runtime") != page.runtime
+        or doc.get("digest") != page.definition.digest
+        or any(
+            doc.get(field) != getattr(page, field)
+            for field in (
+                "rows_sha256",
+                "manifest_sha256",
+                "profile",
+                "profile_sha256",
+                "threshold_set",
+            )
+        )
+    ):
+        raise HTTPException(503)
+
+
 def install(app, authenticated, key, cookie, local, read_contract, write_contract, errors):
     from .http import JobStatus, Strict
 
@@ -181,7 +220,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
 
     def ready(cur):
         cur.execute("SELECT version_num FROM public.alembic_version")
-        if cur.fetchone()["version_num"] != "0016_aspect_decisions":
+        if cur.fetchone()["version_num"] not in {"0016_aspect_decisions", "0017_human_review"}:
             raise HTTPException(503)
 
     def catalog(cur, workspace, snapshot, binding):
@@ -276,42 +315,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                 raise HTTPException(404)
             page = RunPage.model_validate(data)
             if page.compute_state == "COMPLETE":
-                doc, artifact_sha = signals.read_artifact(
-                    cur,
-                    actor,
-                    workspace,
-                    snapshot,
-                    q.source_id,
-                    run,
-                    request,
-                    cookie,
-                    key,
-                    "snapshot_aspect_decision_v1",
-                    "aspect-decision-1",
-                    "read_decisions",
-                    "aspect-decision-1",
-                )
-                if (
-                    page.summary is None
-                    or doc.get("summary") != page.summary.model_dump()
-                    or artifact_sha != page.artifact_sha256
-                    or doc.get("aspect_id") != str(page.definition.aspect_id)
-                    or doc.get("version_id") != str(page.definition.version_id)
-                    or page.runtime is None
-                    or doc.get("runtime") != page.runtime
-                    or doc.get("digest") != page.definition.digest
-                    or any(
-                        doc.get(field) != getattr(page, field)
-                        for field in (
-                            "rows_sha256",
-                            "manifest_sha256",
-                            "profile",
-                            "profile_sha256",
-                            "threshold_set",
-                        )
-                    )
-                ):
-                    raise HTTPException(503)
+                verify_artifact(cur, actor, workspace, snapshot, q.source_id, run, request, cookie, key, page)
             if q.version_id is not None:
                 if len(page.rows) != 1 or page.rows[0].version_id != q.version_id:
                     raise HTTPException(404)

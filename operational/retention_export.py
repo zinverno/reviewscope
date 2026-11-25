@@ -127,6 +127,15 @@ def export(conn, rid, root, handoff):
                     omissions.append("project_definitions_outside_source_scope")
             if one(conn, "SELECT to_regclass('public.decision_row') IS NOT NULL"):
                 tables.update(decision_binding="run_id", decision_row="run_id,version_id")
+            if one(conn, "SELECT to_regclass('public.human_review_event') IS NOT NULL"):
+                tables.update(
+                    human_review_event="run_id,version_id,sequence",
+                    human_review_plan="run_id,id",
+                    human_plan_member="run_id,plan_id,ordinal",
+                    human_review_result="run_id,id",
+                    human_result_member="run_id,result_id,version_id",
+                )
+                omissions.append("human_review_request_keys")
             for table, order in tables.items():
                 run_fields = RUN_FIELDS
                 if table == "analysis_run" and one(
@@ -135,6 +144,11 @@ def export(conn, rid, root, handoff):
                 ):
                     run_fields += ",candidate_params"
                 fields = {
+                    "human_review_event": "workspace_id,run_id,version_id,id,sequence,previous_id,actor,created_at,action,outcome,reason,spans,selection,plan_id,machine,content_sha256,text_sha256",
+                    "human_review_plan": "workspace_id,run_id,id,actor,created_at,seed,requested,eligible,size,algorithm,digest",
+                    "human_plan_member": "workspace_id,run_id,plan_id,version_id,ordinal",
+                    "human_review_result": "workspace_id,run_id,id,actor,created_at,algorithm,digest,manifest_sha256,rows_sha256,artifact_sha256,summary",
+                    "human_result_member": "workspace_id,run_id,result_id,version_id,event_id",
                     "decision_binding": "workspace_id,run_id,project_id,source_id,snapshot_id,aspect_id,version_id,digest,profile,threshold_set,profile_sha256,manifest",
                     "decision_row": 'workspace_id,run_id,snapshot_id,version_id,content_sha256,text_sha256,outcome,"start","end",counter_start,counter_end,score,reason',
                     "workspace": "id,name,state,created_at",

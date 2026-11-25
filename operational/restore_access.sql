@@ -24,17 +24,28 @@ WITH roles AS (
  pg_get_expr(p.polqual,c.oid),pg_get_expr(p.polwithcheck,c.oid)) FROM pg_policy p JOIN rels c ON c.oid=p.polrelid
  UNION ALL SELECT jsonb_build_array('aspect_constraint',c.relname,k.conname,pg_get_constraintdef(k.oid))
  FROM pg_constraint k JOIN rels c ON c.oid=k.conrelid
- WHERE c.relname IN ('aspect','aspect_version','decision_binding','decision_row') OR k.confrelid=to_regclass('public.aspect_version')
+ WHERE c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
+ 'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member') OR k.confrelid=to_regclass('public.aspect_version')
  OR (c.relname='analysis_run' AND strpos(pg_get_constraintdef(k.oid),'bound_')>0)
  UNION ALL SELECT jsonb_build_array('aspect_trigger',c.relname,pg_get_triggerdef(t.oid),t.tgenabled)
  FROM pg_trigger t JOIN rels c ON c.oid=t.tgrelid WHERE NOT t.tgisinternal
- AND (c.relname IN ('aspect','aspect_version','decision_binding','decision_row') OR t.tgname IN ('verify_aspect_publication','verify_decision_publication','clear_decision_stage'))
+ AND (c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
+ 'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member') OR t.tgname IN ('verify_aspect_publication','verify_decision_publication','clear_decision_stage'))
  UNION ALL SELECT jsonb_build_array('aspect_generated',c.relname,a.attname,pg_get_expr(d.adbin,d.adrelid))
  FROM pg_attrdef d JOIN rels c ON c.oid=d.adrelid JOIN pg_attribute a ON (a.attrelid,a.attnum)=(c.oid,d.adnum)
  WHERE a.attgenerated<>'' AND (c.relname='aspect_version' OR c.relname='analysis_run' AND starts_with(a.attname,'bound_'))
  UNION ALL SELECT jsonb_build_array('decision_admission',a.attnotnull,pg_get_expr(d.adbin,d.adrelid))
  FROM pg_attrdef d JOIN rels c ON c.oid=d.adrelid JOIN pg_attribute a ON (a.attrelid,a.attnum)=(c.oid,d.adnum)
  WHERE c.relname='browser_admission' AND a.attname='decision_allowed'
+ UNION ALL SELECT jsonb_build_array('human_column',c.relname,a.attname,format_type(a.atttypid,a.atttypmod),
+ a.attnotnull,pg_get_expr(d.adbin,d.adrelid))
+ FROM rels c JOIN pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_attrdef d ON (d.adrelid,d.adnum)=(c.oid,a.attnum)
+ WHERE a.attnum>0 AND NOT a.attisdropped AND (c.relname IN
+ ('human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member')
+ OR (c.relname='browser_admission' AND a.attname='human_review_allowed'))
+ UNION ALL SELECT jsonb_build_array('human_index',c.relname,pg_get_indexdef(i.indexrelid),i.indisvalid,i.indisready)
+ FROM rels c JOIN pg_index i ON i.indrelid=c.oid WHERE c.relname IN
+ ('human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member')
  UNION ALL SELECT jsonb_build_array('decision_outcomes',array_agg(e.enumlabel ORDER BY e.enumsortorder))
  FROM pg_enum e WHERE e.enumtypid=to_regtype('public.decision_outcome') HAVING count(*)>0
  UNION ALL SELECT jsonb_build_array('role',r.rolname,r.rolcanlogin,r.rolsuper,r.rolinherit,r.rolcreaterole,r.rolcreatedb,
