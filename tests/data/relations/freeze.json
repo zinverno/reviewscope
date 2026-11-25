@@ -1,0 +1,492 @@
+{
+  "base": "b2ef6df8c6c98719435266a19c462bef005d338f",
+  "protected": {
+    "demo/demo_dataset_meta.json": [
+      "62ddce9286337adc2810bebb88ecc6f754d05ba5",
+      "e3d66ba51435a259858ea7e1ffa734ce0677681c059c679b86beb10a3c0111f4"
+    ],
+    "demo/manifest.json": [
+      "cdf7ac6b8bb5e114956837612622ba2a3fa1113c",
+      "d9d019b14e538b6fbb7fdbe0e2ed77037c31cd66b30d09204e9c923106fe5024"
+    ],
+    "demo/reviewscope_demo.duckdb": [
+      "db763294583dcc986899843fd0d140190cb6c465",
+      "85ca0756ca60f56c735360ab46632d8893287635e7fec1a28548f97dae5fcfe2"
+    ],
+    "docs/development/aspect-decision-evidence/lexical-fit-rows.jsonl.gz": [
+      "1912cb494aadb2a3cd7177f50dc9fa37517bd210",
+      "dea3c352b52355a388d6ed7d2e0ffc4116fcc5be14774483eb917f18df0ab864"
+    ],
+    "docs/development/aspect-decision-evidence/lexical-test-rows.jsonl.gz": [
+      "c4ea4c08c8a7c7ad385b2e52577bf8f320915320",
+      "29b9a23ea2cb5e79b22387b886076c82b39d89c4f6a2798451a4bb02a192b2e9"
+    ],
+    "docs/development/aspect-decision-evidence/minilm-fit-rows.jsonl.gz": [
+      "1617c1c79f91e16e00164497b56079d3ccfeb134",
+      "6602852760f6b6f2f05cce157f4dc4ab3cf59676ca9ff61e74a7f037ff06e507"
+    ],
+    "docs/development/aspect-decision-evidence/minilm-test-rows.jsonl.gz": [
+      "27031b28e6561847fd52ff47964110daae37dcf7",
+      "0df72fb0f6604c959ac16deeda3bac0625d06484587b5e9f0f3671b63a7d5280"
+    ],
+    "docs/development/aspect-decision-evidence/minilm.npz": [
+      "d74f3cbd18dcae2dcf471ef499c4b76c378cfe6b",
+      "2b0b2256636908ce3bfc1de165366be79960628559503e4cf2069122868a1c94"
+    ],
+    "docs/development/aspect-decision-evidence/pair-diverse-first.json": [
+      "9726de646fb6fa681ef4b34545307656aae74f33",
+      "b4becc7671bc5f71026c100fa09b1b51b7e0646ff61b07394c09459941617929"
+    ],
+    "docs/development/aspect-decision-evidence/pair-diverse.json": [
+      "b6140f923a97251781a11e4f676ac9b659302227",
+      "148d58ee38a7466a188c5e3799bb4ade97a47ad1f0bcf7bb4e2322198f9046fe"
+    ],
+    "docs/development/aspect-decision-evidence/pair-fit-rows.jsonl.gz": [
+      "5f404c1c6d3fd2701819ca8a40f527d694cff851",
+      "e91563d7c65052a51d2019a1220cb9f60ca4dfb2318460c6a28cfb88d038b1f3"
+    ],
+    "docs/development/aspect-decision-evidence/pair-public-demo.json": [
+      "ffa496b68282912974e8c40a4d484afa786c4c5b",
+      "ea11b3fad442d3215436cc5957e2e99707d3a8bb3b53480db2c9daedefc98e42"
+    ],
+    "docs/development/aspect-decision-evidence/pair-repeated.json": [
+      "7caceec82aac12d494336b8792caa7437a5d54b4",
+      "54d4acd6d2ecdb41d0f8ab3fb868b008378bd6f1fca9c19cf64ea146040eaf67"
+    ],
+    "docs/development/aspect-decision-evidence/pair-test-rows.jsonl.gz": [
+      "cb03b81b2ba2d3453d50051a39059a7b6e711e5f",
+      "666218581c0c751dbb07af8837114cac2bb630c72260bf118a3f15a9219b0262"
+    ],
+    "docs/development/aspect-decision-evidence/pair.npz": [
+      "4923d9165bb6624a0174c81d3dda246e5ed22d87",
+      "56d32163952d2359218b993680ead3ede2d0126e51e79083cbd5465472d47a45"
+    ],
+    "docs/development/aspect-decision-evidence/portable-resources.json": [
+      "213ae1cb82cfa83faac94a957a88237e2503caaa",
+      "a4094e5309807507b0c303c6bce35e443c77f81ac5a632426031e6467520db01"
+    ],
+    "docs/development/aspect-decision-evidence/selection.json": [
+      "9cdd79b4de526f6cfee8c06f9a8c9a59196eebc1",
+      "6a216f4cdbfe3d3d845de198973906bb5a69b59da33bc38c8fa650658f67ac8a"
+    ],
+    "docs/development/aspect-decision-evidence/storage-10k.json": [
+      "fc7126af4edcbb005eda096bb23988c7871b37a2",
+      "a9985ea038271ea046e3880b6cbbfcd0a83231ef6ffbdebcce6cd5f0f798c381"
+    ],
+    "docs/development/aspect-decision-evidence/summary.json": [
+      "67839b97db02e8d6a55193a2c67db3bc640eaca8",
+      "937bf8704d7b1667bb473ff951ec6355d52620195b81ced51c3ee6e486d175ac"
+    ],
+    "docs/development/rerank-evidence/minilm-cache.json": [
+      "5d6514a2b95a67fd125d29a31b7ba280a5da19ad",
+      "64bd0dac27e8269079d0f56b67150c8990bed4956ac5ed358491109f3926f4a9"
+    ],
+    "docs/development/rerank-evidence/resource-profile.jsonl": [
+      "63a2dc6d8fb206574bccb64a06f511688111aee5",
+      "0280e92a30bde1d7f5c4664b4195ad0c57ea6db89b0cb4624b773c6f720a1e35"
+    ],
+    "docs/development/rerank-evidence/summary.json": [
+      "6e86aa12b3d1c81a22729d30c53d97419690586c",
+      "1c39a226d6330ea0af8ef05433be54e6006c242b3d70a7c81fa749ef3c084069"
+    ],
+    "docs/development/rerank-evidence/synthetic-matrix.json.gz": [
+      "c3d7b17d1609788fbc6f0aa9e0a37815a3fbbcad",
+      "e5d645ad98b014206417e8cbc663e405ba69e3257594271d56196757e9415189"
+    ],
+    "operational/candidate_worker.py": [
+      "03b52baa93c71337369e6fabe363b11239f02e58",
+      "31a1ed0f5e3c380d048fcadf5703bea5986670a115ed28b4eed867b396a03601"
+    ],
+    "operational/decision_worker.py": [
+      "2f4434eb550e94ebd12fbbd14d7f0c066a04b6d1",
+      "3565ee9272517c24485e50a42303cee5e32d2a0b1157ec5ee0085263f5a6b279"
+    ],
+    "operational/migrations/versions/0001_operational.py": [
+      "11cae826cfb9d456dd32fae275d9535f2f7c3620",
+      "b0eb94c5a1e36e578453a516b9e3aeb9e9593ae97a5f61fa2e406aaea25e6d21"
+    ],
+    "operational/migrations/versions/0001_operational.sql": [
+      "6e1f4d447eff774c790bd1961bb6da62db23a291",
+      "6da65bc4713e9fdbf288aae7d065de410fc2e660fe7ce25fa1ce6de2afdb8a43"
+    ],
+    "operational/migrations/versions/0002_principals.py": [
+      "7a8af9dd53e2000854baf3d1c19a1fba51304408",
+      "46805c211ef1ccc7d413345c1a061bf9251c9d73b18950f170358977bf68dd92"
+    ],
+    "operational/migrations/versions/0003_workspace_access.py": [
+      "27f7bdddec8d07c1e4927614541aaeba9460e64c",
+      "5a01e32c4971a7208900442a29a6139477a4a331d8bafb95147871a623cc5ffa"
+    ],
+    "operational/migrations/versions/0003_workspace_access.sql": [
+      "6e67866d9bcd16e7880bdec0d5ec4877a980b327",
+      "fe0ab2922e0c4814fb7fdcb5dbecb8c6efcde1d8bd9c03a1936b47a7c7fedb2f"
+    ],
+    "operational/migrations/versions/0004_delivery_history.py": [
+      "50f28f1b4eb7aa9c684931a4516559796e0dbea0",
+      "6fb2b62a6d523609c0d65b9433ca28d563c703bd9e5f91075c894c8e6aaea94e"
+    ],
+    "operational/migrations/versions/0004_delivery_history.sql": [
+      "22d468f78b9392c9b3dcc26e066c43ef42edb51f",
+      "8b0842ccf8661bdf822f87553ee7ef0162cba4778af4eb94b0c8d5b7259df605"
+    ],
+    "operational/migrations/versions/0005_background_jobs.py": [
+      "6a7015a16dbd0ac01c2ccfea228703e43ce0eab1",
+      "0edbbf8bc163dc69b23059724f184d88ba8327cf50e4c19ad49456d0c7483d5c"
+    ],
+    "operational/migrations/versions/0005_background_jobs.sql": [
+      "1c053bcf22f94bd6ca227885f9ad84d9bfe7d374",
+      "32ee6e1a8629c747c20eb3065f1ce83d0835cc622705745d20c3f634f6498a46"
+    ],
+    "operational/migrations/versions/0006_retention.py": [
+      "563c6ae86737abe3912742fa878817f37b8eac34",
+      "2e12fcddb4381243077e5d24e9bac94f6ef6d273c66195ac10d74de11e047e73"
+    ],
+    "operational/migrations/versions/0006_retention.sql": [
+      "1c00d8b6d18416e05b82570848e767857cbe7d6f",
+      "eb66393d4b34b5e399ad071579853f088c0830dac97c2eb3d6adfb24e8ee1bf3"
+    ],
+    "operational/migrations/versions/0007_browser_delivery.py": [
+      "f091a77062470464bfe3e0662616fbf0ec952b37",
+      "256d05e1b788fd7da7822b7de37d80c6028570316d709df3e053621315fb0df7"
+    ],
+    "operational/migrations/versions/0007_browser_delivery.sql": [
+      "048a5e6071742c6eaa44ec9cf86072c766c5ef32",
+      "c7b8c027b30abb26f86d5ab3e035b3189bb0d5b0051e437d8d25423560594789"
+    ],
+    "operational/migrations/versions/0008_review_evidence.py": [
+      "c48bdf1c20cea52fed113f011d3312ccfc7015c3",
+      "5496afbe7f7cc50588dedba6031e845e1d88509bde1093f1d34a747b8b6b18e4"
+    ],
+    "operational/migrations/versions/0008_review_evidence.sql": [
+      "5e87f2e832fe21633837d19b3c7fc371f19ea50a",
+      "2e618df710fe56078c6a80fa8998804b266183b308cd7112bc48143879b9b7be"
+    ],
+    "operational/migrations/versions/0009_overview.py": [
+      "31509c06c3d831a132cf526f2ad5c1df073c03c1",
+      "c38178071c5a92d078bd779f8d388dad1df1191227511766099c014f1dabcc56"
+    ],
+    "operational/migrations/versions/0009_overview.sql": [
+      "878d117fc9179db0be52f9e41a371619413ced02",
+      "4c3e71831ac65a32c11c7f3258ff789d19014adcaec5f82007bc75fbe60d7989"
+    ],
+    "operational/migrations/versions/0010_signals.py": [
+      "c166c4d19abe8a14b25d6370c3a3792f05d63209",
+      "31cdd10a8c4f784ca0b41ebdbde5295f296a8046ba5879414c282acdd993864b"
+    ],
+    "operational/migrations/versions/0010_signals.sql": [
+      "aff61c33fbd73567a031e620cdf9bf46b5936913",
+      "1a562761d86c44728e17ce361a1daa12a9874a6f88144085884b23f33484a813"
+    ],
+    "operational/migrations/versions/0011_reviewer_context.py": [
+      "a2c7d3cad3455613eb8dfd1be6b74b25c7b403f5",
+      "a0c4c7ea3636d311992ae1d7763fa44c1d7e6990499ceaece24e3373b794e09b"
+    ],
+    "operational/migrations/versions/0011_reviewer_context.sql": [
+      "1c832e95774cc931ca0f8eb3046269d4669be07d",
+      "320b461777ccba8ccd94d4b3c78b28e3ad65edec151860fcbbc47b5c8e5a5725"
+    ],
+    "operational/migrations/versions/0012_candidate_search.py": [
+      "0c7efab81178058fa0656ae9b211b36fac39a553",
+      "d3ae5e04ba00fb77b87a96433e2743f6fad1a60b1ada0c653ccff0fc996082fd"
+    ],
+    "operational/migrations/versions/0012_candidate_search.sql": [
+      "166a7d85fe45d6eac5dfdfb92ecdaf5256155ec8",
+      "453df921393285405c89c37999839f2cbfd6ca609659855312010cfcdbbba7cb"
+    ],
+    "operational/migrations/versions/0013_reviewer_context_plan.py": [
+      "825d08c3401eae5c36975a844a5bc4e1d30bc799",
+      "9b9b162fea1299ededd7517500971d93557ade79a0212b852097e449df5504c2"
+    ],
+    "operational/migrations/versions/0013_reviewer_context_plan.sql": [
+      "7a22878b092d5c2088aeab1479c07dc400e09791",
+      "5820140850a8480c3f3ec7a2ede1b97a9da2dd7c483739ae33c554ff1502c4c3"
+    ],
+    "operational/migrations/versions/0014_aspects.py": [
+      "07c98d558f2798350caa60ec3f5e9a0859ebf91b",
+      "324e2bf5d080978cde7cd8900a4638b9e8a4e31e9a771603079e71ed5910a5c4"
+    ],
+    "operational/migrations/versions/0014_aspects.sql": [
+      "c807937527e5d192cd8888ee7fa1e308718696c3",
+      "dd2fcefdb1448c989536f81c8979adfae426ece7fcfacc9310277b5dd5bbe3b1"
+    ],
+    "operational/migrations/versions/0015_rerank.py": [
+      "2cbc1fe36e48c9a1afa41d3b188c44c35ef1714e",
+      "b2f2f993ef0a8ff6fe1724ebb9b44922e477c23ca2f246fcece7279bac8b357f"
+    ],
+    "operational/migrations/versions/0015_rerank.sql": [
+      "dbb2c5dc82b86ef67dfb7815b934c69ac5e5b71d",
+      "6c1ff23c5642eef682c1b2629a499d29c626457075d2e25e7de2121e63216866"
+    ],
+    "operational/migrations/versions/0016_aspect_decisions.py": [
+      "25345c928b54dd74805866f70f29442077092b83",
+      "28119cc8625fa705dd4c60d3f49ffa0d7961b4ae901209b3ad507c91fe2ce6ee"
+    ],
+    "operational/migrations/versions/0016_aspect_decisions.sql": [
+      "f01d7cd30f5e146bb5afc2f44c993d19816e34f2",
+      "794717ac220163c5cff7e2906e127d85435d368871924d772fa461ed2b13f12e"
+    ],
+    "operational/migrations/versions/0017_human_review.py": [
+      "55cc20e6e05edd479b412b673eebca291d064815",
+      "0629ce18c1c22aa4820930d81f4c33801d21dd4f770f70d107f924f411110d60"
+    ],
+    "operational/migrations/versions/0017_human_review.sql": [
+      "029d8d075c7e41ccd135e2062f0623e3bb74d1bd",
+      "79aaca308a3d71baf5df87d4d320544250203c09f7d42b283f78cb69495ad709"
+    ],
+    "operational/rerank_worker.py": [
+      "545358aa65f6936ad266771ce5e9a9acd5f3fccd",
+      "5e2a964b0d86e55cad681dd9e4372733e32d4b8cf6238f8d796b5b7c42110947"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/manifest.json": [
+      "36850d58069860fc6af99fbfed1e5f6291a25130",
+      "39d297005870202362c5380efa8b05767059e9ad0d6bcd114fea7e757a67bc16"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p1.json": [
+      "0aafc7c344da2a6daa66f79bfd6b67865b754d18",
+      "b3bc6e486ee30efe58b5f6dd5084e3d36c256a18b33627b4d2838b1598e7d28c"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p10.json": [
+      "47b058e39833a39f8cefaa741b2d8def6ef46c06",
+      "7567b759f2ee7c108a4d21eca7f486964dc752bed9f9a784ebb04dd7c77f6125"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p11.json": [
+      "ea37ce9f22fd6e486a878823b15ae9d550c85682",
+      "a268d0c6ce45897399d1119febd15971b9cfdebff57f0f9a8b14a345bbb1ec78"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p12.json": [
+      "c337afca810292b24b83be476ac160d174ffe50d",
+      "623430b7080fc12ad3ea31b5eaca55bf0bec520caa4ff3186375955807d17819"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p2.json": [
+      "c679f762df0fe4f0eea0f256e37117983cc6a185",
+      "7e17d9a80357e918548aa7a2505015cc95874f3d2b9273cfb4b11bf55c8c593b"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p3.json": [
+      "682c187e31555f46c21f96ed2382168159243c2b",
+      "9c272bf30c81c24b3dba2ac38b5579f034e7f607b63b126dec176aff846ec1d5"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p4.json": [
+      "fe9cdd6319e62c627d76ccb675767b7997905524",
+      "4b628c9c211860f284d46942ce445d3d82919566eee0aaa8de7a4078f7d95d37"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p5.json": [
+      "65e0477ae08a30d0bb0e861b6213d309d0a90bad",
+      "00762a146ced74b84143df6b4e4c2a6de7f041ef7f6170893c9c79e5386ca926"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p6.json": [
+      "4f49c9e7f15505b7025391aa71cd508accbfbba7",
+      "3cc562a3ee90529eb2dac408682d59d827c115f47fe8cbd5dd17b2eb59de7104"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p7.json": [
+      "841f36dc0ee2d4e9347c9b2cfd7c961e2fd37fc9",
+      "8d432ecf3515c66ab71f440f597de3d02a369faeed3d70ab8ceb48a7a48cab48"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p8.json": [
+      "3f9aea8c384e6d9dcf33a1c63817463aba959a79",
+      "86419b502211b8a24f0d8d60fd56713a642ebf1583db8592b7d325fa9bf5b9db"
+    ],
+    "prototypes/reviewscope-ui/src/demo-graph/p9.json": [
+      "8827d7adabf93f732cffaaec47694b499e9e8bdd",
+      "b2b04cea789dd29aea8a98319617beb22b9939eef2cce441ab43a8c8a45925dc"
+    ],
+    "scripts/build_cabinet_graph.py": [
+      "c603674c603b79daabdfb5dbeff2f5b05954a331",
+      "070f869cf59a92118f3d1c7f626f5c25d70aac89af3ebb18898f2d4865b01620"
+    ],
+    "src/reviewscope/access/human_reviews.py": [
+      "36b76130d6968f2cf00edb5f17d791153e22124c",
+      "ff371bf767585ab7a51f5a64945269131ad994a1a8dcb3e00655a19ff999946f"
+    ],
+    "src/reviewscope/analysis/__init__.py": [
+      "85bd261f0bc45f67a00cd6069b2c76fa83865ccb",
+      "9c44873c7e3f84cfa82545a4ea5fe352ff67c4cb45d99e83d767089242bdb2fe"
+    ],
+    "src/reviewscope/analysis/bursts.py": [
+      "e3121d7828ac64d52a249db0379e1d6ec39b0ddb",
+      "51fc6605739727c46d67f38a2830af18d0482ffb04409d49467c49e3fd237fe8"
+    ],
+    "src/reviewscope/analysis/duplicates.py": [
+      "6d3eb1a80c67874c60f92d1cb4139ce1d103b9e9",
+      "8127ae1b49cfba1e7e3fa6dea1ac585c7e4f8dbd51e4a639f79f4b42e6c08972"
+    ],
+    "src/reviewscope/analysis/engine.py": [
+      "3a18a0ac5efba42e92d029a41a40d3585123c641",
+      "50ada91762e1015173a08309715ee21abed107f77d2afa7c8e7399c613210e38"
+    ],
+    "src/reviewscope/analysis/keywords.py": [
+      "abe24d6bdb8f260560af04f00c2ed070f32123df",
+      "a411cee27939579dca8cf3170e08c55d2c1b38d6de5da8466512c97867af4484"
+    ],
+    "src/reviewscope/analysis/rating_anomalies.py": [
+      "f1280d35ddee008d351cf5eef3ab3fb5e487e505",
+      "8b8458e0a4eb0113cdc797bc4abe4bfb6d5e517e04c416b368ab5c87f1468a6b"
+    ],
+    "src/reviewscope/analysis/reviewer.py": [
+      "69bad8e79c27b760c5ddc4e854e4fb942ab64ac9",
+      "c5a8d87749b73cbd1e71f3859077f985145883f3abf620e1e31f97e1fa086731"
+    ],
+    "src/reviewscope/analysis/scoring.py": [
+      "f51240b0ea950d4ff564548956e4aa0979f64d51",
+      "15a0f2026bdb91aa451caea1f5ef3b7a3e3815a6d92697abc09697f7651291a9"
+    ],
+    "src/reviewscope/analysis/specificity.py": [
+      "d627fb2abafd1d0762a4a16976d24a6a725bf657",
+      "79a613a9d46d7c8764ae515e350f30d1179763ef4ed84cb382ac94b49b0ed9be"
+    ],
+    "src/reviewscope/analysis/templated.py": [
+      "9cfd0ae756607fe0e153f43a7abc08cfb5428735",
+      "727b657127e99fb4a633c289be2f110f923bcd9316a08472e525e64aa778177f"
+    ],
+    "src/reviewscope/analysis/topics.py": [
+      "27f77a271e1887a491689ff6987a5e82da01b0b7",
+      "d185017f0cc1132c9c39843a8ca8b63d818236915ba53fe67508de8263c19c4c"
+    ],
+    "src/reviewscope/aspect_decisions.py": [
+      "7114d36e8265e964cc11527be61f51ab455068a8",
+      "2c0e2cf8512c9f49522ff8b1494ff3dadc5a3ea6aed0f67cc981cfcfe3b53506"
+    ],
+    "src/reviewscope/candidates.py": [
+      "6944c381a9d950e4b663a9a469868ba01b5be276",
+      "5ab8b97a5ef3288d645365c5aa46d5c27d2e4c1c7f3ef7d99dc8b5dc9dcbaa22"
+    ],
+    "src/reviewscope/config.py": [
+      "a3a3d5890cf537daf42ff47f3fcc283310f660c0",
+      "a2d0aca804aca382c6f769ab674e251cdb96628b2837e99e28f97c1bf703e73b"
+    ],
+    "src/reviewscope/embeddings/__init__.py": [
+      "d8b289956bc50e4f3d49ca72e100f48b71102f52",
+      "c37edfb18f4b2208a7fb4981302f8c375a9f029a5f471a01499697be4ea38f09"
+    ],
+    "src/reviewscope/embeddings/base.py": [
+      "c1651ea23bd00f77fa68463265d2c6ef1630f8fc",
+      "3016c552fa7f3fdb291ae8936f49393da6eee5ff8cf5faeb222f96239b488342"
+    ],
+    "src/reviewscope/embeddings/cache.py": [
+      "acfc224ea2688275e4137994a221efe50b9dcff5",
+      "8a2bfb885ba8802dbba05d204fa3a0441c9f28d78617202f5e019e3231f88fae"
+    ],
+    "src/reviewscope/embeddings/candidate_minilm.py": [
+      "607db07284a5830b8943ca79ed774b6a8407b297",
+      "005209e548df2e45076c3207c8e194d9a84b66cd79c2d368f9cf31d5ba602ea1"
+    ],
+    "src/reviewscope/embeddings/frozen_demo.py": [
+      "7d7cf2343e0b26ad61528bca20cd05aa9fd2c59f",
+      "309e90383909198eff3dcf1a950213aae84cd1edcb1e06d68e6ff94bb0ee89a5"
+    ],
+    "src/reviewscope/embeddings/rerank.py": [
+      "8aeda780f1617465a5832fee96f16c1ca34f0009",
+      "d92b240f77aa299c8e659bfb65be11e1bf4d39727fe366f23af95cb169d019a3"
+    ],
+    "src/reviewscope/embeddings/rerank_models.json": [
+      "ec4efe3deba4a8294e981c7e76fad94d8af69cce",
+      "fe4694a9c9e8e4234c993ebce9a28d4b4322c07b530e1a268579c83d8b491a74"
+    ],
+    "src/reviewscope/embeddings/sentence_transformer.py": [
+      "1bbe255014fb0ed33d8d1514891b12299c2500b0",
+      "041d9aea11ecace640814020c3cc8fba7f3c68757144971650d565c7e9d757cc"
+    ],
+    "src/reviewscope/rerank.py": [
+      "86e2389e7db6a26f3b680c6482f5d77234266488",
+      "4dc6a7826cab956ee0ea4ad18e94f0970dae78073db3a889d60c8c0873616b5e"
+    ],
+    "src/reviewscope/resources/__init__.py": [
+      "103c54b11e9d7306b7c0de238254275935aa750a",
+      "e43869c17ae2c056cacd445a8c6f21d1b52ddc4c6f2effa1ee6336442e5867ae"
+    ],
+    "src/reviewscope/resources/decision-definitions.json": [
+      "715efcde185d8bd3020b789ef31d3762b0a88870",
+      "b0124a7d6e94873bcb7d40450c8422c8dbb74b5cadb20aa808dd0e1c3e76bc81"
+    ],
+    "src/reviewscope/resources/decision-lexical-v1.npz": [
+      "a8050a138b713f08a024646afaff9e8d073e7bf3",
+      "7e0844814c5a0a363e8fee00740f06c46741c0123f285c6f46d1d1aa66aa65c8"
+    ],
+    "src/reviewscope/resources/en_stopwords.txt": [
+      "eca55c544a3f787e60f8da1ca793be4b631dbada",
+      "5e88384d31367bc145ef306969aa82cdbab2fd23525e1931abfd55076c5fd094"
+    ],
+    "src/reviewscope/resources/ru_stopwords.txt": [
+      "bce28764405bcae77a73fd6d6dd5d349659d86e9",
+      "bd05f4939a27ae2ee2c2bc305e5cab64e195b7f9c67d77ba68e403724d26bc96"
+    ],
+    "tests/data/fixtures/candidate_challenge_v1.json": [
+      "a3cba93ca6762f9a29c8c951c11d0011f9e4abb1",
+      "d94da12cd890623ade493ca7ba804f8d38bd46af41ad258ea36a2b93a034d5d5"
+    ],
+    "tests/data/fixtures/decision-freeze.sha256": [
+      "931b97b7c5194b1b6720574f7e305fe8d66641f6",
+      "2dc89afe258044141d78bea73466ea2bdb0ee5746e366c7d2b98755acd5bba09"
+    ],
+    "tests/data/fixtures/decision_protocol_v1.json": [
+      "962868f0fcd57fcec4b3f734ee4a519d6438e949",
+      "94b2361a14cfca3586f281cbedd055986a83f58e266a3acf0c1b4911887c1350"
+    ],
+    "tests/data/fixtures/decision_reviews_v1.jsonl": [
+      "6be968ffa218b0b7311f18a435267d33575ffdf5",
+      "a43b5c94c6af4cc7850566196902871907bd14c4aeb55a0d39f5bb47421a4442"
+    ],
+    "tests/data/fixtures/example_labels.csv": [
+      "3e3f412005b4ad3910c4674a6f0ceb7a387ddf9c",
+      "4e87c2f50a337b501c05e9c21fcfc11346ab5ea72163ef07561bec0ec80f41a0"
+    ],
+    "tests/data/fixtures/example_reviews.csv": [
+      "a6c049a27ff4b03662bbeb562a8bff0c2cfff046",
+      "5f06a200f9727dc847136b0651ba2d6862156ea3cd47eb3bec62cad64bf24f57"
+    ],
+    "tests/data/fixtures/import_preview/a.csv": [
+      "c780baf10fd39f047a48f85f1c0dbcfc41d2421a",
+      "d66a465c718b59908fe1d98a7033bce232b8929d9412fbb697f253125f8b12f7"
+    ],
+    "tests/data/fixtures/import_preview/a.passport.json": [
+      "0daeda309e48904b7ea03ee3d59ad172338355f0",
+      "254e701b3d660594bb8a431f4221691e11c6266a5379da1046c380af901aae1b"
+    ],
+    "tests/data/fixtures/import_preview/b.csv": [
+      "f411c7ed87585a8350c10cc04bde167e36f4d684",
+      "ff5e164bcf8e79783aa27b44ab7dcb49627088a83e770b942cb4521db9fdb095"
+    ],
+    "tests/data/fixtures/import_preview/b.passport.json": [
+      "6c93b1ae5f39851e90a68edd8c057021162afd5d",
+      "8e913b5eaf3f8230f669de78d659aea2486fc7e767bd542c4b151a7e88f04e9e"
+    ],
+    "tests/data/fixtures/import_preview/mapping.json": [
+      "d3389e419241e80f0c72b27286b5c497cdffb0a2",
+      "c129573fdd89c7e2469969b371baa4e5ff34ada155596f2cee0927bfc8403a6a"
+    ],
+    "tests/data/fixtures/rerank-freeze.sha256": [
+      "af302b0b9c95602ce646fc9617b4fcce23df40c6",
+      "3c5e3b36575a359cff06d3d53d929dc9fa12f786025a3ac9722d5a51df44f6f9"
+    ],
+    "tests/data/fixtures/rerank_protocol_v1.json": [
+      "4b9e576518f30ab97c4a58e0ae80e468bbcad87d",
+      "7d305a63f04008c6de380063967f4f2236396e801c8fabbf30400e9e62eb6cab"
+    ],
+    "tests/data/fixtures/rerank_reviews_v1.jsonl": [
+      "b860b2281ebd259260449849368ab5f30416d987",
+      "202eb4e2ba25f30f3af376590f33faaa5b09f4036eaa3873c7cdbddeaa483e22"
+    ],
+    "tests/data/fixtures/retrieval_smoke.json": [
+      "65314ba0df5dcdb8dc98cf127e6071d785273a21",
+      "6b0f4e0013fae7f33d963cbbabfff9c064e6d9a8ccadcd8a9a1ac20021e48085"
+    ]
+  },
+  "synthetic": {
+    "authored.tsv": "fe79ea5e909f72e8374fe42f975c7e5136a5259f5818faa4474aa2b2daeec124",
+    "definitions.json": "92d413dce4ae3505f5a4852286bc1ea07fc7630a1be0162037285b0d43b2fedc",
+    "pairs.jsonl.gz": "045913c3af42d32f8b22fff88aeb306e40da17db7610023bdbbce406f3c7cbd5",
+    "protocol.md": "3c31afb17003525eec92b1bcdf5dcb5166208170937faa11c53a00f224038bfb",
+    "reviews.jsonl.gz": "ed05de80dbcaca036f9e83cb9763a5909deb85c69090541f4d66828aa43a31d8"
+  },
+  "minilm": {
+    "1_Pooling/config.json": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23",
+    "README.md": "1e98ea05b0de579fcaad3d625b62ea55647142ed674d5f5ebf1440e4bbbb6f23",
+    "config.json": "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e",
+    "config_sentence_transformers.json": "b8c64b5cece00d8424b4896ea75b512b6008576088497609dfeb6bd63e6d36b8",
+    "model.safetensors": "eaa086f0ffee582aeb45b36e34cdd1fe2d6de2bef61f8a559a1bbc9bd955917b",
+    "modules.json": "8f4b264b80206c830bebbdcae377e137925650a433b689343a63bdc9b3145460",
+    "sentence_bert_config.json": "70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f",
+    "special_tokens_map.json": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d",
+    "tokenizer.json": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
+    "tokenizer_config.json": "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b"
+  }
+}
