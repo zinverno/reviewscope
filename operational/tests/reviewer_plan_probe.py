@@ -8,7 +8,7 @@ import psycopg
 from psycopg import sql
 
 
-def enable_client_plans(db):
+def enable_client_plans(db, role="rs_runtime"):
     # Keep nested plans in the test connection. Raw expressions may contain private bindings.
     settings = {
         "session_preload_libraries": "auto_explain",
@@ -26,8 +26,8 @@ def enable_client_plans(db):
     with psycopg.connect(user="rs_test", autocommit=True) as admin:
         for name, value in settings.items():
             admin.execute(
-                sql.SQL("ALTER ROLE rs_runtime IN DATABASE {} SET {} TO {}").format(
-                    sql.Identifier(db.info.dbname), sql.SQL(name), sql.Literal(value)
+                sql.SQL("ALTER ROLE {} IN DATABASE {} SET {} TO {}").format(
+                    sql.Identifier(role), sql.Identifier(db.info.dbname), sql.SQL(name), sql.Literal(value)
                 )
             )
 

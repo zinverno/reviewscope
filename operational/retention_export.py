@@ -125,6 +125,8 @@ def export(conn, rid, root, handoff):
                 tables.update(aspect="project_id,aspect_id", aspect_version="project_id,aspect_id,version_no")
                 if k == "source":
                     omissions.append("project_definitions_outside_source_scope")
+            if one(conn, "SELECT to_regclass('public.decision_row') IS NOT NULL"):
+                tables.update(decision_binding="run_id", decision_row="run_id,version_id")
             for table, order in tables.items():
                 run_fields = RUN_FIELDS
                 if table == "analysis_run" and one(
@@ -133,6 +135,8 @@ def export(conn, rid, root, handoff):
                 ):
                     run_fields += ",candidate_params"
                 fields = {
+                    "decision_binding": "workspace_id,run_id,project_id,source_id,snapshot_id,aspect_id,version_id,digest,profile,threshold_set,profile_sha256,manifest",
+                    "decision_row": 'workspace_id,run_id,snapshot_id,version_id,content_sha256,text_sha256,outcome,"start","end",counter_start,counter_end,score,reason',
                     "workspace": "id,name,state,created_at",
                     "analysis_run": run_fields,
                     "aspect": "workspace_id,project_id,aspect_id,current_no,created_by,created_at,archived_by,archived_at",

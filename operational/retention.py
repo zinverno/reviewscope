@@ -449,6 +449,13 @@ def verify_catalog(conn):
             WHERE (v.n,v.tip,v.valid) IS DISTINCT FROM (h.current_no::bigint,h.current_no,true))"""),
             "aspect_catalog_mismatch")
 
+    if one(conn, "SELECT to_regclass('public.decision_row') IS NOT NULL"):
+        require(not one(conn, """SELECT EXISTS(SELECT FROM decision_binding b JOIN analysis_run j
+            ON (j.workspace_id,j.id)=(b.workspace_id,b.run_id)
+            WHERE CASE WHEN j.status='succeeded' THEN NOT decision_manifest_valid(b.workspace_id,b.run_id)
+            ELSE b.manifest IS NOT NULL OR j.status<>'running' AND EXISTS(SELECT FROM decision_row d
+            WHERE (d.workspace_id,d.run_id)=(b.workspace_id,b.run_id)) END)"""), "decision_catalog_mismatch")
+
 
 def verify_restore_roles(admin):
     scoped = SCOPED
@@ -457,6 +464,13 @@ def verify_restore_roles(admin):
         require(one(admin, """SELECT NOT EXISTS(SELECT FROM pg_roles r, pg_class c
             WHERE r.rolname IN ('rs_upload','rs_worker','rs_runtime')
             AND c.oid IN ('aspect'::regclass,'aspect_version'::regclass)
+            AND has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))"""),
+            "restore_roles_unverified")
+    if one(admin, "SELECT to_regclass('public.decision_row') IS NOT NULL"):
+        scoped = [*scoped, "decision_binding", "decision_row"]
+        require(one(admin, """SELECT NOT EXISTS(SELECT FROM pg_roles r,pg_class c
+            WHERE r.rolname IN ('rs_runtime','rs_worker','rs_upload')
+            AND c.oid IN ('decision_binding'::regclass,'decision_row'::regclass)
             AND has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))"""),
             "restore_roles_unverified")
     allowed = admin.execute(
@@ -481,7 +495,7 @@ def verify_restore_roles(admin):
         (scoped, scoped),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 
