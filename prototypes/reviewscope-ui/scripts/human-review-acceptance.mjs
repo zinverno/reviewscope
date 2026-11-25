@@ -69,6 +69,7 @@ export async function checkHumanReview(
 		}
 	}
 	async function openMissedComplaint() {
+		await queue.getByRole("link").first().waitFor();
 		const candidates = await queue
 			.getByRole("link")
 			.evaluateAll((nodes) => nodes.map((node) => node.href));
@@ -212,8 +213,16 @@ export async function checkHumanReview(
 		await page.goto(sampleURL);
 		await queue.waitFor();
 		await section.getByLabel("Состояние проверки").selectOption("unreviewed");
+		await page.waitForURL(
+			(url) => url.searchParams.get("reviewState") === "unreviewed",
+		);
 		await section.getByLabel("Машинный исход").selectOption("not_mentioned");
+		await page.waitForURL(
+			(url) => url.searchParams.get("reviewOutcome") === "not_mentioned",
+		);
+		stage("open second negative after both filters committed");
 		await openMissedComplaint();
+		stage("confirm second review");
 		await save("confirm", null, "Проверка следующей синтетической записи", 201);
 		await history
 			.getByText("Проверка следующей синтетической записи")
@@ -231,6 +240,7 @@ export async function checkHumanReview(
 		await history
 			.getByText("Уточнённая позиция второго синтетического отзыва")
 			.waitFor();
+		stage("publish second revision");
 		const second = await publish();
 		assert.notEqual(second, first);
 		await frozen
@@ -241,6 +251,7 @@ export async function checkHumanReview(
 				/^Просмотрено 2 из 27\. Разрешено 2, в споре 0, без проверки 25/,
 			)
 			.waitFor();
+		stage("verify first after second publication");
 		const resultPage = await context.newPage();
 		await resultPage.goto(first);
 		await resultPage

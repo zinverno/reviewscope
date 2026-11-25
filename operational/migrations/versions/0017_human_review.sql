@@ -73,7 +73,7 @@ CREATE INDEX human_result_member_event ON human_result_member(workspace_id,run_i
 
 -- PR-22 validated the exact row set and immutable manifest at publication. The HTTP boundary
 -- separately re-reads its checksum-bound object on every request; SQL never accepts a client digest.
-CREATE FUNCTION human_scope(w uuid,src uuid,s uuid,r uuid,writing boolean) RETURNS boolean LANGUAGE plpgsql
+CREATE FUNCTION human_scope(w uuid,src uuid,s uuid,r uuid,writing boolean,request_key uuid DEFAULT NULL) RETURNS boolean LANGUAGE plpgsql
 SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE p uuid;
 BEGIN
@@ -91,6 +91,7 @@ BEGIN
  IF writing THEN
    -- Every append and publication takes this same lock. A waiting writer gets a fresh snapshot for its CAS.
    PERFORM FROM decision_binding WHERE (workspace_id,run_id)=(w,r) FOR UPDATE;
+   PERFORM pg_advisory_xact_lock(hashtextextended(w::text||request_key::text,627379));
  END IF;
  RETURN EXISTS(SELECT FROM access_session x WHERE x.token_hash=sha256(convert_to(current_setting('rs.session_proof',true),'UTF8'))
                AND x.revoked_at IS NULL AND x.expires_at>clock_timestamp());
@@ -103,14 +104,12 @@ CREATE FUNCTION human_status(code integer,id uuid DEFAULT NULL) RETURNS jsonb LA
  SELECT jsonb_build_object('code',code,'id',id)
 $$;
 
--- Serialize matching request keys across runs and operation types without disclosing the prior target.
-CREATE FUNCTION human_request_kind(w uuid,k uuid) RETURNS text LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-BEGIN
- PERFORM pg_advisory_xact_lock(hashtextextended(w::text||k::text,627379));
- RETURN (SELECT 'event' WHERE EXISTS(SELECT FROM human_review_event WHERE workspace_id=w AND request_key=k)
+-- The caller holds the workspace/request lock taken by human_scope.
+CREATE FUNCTION human_request_kind(w uuid,k uuid) RETURNS text LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT 'event' WHERE EXISTS(SELECT FROM human_review_event WHERE workspace_id=w AND request_key=k)
  UNION ALL SELECT 'plan' WHERE EXISTS(SELECT FROM human_review_plan WHERE workspace_id=w AND request_key=k)
- UNION ALL SELECT 'result' WHERE EXISTS(SELECT FROM human_review_result WHERE workspace_id=w AND request_key=k));
-END $$;
+ UNION ALL SELECT 'result' WHERE EXISTS(SELECT FROM human_review_result WHERE workspace_id=w AND request_key=k)
+$$;
 
 CREATE FUNCTION human_spans_valid(spans jsonb,original text) RETURNS boolean LANGUAGE plpgsql IMMUTABLE STRICT
 SET search_path=pg_catalog,public,pg_temp AS $$
@@ -134,7 +133,7 @@ CREATE FUNCTION human_append(w uuid,src uuid,s uuid,r uuid,v uuid,k uuid,expecte
  evidence jsonb,mode text,plan uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE d decision_row; original text; prior human_review_event; who uuid; head human_review_event; saved uuid; kind text;
 BEGIN
- IF NOT human_scope(w,src,s,r,true) THEN RETURN NULL; END IF;
+ IF NOT human_scope(w,src,s,r,true,k) THEN RETURN NULL; END IF;
  who:=access_actor();
  IF num_nulls(v,k,act,note,evidence,mode)>0 OR act NOT IN ('confirm','correct','dispute') OR mode NOT IN ('all','uncertain','disagreement','sample')
  OR (mode='sample')<>(plan IS NOT NULL) OR (act='dispute')<>(label IS NULL)
@@ -195,7 +194,7 @@ CREATE FUNCTION human_plan(w uuid,src uuid,s uuid,r uuid,k uuid,seed_id uuid,n i
 SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE who uuid; prior human_review_plan; saved uuid; ids uuid[]; eligible int;
 BEGIN
- IF NOT human_scope(w,src,s,r,true) THEN RETURN NULL; END IF;
+ IF NOT human_scope(w,src,s,r,true,k) THEN RETURN NULL; END IF;
  IF num_nulls(k,seed_id,n)>0 OR n NOT BETWEEN 1 AND 10000 THEN RETURN human_status(422); END IF;
  who:=access_actor();
  IF human_request_kind(w,k) IS NOT NULL THEN
@@ -294,7 +293,7 @@ CREATE FUNCTION human_publish(w uuid,src uuid,s uuid,r uuid,k uuid) RETURNS json
 SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE who uuid; prior human_review_result; saved uuid:=gen_random_uuid(); doc jsonb;
 BEGIN
- IF NOT human_scope(w,src,s,r,true) THEN RETURN NULL; END IF;
+ IF NOT human_scope(w,src,s,r,true,k) THEN RETURN NULL; END IF;
  IF k IS NULL THEN RETURN human_status(422); END IF;
  who:=access_actor();
  IF human_request_kind(w,k) IS NOT NULL THEN
@@ -406,7 +405,7 @@ CREATE FUNCTION browser_role_safe() RETURNS boolean LANGUAGE sql STABLE SECURITY
 $$;
 
 REVOKE ALL ON FUNCTION browser_role_safe(),retention_plan(uuid,text,uuid),human_export_runs(),human_integrity(uuid,uuid),
- human_scope(uuid,uuid,uuid,uuid,boolean),human_state(text),human_status(integer,uuid),human_request_kind(uuid,uuid),
+ human_scope(uuid,uuid,uuid,uuid,boolean,uuid),human_state(text),human_status(integer,uuid),human_request_kind(uuid,uuid),
  human_spans_valid(jsonb,text),human_sample_ids(uuid,uuid,uuid,int),human_sample_digest(uuid,uuid,uuid,int,int,uuid[]),
  human_result_document(uuid,uuid,uuid),human_append(uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,jsonb,text,uuid),
  human_history(uuid,uuid,uuid,uuid,uuid,int),human_queue(uuid,uuid,uuid,uuid,text,text,text,uuid,int),
