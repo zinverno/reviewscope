@@ -323,6 +323,22 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key):  # noqa: F811
         "INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,candidate_allowed) VALUES (%s,%s,%s,true,true)",
         (aw, source, hashlib.sha256((FIX / "a.csv").read_bytes()).hexdigest()),
     )
+    decisions = tmp_path / "decision-fixture"
+    decisions.mkdir()
+    synthetic = [
+        {"id": f"queue-{n}", "body": "🍒 У кассы не принимали заказ. Очередь стояла."}
+        for n in range(26)
+    ] + [
+        {"id": "denial", "body": "<b>У кассы</b> очереди не было.\r\nЗаказ приняли сразу."},
+        {"id": "blank"},
+    ]
+    decision_input = json_input(decisions, synthetic, {"id": "source_review_id", "body": "text"})
+    decision_snap = call(aspect_args + decision_input + ["--apply"])["snapshot_id"]
+    db.execute(
+        "INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,"
+        "candidate_allowed,decision_allowed) VALUES (%s,%s,%s,true,true,true)",
+        (aw, source, hashlib.sha256((decisions / "data").read_bytes()).hexdigest()),
+    )
     author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)
     cert, tls = tmp_path / "cert.pem", tmp_path / "tls.pem"
     ca, ca_key = tmp_path / "ca.pem", tmp_path / "ca.key"
@@ -476,6 +492,10 @@ with tempfile.TemporaryFile() as stage:
                     workspace=str(aw),source=str(source),candidateSource=str(source),
                     snapshot=aspect_snap,view="candidates",
                 ),
+                decisionScope=dict(
+                    workspace=str(aw), source=str(source), project=str(ap),
+                    snapshot=decision_snap, view="aspects",
+                ),
                 rerankStatus="READY" if os.getenv("RS_RERANK_MODELS") else "BASELINE_RETAINED",
                 longSnapshot=long_snapshot,
                 authorSnapshot=author_snapshot,
@@ -538,7 +558,7 @@ with tempfile.TemporaryFile() as stage:
         db.execute(
             "SELECT input_count,accepted_count,rejected_count,confirmed_duplicate_count FROM import_batch"
         ).fetchall()
-    ) == [(3, 3, 0, 0), (3, 3, 0, 0), (6, 6, 0, 0), (8, 5, 2, 1), (12, 6, 5, 1), (28, 28, 0, 0)]
+    ) == [(3, 3, 0, 0), (3, 3, 0, 0), (6, 6, 0, 0), (8, 5, 2, 1), (12, 6, 5, 1), (28, 28, 0, 0), (28, 28, 0, 0)]
 
 
 def test_upload_bounds_and_session_revocation(db, tmp_path, monkeypatch, key, caplog):  # noqa: F811

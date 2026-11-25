@@ -110,6 +110,7 @@ def read_signals(msg):
         "read_signals": ("signal_object", SCHEMA),
         "read_candidates": ("candidate_object", "candidate-search-1"),
         "read_rerank": ("rerank_object", "candidate-rerank-1"),
+        "read_decisions": ("decision_object", "aspect-decision-1"),
     }[msg["op"]]
     if set(msg) != {"op", "workspace", "source", "snapshot", "run", "actor", "expires", "ticket"}:
         raise UploadError("scope_denied")
@@ -150,7 +151,7 @@ class Handler(socketserver.StreamRequestHandler):
         limit = 4096
         try:
             msg = read_json(self.rfile)
-            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank")
+            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions")
             parts = () if signal_read else tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
             if self.rfile.read(1):
                 raise UploadError("invalid_upload")
