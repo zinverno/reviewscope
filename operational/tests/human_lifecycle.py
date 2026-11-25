@@ -4,9 +4,10 @@ import hashlib
 import json
 from uuid import UUID, uuid4
 
+import psycopg
 from psycopg.types.json import Jsonb
 
-from operational.retention import HUMAN_TABLES
+from operational.retention import HUMAN_CATALOG_INVALID, HUMAN_TABLES
 from operational.tests.test_aspects import A, create
 from operational.tests.test_decision_storage import enqueue, publish, query, runtime, scores, stage
 from operational.tests.test_deliveries import call, json_input
@@ -128,3 +129,24 @@ def assert_remaining(db, erased, remaining, result):
         str(query(db, "event_id FROM human_result_member WHERE run_id=%s", (remaining,)))
         == result["rows"][0]["event_id"]
     )
+
+
+def verify_integrity_plan(request_id):
+    # Three tables contribute the same run. RLS excludes the independent neighboring workspace.
+    with psycopg.connect(user="rs_retention") as operator:
+        operator.execute("SELECT set_config('rs.export_request',%s,true)", (request_id,))
+        (plan,) = operator.execute(
+            "EXPLAIN (ANALYZE, FORMAT JSON) " + HUMAN_CATALOG_INVALID
+        ).fetchone()
+    checking = []
+    nodes = [plan[0]["Plan"]]
+    while nodes:
+        node = nodes.pop()
+        if "human_integrity(" in node.get("Filter", ""):
+            checking.append(node)
+        nodes.extend(node.get("Plans", []))
+    assert len(checking) == 1
+    scan = checking[0]
+    assert (scan["Node Type"], scan["CTE Name"]) == ("CTE Scan", "runs")
+    assert scan["Actual Loops"] == 1
+    assert scan["Actual Rows"] == 0 and scan["Rows Removed by Filter"] == 1

@@ -170,6 +170,7 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
 
         append = "SELECT human_append(%s,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,'all',NULL)"
         ticks = {}
+        first_append_ms = None
         event_ids = {}
         versions = []
         receipts = []
@@ -189,6 +190,8 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
                     else:
                         action, label = "confirm", machine
                     spans = [{"start": 0, "end": 1}] if label in {"complaint", "mixed"} else []
+                    if i == 0:
+                        first_tick = monotonic()
                     response = reader.execute(
                         append,
                         (
@@ -201,6 +204,8 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
                             Jsonb(spans),
                         ),
                     ).fetchone()[0]
+                    if i == 0:
+                        first_append_ms = round((monotonic() - first_tick) * 1000, 2)
                     assert response["code"] == 201
                     event_ids[row["version_id"]] = response["id"]
             size = start + 50
@@ -244,6 +249,10 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
             assert res.status_code == 200, res.text
             assert len(res.content) <= 65536 and monotonic() - t < 12
             api_pages.append(dict(ms=round((monotonic() - t) * 1000, 2), bytes=len(res.content)))
+        relation_bytes = {
+            table: query(db, "pg_total_relation_size(%s::regclass)", (table,))
+            for table in tables[:5]
+        }
         req = ask(web, w, "source", src, "export")
         out = tmp_path / "handoff"
         out.mkdir(mode=0o700)
@@ -279,6 +288,8 @@ def test_human_review_storage_10k(db, tmp_path, monkeypatch, key):  # noqa: F811
                     corpus=10000,
                     input_bytes=4194304,
                     plan_ms=plan_ms,
+                    first_append_ms=first_append_ms,
+                    relation_bytes=relation_bytes,
                     append_seconds=ticks,
                     publish_ms=receipts,
                     checked_memberships=11000,

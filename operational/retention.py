@@ -433,6 +433,15 @@ HUMAN_TABLES = (
 )
 
 
+# Keep the whole-run validation above deduplication even under a generic plan.
+HUMAN_CATALOG_INVALID = """WITH runs AS MATERIALIZED (
+    SELECT workspace_id,run_id FROM human_review_event
+    UNION SELECT workspace_id,run_id FROM human_review_plan
+    UNION SELECT workspace_id,run_id FROM human_review_result
+)
+SELECT EXISTS (SELECT FROM runs WHERE human_integrity(workspace_id,run_id) IS NOT TRUE)"""
+
+
 def verify_catalog(conn):
     broken = one(
         conn,
@@ -466,13 +475,7 @@ def verify_catalog(conn):
             WHERE (d.workspace_id,d.run_id)=(b.workspace_id,b.run_id)) END)"""), "decision_catalog_mismatch")
 
     if one(conn, "SELECT to_regclass('public.human_review_event') IS NOT NULL"):
-        require(not one(conn, """SELECT EXISTS (
-            SELECT FROM (
-                SELECT workspace_id,run_id FROM human_review_event
-                UNION SELECT workspace_id,run_id FROM human_review_plan
-                UNION SELECT workspace_id,run_id FROM human_review_result
-            ) h WHERE human_integrity(workspace_id,run_id) IS NOT TRUE)"""),
-            "human_catalog_mismatch")
+        require(not one(conn, HUMAN_CATALOG_INVALID), "human_catalog_mismatch")
 
 
 def verify_restore_roles(admin):

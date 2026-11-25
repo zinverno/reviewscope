@@ -349,6 +349,8 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         assert stage(conn, other, rows[:2]) == 2
         selected = {"source": s[1], "project": p, "workspace": w}[kind]
         req = ask(web, w, kind, selected, "export")
+        if kind == "source":
+            human.verify_integrity_plan(req["id"])
         out = tmp_path / "handoff"
         out.mkdir(mode=0o700)
         operator("export", "--request", req["id"], "--root", root, "--owner-handoff", out)

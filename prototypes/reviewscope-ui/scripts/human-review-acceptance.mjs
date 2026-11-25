@@ -161,7 +161,7 @@ export async function checkHumanReview(
 					expected_event_id: null,
 					action: "confirm",
 					outcome: "not_mentioned",
-					reason: "Контроль автора синтетического примера",
+					reason: 'Проверено <em>вручную</em> {"пример":true}',
 					spans: [],
 					selection: "sample",
 					plan_id: sel.get("reviewPlan"),
@@ -171,7 +171,9 @@ export async function checkHumanReview(
 		assert.equal(committed.status(), 201);
 		await save("dispute", null, "Синтетический разбор", 409);
 		await button("Перечитать историю").press("Enter");
-		await history.getByText("Контроль автора синтетического примера").waitFor();
+		await history
+			.getByText('Проверено <em>вручную</em> {"пример":true}')
+			.waitFor();
 		await save(
 			"dispute",
 			null,
@@ -309,17 +311,20 @@ export async function checkHumanReview(
 				recordVideo: { dir: media, size: { width: 1200, height: 800 } },
 			});
 			try {
-				stage("record first frozen revision");
 				const report = await recording.newPage();
-				assert.equal((await report.goto(first)).status(), 200);
-				await report
-					.getByRole("article", { name: "Проверенная редакция" })
-					.waitFor();
-				stage("record second frozen revision");
-				assert.equal((await report.goto(second)).status(), 200);
-				await report
-					.getByRole("article", { name: "Проверенная редакция" })
-					.waitFor();
+				for (const [index, target] of [first, second].entries()) {
+					stage("record frozen revision " + (index + 1));
+					assert.equal((await report.goto(target)).status(), 200);
+					const article = report.getByRole("article", {
+						name: "Проверенная редакция",
+					});
+					await article.waitFor();
+					await article.evaluate((el) =>
+						el.scrollIntoView({ block: "start", behavior: "instant" }),
+					);
+					// Give the viewer time to read the actual numerator in each revision.
+					await report.waitForTimeout(2200);
+				}
 				const video = report.video();
 				await recording.close();
 				await video.saveAs(
