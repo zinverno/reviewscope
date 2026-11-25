@@ -678,7 +678,7 @@ async function test(type) {
 					path: join(media, "candidates-" + type.name() + ".png"),
 				});
 		stage = type.name() + " versioned aspect";
-		const derivedURL = await checkAspects(browser, content, origin+"/cabinet/?"+new URLSearchParams(fixture.aspectScope), media, (phase) => {
+		const derivedURL = await checkAspects(browser, content, origin+"/cabinet/?"+new URLSearchParams(fixture.aspectScope), media, fixture.rerankStatus, (phase) => {
 			stage = type.name() + " aspect " + phase;
 		});
 		stage = type.name() + " invalid fragment";

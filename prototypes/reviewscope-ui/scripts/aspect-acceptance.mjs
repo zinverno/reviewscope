@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 
 // Only the authored synthetic scenario is recorded, after the local TLS sign-in.
-export async function checkAspects(browser, storageState, start, media, stage) {
+export async function checkAspects(
+	browser,
+	storageState,
+	start,
+	media,
+	expectedStatus,
+	stage,
+) {
 	const engine = browser.browserType().name(),
 		origin = new URL(start).origin;
 	const context = await browser.newContext({
@@ -91,6 +98,15 @@ export async function checkAspects(browser, storageState, start, media, stage) {
 		);
 		assert(!decodeURIComponent(page.url()).includes("готов"));
 		stage("rerank frozen v1");
+		const ranks = page.getByRole("table", { name: "Ранжированные кандидаты" });
+		const fragmentIDs = () =>
+			ranks
+				.locator("tbody a")
+				.evaluateAll((links) =>
+					links.map((a) => new URL(a.href).searchParams.get("fragment")).sort(),
+				);
+		const before = await fragmentIDs();
+		assert(before.length > 0);
 		const [reply] = await Promise.all([
 			page.waitForResponse(
 				(r) =>
@@ -104,8 +120,24 @@ export async function checkAspects(browser, storageState, start, media, stage) {
 		assert.equal(reply.status(), 202);
 		stage("read derived result");
 		await page
-			.getByText(/Переранжирование · (BASELINE_RETAINED|READY)/)
+			.getByText("Переранжирование · " + expectedStatus, { exact: false })
 			.waitFor({ timeout: 30000 });
+		assert.deepEqual(await fragmentIDs(), before);
+		if (expectedStatus === "READY") {
+			await ranks.getByRole("columnheader", { name: /raw logit/ }).waitFor();
+			const values = await ranks
+				.locator("tbody tr td:nth-child(2)")
+				.allTextContents();
+			assert(
+				values.every((line, i) =>
+					new RegExp("^" + (i + 1) + " · [0-9]+ · -?[0-9]+[.][0-9]{4}$").test(
+						line,
+					),
+				),
+			);
+		} else {
+			await page.getByText(/NOT_RUN_MISSING_WEIGHTS/).waitFor();
+		}
 		await card.getByText(title + " · v1").waitFor();
 		await page.reload();
 		await page

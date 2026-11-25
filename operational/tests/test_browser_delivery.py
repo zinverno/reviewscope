@@ -472,15 +472,18 @@ with tempfile.TemporaryFile() as stage:
                 s=str(s),
                 csv=str(FIX.resolve()),
                 json=str(j),
-                aspectScope=dict(workspace=str(aw),source=str(source),candidateSource=str(source),snapshot=aspect_snap,view="candidates"),
+                aspectScope=dict(
+                    workspace=str(aw),source=str(source),candidateSource=str(source),
+                    snapshot=aspect_snap,view="candidates",
+                ),
+                rerankStatus="READY" if os.getenv("RS_RERANK_MODELS") else "BASELINE_RETAINED",
                 longSnapshot=long_snapshot,
                 authorSnapshot=author_snapshot,
                 authorVersions=author_versions[:2],
                 otherWorkspace=str(other),
             )
-            # Exercise the offline-unavailable state in both browsers with a fresh cache.
+            # Exercise missing MiniLM independently of the optional verified reranker.
             worker_env = os.environ | {"HF_HUB_CACHE": str(tmp_path / "empty-model-cache")}
-            worker_env.pop("RS_RERANK_MODELS", None)
             native = subprocess.Popen(
                 ["node", "scripts/cabinet-acceptance.mjs"],
                 cwd=ui,
