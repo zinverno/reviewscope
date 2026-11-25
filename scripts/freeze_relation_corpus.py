@@ -40,7 +40,7 @@ def corpus():
             marked = marked.replace("{long" + str(i) + "}", " ".join([fragment] * 40))
         text, spans, pos = "", [], 0
         for match in re.finditer(r"\[([^\]]+)\]", marked):
-            text += marked[pos:match.start()]
+            text += marked[pos : match.start()]
             spans.append([len(text), len(text) + len(match[1])])
             text += match[1]
             pos = match.end()
@@ -51,8 +51,17 @@ def corpus():
         if len(mentioned) == 2 and queue == handover == "U":
             spans *= 2
         evidence = dict(zip(mentioned, spans, strict=True))
-        reviews.append(dict(id=f"{split}-{len(prev)+1:02}", source=split, split=split,
-                            family=split+"-"+family, text=text, stances=labels, spans=evidence))
+        reviews.append(
+            dict(
+                id=f"{split}-{len(prev) + 1:02}",
+                source=split,
+                split=split,
+                family=split + "-" + family,
+                text=text,
+                stances=labels,
+                spans=evidence,
+            )
+        )
     normalized = {}
     for r in reviews:
         norm = " ".join(r["text"].lower().split())
@@ -61,8 +70,17 @@ def corpus():
         if a["split"] != b["split"]:
             continue
         same = a["text"].lower().split() == b["text"].lower().split()
-        pair = dict(id=a["id"]+"/"+b["id"], left=a["id"], right=b["id"], split=a["split"],
-                    text="exact_text" if same else "near_copy" if a["family"] == b["family"] else "no_relation")
+        pair = dict(
+            id=a["id"] + "/" + b["id"],
+            left=a["id"],
+            right=b["id"],
+            split=a["split"],
+            text="exact_text"
+            if same
+            else "near_copy"
+            if a["family"] == b["family"]
+            else "no_relation",
+        )
         for aspect in ASPECTS:
             pair[aspect] = aspect_gold(a["stances"][aspect], b["stances"][aspect])
         pairs.append(pair)
@@ -73,6 +91,16 @@ if __name__ == "__main__":
     for name, rows in zip(("reviews", "pairs"), corpus(), strict=True):
         raw = b"".join(encoded(r) + b"\n" for r in rows)
         (ROOT / (name + ".jsonl.gz")).write_bytes(gzip.compress(raw, mtime=0))
-    (ROOT / "definitions.json").write_bytes(encoded({
-        a: dict(version="authored-v1", payload=DEFS[a], digest=sha256(encoded(DEFS[a])).hexdigest())
-        for a in ASPECTS}) + b"\n")
+    (ROOT / "definitions.json").write_bytes(
+        encoded(
+            {
+                a: dict(
+                    version="authored-v1",
+                    payload=DEFS[a],
+                    digest=sha256(encoded(DEFS[a])).hexdigest(),
+                )
+                for a in ASPECTS
+            }
+        )
+        + b"\n"
+    )
