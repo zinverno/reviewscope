@@ -96,6 +96,8 @@ def result(summary, rows, params, pulse):
         OPENBLAS_NUM_THREADS="1",
     )
     deadline = monotonic() + 120
+    # The encoder receives only PR-19 inputs. Bind the definition in the parent before hashing.
+    search_params = {k: params[k] for k in ("query", "mode", "role", "k")}
     with subprocess.Popen(
         [sys.executable, "-m", "operational.candidate_worker", str(os.getpid())],
         stdin=subprocess.PIPE,
@@ -104,7 +106,7 @@ def result(summary, rows, params, pulse):
         env=env,
     ) as proc:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            reply = pool.submit(proc.communicate, encoded([scope, rows, params]))
+            reply = pool.submit(proc.communicate, encoded([scope, rows, search_params]))
             try:
                 while True:
                     try:
@@ -132,6 +134,8 @@ def result(summary, rows, params, pulse):
         quarantined=summary["quarantined"],
         confirmed_duplicates=summary["confirmed_duplicates"],
     )
+    if "aspect" in params:
+        doc["aspect"] = params["aspect"]
     doc["result_sha256"] = hashlib.sha256(encoded(doc)).hexdigest()
     if diagnostics:
         print(json.dumps(dict(event="candidate_resources", **diagnostics)), flush=True)

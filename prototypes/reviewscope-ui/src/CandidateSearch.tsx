@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Definition, type Detail, type Frozen } from "./Aspects";
 import type { EvidenceResult } from "./ReviewEvidence";
 
 type Api = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -32,11 +33,14 @@ type Result = {
 	candidates: Hit[];
 };
 type Listing = {
+	definition?: Frozen;
+	query?: string;
 	evidence?: EvidenceResult;
 	runs: { id: string; status: string }[];
 	result: Result | null;
 };
 type Props = {
+	project: string;
 	workspace: string;
 	source: string;
 	snapshot: string;
@@ -68,6 +72,7 @@ export async function exactParts(text: string, hit: Hit) {
 }
 
 export function CandidateSearch({
+	project,
 	workspace,
 	source,
 	snapshot,
@@ -80,8 +85,11 @@ export function CandidateSearch({
 	const params = new URLSearchParams(search);
 	const run = params.get("candidateRun") ?? "",
 		fragment = params.get("fragment") ?? "";
+	const aspect = params.get("aspect") || "",
+		version = params.get("aspectVersion") || "";
 	const [state, setState] = useState<{
 		listing?: Listing;
+		chosen?: Detail;
 		parts?: string[];
 		full?: string;
 		error?: string;
@@ -100,6 +108,15 @@ export function CandidateSearch({
 				const init = { signal: controller.signal },
 					filter = new URLSearchParams({ source_id: source });
 				const listing = await api<Listing>(`${route}?${filter}`, init);
+				let chosen: Detail | undefined;
+				if (aspect || version) {
+					if (!project || !aspect || !version)
+						throw new Error("Выбранная версия недоступна.");
+					chosen = await api<Detail>(
+						`/workspaces/${workspace}/projects/${project}/aspects/${aspect}/versions/${version}`,
+						init,
+					);
+				}
 				const status = listing.runs.find((r) => r.id === run)?.status;
 				if (run && !status) throw new Error("Запуск недоступен.");
 				let parts: string[] | undefined, full: string | undefined;
@@ -108,6 +125,8 @@ export function CandidateSearch({
 					if (fragment) filter.set("fragment_id", fragment);
 					const verified = await api<Listing>(`${route}?${filter}`, init);
 					listing.result = verified.result;
+					listing.definition = verified.definition;
+					listing.query = verified.query;
 					listing.evidence = verified.evidence;
 					const doc = listing.result;
 					if (
@@ -136,10 +155,11 @@ export function CandidateSearch({
 					}
 				} else if (fragment) throw new Error("Фрагмент недоступен.");
 				if (live) {
-					setState({ listing, parts, full });
+					setState({ listing, parts, full, chosen });
 					if (status === "queued" || status === "running")
 						timer = setTimeout(read, 1200);
-					else if (fragment) timer = setTimeout(read, 5000);
+					else if (fragment || chosen || listing.definition)
+						timer = setTimeout(read, 5000);
 				}
 			} catch (e) {
 				if (live) setState({ error: (e as Error).message });
@@ -167,11 +187,26 @@ export function CandidateSearch({
 			window.removeEventListener("pagehide", hide);
 			window.removeEventListener("pageshow", restored);
 		};
-	}, [api, route, workspace, source, snapshot, run, fragment, reload]);
+	}, [
+		api,
+		route,
+		workspace,
+		source,
+		snapshot,
+		run,
+		fragment,
+		reload,
+		project,
+		aspect,
+		version,
+	]);
 	async function submit(e: FormEvent<HTMLFormElement>) {
 		e.preventDefault();
 		const form = new FormData(e.currentTarget);
 		const value = {
+			...(state?.chosen
+				? { aspect: { aspect_id: aspect, version_id: version } }
+				: {}),
 			source_id: source,
 			query: String(form.get("query")),
 			role: form.get("role"),
@@ -194,7 +229,14 @@ export function CandidateSearch({
 				}),
 			});
 			if (location.href === address)
-				location.assign(link({ candidateRun: job.id, fragment: "" }));
+				location.assign(
+					link({
+						candidateRun: job.id,
+						fragment: "",
+						aspect: "",
+						aspectVersion: "",
+					}),
+				);
 		} catch (e) {
 			setNotice((e as Error).message);
 			setState(undefined);
@@ -232,10 +274,39 @@ export function CandidateSearch({
 				<p role="status">Проверка доступа…</p>
 			) : (
 				<>
+					{project && (
+						<a
+							href={link({
+								view: "aspects",
+								project,
+								aspect: "",
+								aspectVersion: "",
+								aspectPage: "",
+								proposal: "",
+							})}
+						>
+							Выбрать определение аспекта
+						</a>
+					)}
+					{state.chosen && (
+						<>
+							<Definition value={state.chosen} />
+							<p>
+								Снимок {snapshot} · Источник {source}
+							</p>
+							<a href={link({ aspect: "", aspectVersion: "" })}>
+								Свободный поиск
+							</a>
+						</>
+					)}
 					<form onSubmit={submit}>
 						<label>
 							Формулировка или пример
 							<textarea name="query" required maxLength={2048} />
+							<small>
+								До 2048 байт. Для MiniLM — до 128 токенов со служебными. Введите
+								запрос отдельно.
+							</small>
 						</label>
 						<label>
 							Тип запроса
@@ -263,7 +334,7 @@ export function CandidateSearch({
 								defaultValue={5}
 							/>
 						</label>
-						<button disabled={busy} type="submit">
+						<button disabled={busy || state.chosen?.archived} type="submit">
 							Найти кандидатов
 						</button>
 					</form>
@@ -272,7 +343,14 @@ export function CandidateSearch({
 							<summary>Сохранённые поиски</summary>
 							{listing.runs.map((r) => (
 								<p key={r.id}>
-									<a href={link({ candidateRun: r.id, fragment: "" })}>
+									<a
+										href={link({
+											candidateRun: r.id,
+											fragment: "",
+											aspect: "",
+											aspectVersion: "",
+										})}
+									>
 										{r.id} · {r.status}
 									</a>
 								</p>
@@ -299,6 +377,26 @@ export function CandidateSearch({
 							Отменить поиск
 						</button>
 					)}
+					{doc &&
+						(listing.definition ? (
+							<>
+								<h3>Определение этого запуска</h3>
+								<Definition value={listing.definition} />
+								<p>Поисковая формулировка · {listing.query}</p>
+								<a
+									href={link({
+										view: "aspects",
+										project: listing.definition.project_id,
+										aspect: listing.definition.aspect_id,
+										aspectVersion: listing.definition.version_id,
+									})}
+								>
+									Открыть сохранённую версию
+								</a>
+							</>
+						) : (
+							<p>Аспект не назначен</p>
+						))}
 					{doc &&
 						(doc.status !== "READY" ? (
 							<p role="status">Поиск недоступен · {doc.status}</p>

@@ -129,7 +129,19 @@ def test_reviewer_context_upgrade(prior_db, tmp_path, monkeypatch, key):  # noqa
             replaced, same_acl = db.execute(fn).fetchone()
             assert replaced != original and same_acl == acl
         assert db.execute(fn).fetchone() == (original, acl)
+        subprocess.run([*ALEMBIC, "upgrade", "0013_reviewer_context_plan"], check=True)
+        assert web.get(route, params=run).content == saved.content
+        assert web.get(url, params=params).content == prior.content
+        seal13 = capture_access(db)
+        migration14 = MIGRATION.with_name("0014_aspects.sql")
+        with db.transaction(force_rollback=True):
+            db.execute(migration14.read_text())
+            assert db.execute("SELECT count(*) FROM aspect_version").fetchone() == (0,)
+        assert db.execute("SELECT to_regclass('aspect_version')").fetchone() == (None,)
         subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
+        with pytest.raises(DeliveryError, match="access_review_required"):
+            verify_access_permissions(db, seal13)
+        assert db.execute("SELECT bound_version FROM analysis_run WHERE id=%s",(run["run_id"],)).fetchone() == (None,)
         assert db.execute(fn).fetchone() == (replaced, acl)
         assert access_record(db)["access"] == authority
         with pytest.raises(DeliveryError, match="access_review_required"):

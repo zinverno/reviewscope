@@ -16,6 +16,7 @@ import {
 	SnapshotReviewerContext,
 	privateUuid,
 } from "./SnapshotReviewerContext";
+import { Aspects } from "./Aspects";
 import { CandidateSearch } from "./CandidateSearch";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
 
@@ -126,6 +127,10 @@ function link(changes: Record<string, string>) {
 			"signalPlace",
 			"signalRating",
 			"signalPage",
+			"aspect",
+			"aspectVersion",
+			"aspectPage",
+			"proposal",
 			"candidateRun",
 			"candidateSource",
 			"fragment",
@@ -754,6 +759,9 @@ function Cabinet() {
 					onSelect={(workspace) =>
 						go({
 							workspace,
+							...(query.get("view") === "aspects"
+								? { view: "aspects", proposal: query.get("proposal") || "" }
+								: {}),
 							project: "",
 							source: "",
 							delivery: "",
@@ -836,13 +844,31 @@ function Cabinet() {
 							<p>Выберите снимок.</p>
 						)
 					) : query.get("view") === "legacy" ? (
-						<LegacyOverview search={search} />
+						<LegacyOverview search={search} workspace={w} />
+					) : query.get("view") === "aspects" ? (
+						canWrite ? (
+							<Aspects
+								key={workspace + project + search}
+								workspace={w}
+								project={project}
+								projects={projects}
+								api={api}
+								link={link}
+								search={search}
+							/>
+						) : (
+							<p>Нет доступа к определениям.</p>
+						)
 					) : query.get("view") === "candidates" ? (
 						snapshot &&
 						canWrite &&
 						candidateSource &&
 						(!source || source === candidateSource) ? (
 							<CandidateSearch
+								project={
+									targets.find((t) => t.source_id === candidateSource)
+										?.project_id || ""
+								}
 								key={workspace + search}
 								workspace={w}
 								source={candidateSource}
@@ -872,6 +898,11 @@ function Cabinet() {
 							{canWrite ? (
 								<section>
 									<h2>Поставка</h2>
+									{project && (
+										<a href={link({ view: "aspects", project })}>
+											Определения аспектов проекта
+										</a>
+									)}
 									<p>
 										Разрешены только заранее проверенные синтетические CSV и
 										JSON. До 4 МиБ и 10 000 позиций. Покрытие неизвестно.

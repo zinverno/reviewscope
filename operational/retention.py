@@ -386,7 +386,8 @@ def access_record(conn):
     catalog, business = conn.execute(
         "SELECT (" + ACCESS_PERMISSIONS + "), retention_access_seal()"
     ).fetchone()
-    return {"version": 2, "permissions": catalog, "access": business}
+    version = 3 if one(conn, "SELECT to_regclass('public.aspect') IS NOT NULL") else 2
+    return {"version": version, "permissions": catalog, "access": business}
 
 
 def access_seal(conn):
@@ -439,9 +440,25 @@ def verify_catalog(conn):
           IS DISTINCT FROM (j.n,j.q,j.d,cardinality(j.ids),j.ids)))""",
     )
     require(not broken, "manifest_mismatch")
+    if one(conn, "SELECT to_regclass('public.aspect_version') IS NOT NULL"):
+        require(not one(conn, """SELECT EXISTS(SELECT FROM aspect h LEFT JOIN (
+            SELECT workspace_id,project_id,aspect_id,count(*) n,max(version_no) tip,
+            bool_and(digest=aspect_digest(payload)) valid FROM aspect_version
+            GROUP BY workspace_id,project_id,aspect_id
+            ) v USING(workspace_id,project_id,aspect_id)
+            WHERE (v.n,v.tip,v.valid) IS DISTINCT FROM (h.current_no::bigint,h.current_no,true))"""),
+            "aspect_catalog_mismatch")
 
 
 def verify_restore_roles(admin):
+    scoped = SCOPED
+    if one(admin, "SELECT to_regclass('public.aspect_version') IS NOT NULL"):
+        scoped = [*SCOPED, "aspect", "aspect_version"]
+        require(one(admin, """SELECT NOT EXISTS(SELECT FROM pg_roles r, pg_class c
+            WHERE r.rolname IN ('rs_upload','rs_worker','rs_runtime')
+            AND c.oid IN ('aspect'::regclass,'aspect_version'::regclass)
+            AND has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))"""),
+            "restore_roles_unverified")
     allowed = admin.execute(
         """SELECT count(*)=3 AND bool_and(NOT (rolsuper OR rolbypassrls OR rolcreatedb
             OR rolcreaterole OR rolreplication) AND NOT EXISTS
@@ -461,10 +478,10 @@ def verify_restore_roles(admin):
             AND (SELECT bool_and(relrowsecurity) AND count(*)=cardinality(%s::text[])
                 FROM pg_class WHERE relnamespace='public'::regnamespace AND relname=ANY(%s))
             FROM pg_roles r WHERE rolname IN ('rs_runtime','rs_worker','rs_retention')""",
-        (SCOPED, SCOPED),
+        (scoped, scoped),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 

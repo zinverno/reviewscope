@@ -338,8 +338,12 @@ def admit_signal_fixture(db, w, snapshot, kind):
         )
 
 
-@pytest.mark.parametrize("kind", [worker.KIND, worker.signals.KIND,worker.candidate_worker.KIND])
-def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind):
+@pytest.mark.parametrize(
+    ("kind", "bound"),
+    [(worker.KIND, False), (worker.signals.KIND, False),
+     (worker.candidate_worker.KIND, False), (worker.candidate_worker.KIND, True)],
+)
+def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind, bound):
     client, path, w, a, _, root, _ = jobs
     admit_signal_fixture(db, w, a, kind)
     if kind == worker.candidate_worker.KIND:
@@ -350,6 +354,12 @@ def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind):
             WHERE s.workspace_id=%s AND s.id=%s RETURNING source_id""",
             (w, a),
         ).fetchone()
+        binding = {}
+        if bound:
+            from operational.tests.test_aspects import B, create
+
+            project = db.execute("SELECT project_id FROM source WHERE id=%s", (source,)).fetchone()[0]
+            binding["aspect"] = create(client, path.removesuffix("/runs") + f"/projects/{project}/aspects", B)
         reply = client.post(
             path.removesuffix("/runs") + f"/snapshots/{a}/candidates",
             json=dict(
@@ -359,6 +369,7 @@ def test_claim_crash_orphan_stale_and_recovery(db, jobs, kind):
                 role="query_to_passage",
                 k=2,
                 query="табло",
+                **binding,
             ),
             headers=CSRF,
         )
