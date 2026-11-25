@@ -82,3 +82,9 @@ Roadmap PR-16 связывает карту и таблицу с [прямыми
 ### Roadmap PR-21 · NEEDS_RERANK_CONTRACT_REVIEW
 
 В производном запуске сохраняются parent SHA, aspect/version/digest, SHA запроса и прежние ссылки на anchor/context. Решение по двум режимам отложенной авторской синтетики — BASELINE_RETAINED. Оценки жалоб по всем отзывам и независимые реальные метки остаются открытыми. [Контракт и воспроизведение](rerank-contract.md) · [Измерения](rerank-results.md)
+
+## Roadmap PR-22 · NEEDS_ASPECT_DECISION_REVIEW
+
+Клиентская частота жалоб остаётся неизвестной. На авторской синтетике заранее выбранная парная модель нашла 24/32 жалобы, её precision составила 24/46. Лексический профиль кабинета нашёл 4/32 жалобы. Действует экспериментальный режим с ручной проверкой исходных текстов. Статусы качества — `QUALITY_GATE_NOT_MET`, `SYNTHETIC_EVIDENCE_ONLY`. Для тяжёлого парного профиля сохраняется `BLOCKED_FULL_CORPUS_MODEL_PROFILE`.
+
+На следующем этапе можно ссылаться на неизменяемые source/snapshot/review version, аспект и его редакцию, исход модели, SHA профиля и manifest, набор порогов и контекст с исходными Unicode-смещениями. Позднейшее исправление человеком потребует отдельного append-only события. Ревизия `0016_aspect_decisions` требует свежей печати прав для восстановления. Действуют `REAL_LABELS_NOT_AVAILABLE`, `BLOCKED_REAL_SOURCE`, `BLOCKED_CLIENT_PILOT`, `BACKUP_ERASURE_NOT_VERIFIED`, `OWNER_EXPORT_REQUIRES_OPERATOR`, `UX_REJECTED`. Для PR-17 сохраняется `ANALYTICS_OUTPUT_SCALING_DEBT`. Постоянный индекс поиска и продуктовый дизайн остаются за границами этой версии. [Контракт](aspect-decision-contract.md) · [Качество](aspect-decision-results.md) · [Покрытие и ресурсы](aspect-decision-resources.md)

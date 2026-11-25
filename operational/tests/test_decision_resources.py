@@ -153,7 +153,7 @@ def test_decision_profile_resource(db, tmp_path, monkeypatch, key, fixture):  # 
         if doc["reason"] == "RESOURCE_LIMIT" and fixture in LARGE:
             assert doc["status"] == "failed" and summary is None and doc["rows"] == []
             print(json.dumps(envelope))
-            return
+            pytest.fail("Portable profile did not complete the full synthetic fixture")
         assert doc["status"] == "succeeded", envelope
         # Independent accounting from the original snapshot, with one observed key per accepted version.
         originals = db.execute(
