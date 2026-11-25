@@ -325,7 +325,10 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
         (aw, source, hashlib.sha256((FIX / "a.csv").read_bytes()).hexdigest()),
     )
     decision_snap = None
+    analyst_pw = None
     if scenario == "decisions":
+        analyst_pw = secrets.token_urlsafe(24)
+        provision(db, "human-review-analyst", analyst_pw, key, workspace=aw, role="analyst")
         decisions = tmp_path / "decision-fixture"
         decisions.mkdir()
         synthetic = [
@@ -339,7 +342,7 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
         decision_snap = call(aspect_args + decision_input + ["--apply"])["snapshot_id"]
         db.execute(
             "INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,"
-            "candidate_allowed,decision_allowed) VALUES (%s,%s,%s,true,true,true)",
+            "candidate_allowed,decision_allowed,human_review_allowed) VALUES (%s,%s,%s,true,true,true,true)",
             (aw, source, hashlib.sha256((decisions / "data").read_bytes()).hexdigest()),
         )
     author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)
@@ -488,6 +491,7 @@ with tempfile.TemporaryFile() as stage:
                 emptyWorkspace=str(empty),
                 pollControl=str(control),
                 password=pw,
+                humanAnalystPassword=analyst_pw,
                 w=str(w),
                 s=str(s),
                 csv=str(FIX.resolve()),
@@ -524,7 +528,12 @@ with tempfile.TemporaryFile() as stage:
                 while native.poll() is None:
                     mode = control.read_text()
                     if mode != previous:
-                        assert mode in {"pause", "ready", "revoked", "ledger"}
+                        assert mode in {"pause", "ready", "revoked", "ledger", "human_revoked"}
+                        if scenario == "decisions":
+                            db.execute(
+                                "UPDATE browser_admission SET human_review_allowed=%s WHERE workspace_id=%s AND decision_allowed",
+                                (mode != "human_revoked", aw),
+                            )
                         if mode == "ledger":
                             witness.rename(parked)
                         elif parked.exists():

@@ -69,9 +69,12 @@ def connect():
             AND row_security_active('analysis_run') AND row_security_active('review_version')
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
             AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
-                AND c.relname IN ('aspect','aspect_version','decision_binding','decision_row') AND (NOT row_security_active(c.oid)
-                OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE')))
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions')
+                AND c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
+                    'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member')
+                    AND (NOT row_security_active(c.oid)
+                OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')
+                    OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER')))
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions','0017_human_review')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:

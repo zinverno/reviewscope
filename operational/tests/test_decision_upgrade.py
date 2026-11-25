@@ -11,12 +11,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from operational.delivery_objects import DeliveryError
-from operational.retention import capture_access, initialize, verify_access_permissions
+from operational.retention import (
+    capture_access,
+    initialize,
+    verify_access_permissions,
+    verify_restore_roles,
+)
 from operational.tests.conftest import ALEMBIC, new_db
 from operational.tests.test_access import CSRF, ORIGIN, ROOT, key, login  # noqa: F401
 from operational.tests.test_aspects import A, B, create, post
 from operational.tests.test_browser_delivery import importer
 from operational.tests.test_deliveries import FIX, call, command, csv
+from operational.tests.test_reviewer_context import context_url, reviewer_fixture
 from operational.tests.test_worker import cli
 from reviewscope.access.http import create_app
 from reviewscope.access.operator import provision
@@ -112,7 +118,7 @@ def test_decision_upgrade_preserves_saved_runs(tmp_path, monkeypatch, key):  # n
                 db.execute(MIGRATION.read_text())
                 assert db.execute("SELECT count(*) FROM decision_binding").fetchone() == (0,)
             assert db.execute("SELECT to_regclass('decision_row')").fetchone() == (None,)
-            subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
+            subprocess.run([*ALEMBIC, "upgrade", "0016_aspect_decisions"], check=True)
             with pytest.raises(DeliveryError, match="access_review_required"):
                 verify_access_permissions(db, old_seal)
             verify_access_permissions(db, capture_access(db))
@@ -174,6 +180,52 @@ def test_decision_upgrade_preserves_saved_runs(tmp_path, monkeypatch, key):  # n
                 )
                 assert web.get(status, params=scope).status_code == 404
                 db.execute(f"UPDATE browser_admission SET {column}=true WHERE source_id=%s", (src,))
+            # Freeze the populated 0016 view, including PR-18 and an archived definition.
+            historical, versions = reviewer_fixture(db, tmp_path / "authors", args, w, src)
+            archived = f"{aspects}/{unsupported['aspect_id']}"
+            post(web, archived + "/archive", dict(expected_version=unsupported["version_id"],
+                                                  idempotency_key=str(uuid4())), 200)
+            read_urls.extend([
+                (status, scope),
+                (status, scope | {"version_id": ref["version_id"]}),
+                (context_url(w, historical, versions[0]), scope),
+                (f"{archived}/versions/{unsupported['version_id']}", {}),
+            ])
+            saved = old_bytes()
+            objects.append((path, path.read_bytes()))
+            old_seal = capture_access(db)
+            prior_business = db.execute("SELECT retention_access_seal()").fetchone()
+            migration = MIGRATION.with_name("0017_human_review.sql")
+            with db.transaction(force_rollback=True):
+                db.execute(migration.read_text())
+                assert db.execute("SELECT count(*) FROM human_review_event").fetchone() == (0,)
+            assert db.execute("SELECT to_regclass('public.human_review_event')").fetchone() == (None,)
+            assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0016_aspect_decisions",)
+            verify_access_permissions(db, old_seal)
+            subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
+            assert db.execute("SELECT retention_access_seal()").fetchone() == prior_business
+            assert not db.execute("SELECT bool_or(human_review_allowed) FROM browser_admission").fetchone()[0]
+            with pytest.raises(DeliveryError, match="access_review_required"):
+                verify_access_permissions(db, old_seal)
+            new_seal = capture_access(db)
+            verify_access_permissions(db, new_seal)
+            with db.transaction(force_rollback=True):
+                db.execute("ALTER TABLE browser_admission ALTER COLUMN human_review_allowed SET DEFAULT true")
+                with pytest.raises(DeliveryError, match="access_review_required"):
+                    verify_access_permissions(db, new_seal)
+            with db.transaction(force_rollback=True):
+                db.execute("GRANT SELECT(reason) ON human_review_event TO rs_runtime")
+                with pytest.raises(DeliveryError, match="restore_roles_unverified"):
+                    verify_restore_roles(db)
+            verify_access_permissions(db, new_seal)
+            assert privileges() == acl
+            assert old_bytes() == saved
+            assert all(obj.read_bytes() == frozen for obj, frozen in objects)
+            assert web.get(status + "/human/queue", params=scope).status_code == 404
+            db.execute("UPDATE browser_admission SET human_review_allowed=true WHERE source_id=%s", (src,))
+            assert db.execute("SELECT retention_access_seal()").fetchone() != prior_business
+            assert web.get(status + "/human/queue", params=scope).status_code == 200
+            assert old_bytes() == saved
             db.execute(
                 "UPDATE workspace_membership SET role='viewer' WHERE workspace_id=%s AND principal_id=%s",
                 (w, actor),

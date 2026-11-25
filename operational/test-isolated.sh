@@ -17,5 +17,5 @@ exec "${ns[@]}" /bin/bash -ec '
     exec "$@"
 ' isolated "$uid" "$gid" /usr/bin/env "PATH=$PATH" "PYTHONPATH=${PYTHONPATH:-}" \
     "HOME=$HOME" "TMPDIR=${TMPDIR:-/tmp}" "RS_TEST_PG_MAJOR=${RS_TEST_PG_MAJOR:-}" \
-    "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}" \
+    "RS_MEASURE_DECISIONS=${RS_MEASURE_DECISIONS:-0}" "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}" \
     "RS_TEST_BROWSER_OUT=${RS_TEST_BROWSER_OUT:-}" bash operational/test-postgres.sh "$@"

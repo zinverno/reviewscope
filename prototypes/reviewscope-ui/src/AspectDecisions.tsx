@@ -1,18 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { type Api, Definition, type Detail, type Frozen } from "./Aspects";
 
-const outcomes = {
-	complaint: "Жалоба",
-	mixed: "Смешанная позиция с явной жалобой",
-	denial: "Отрицание проблемы",
-	positive: "Положительная позиция",
-	neutral: "Нейтральное упоминание",
-	unclear: "Позиция неясна",
-	not_mentioned: "Аспект не упомянут",
-	topic_uncertain: "Неясно, относится ли текст к аспекту",
-	excluded_blank: "Нет текста",
-};
-type Outcome = keyof typeof outcomes;
+import { HumanReview } from "./HumanReview";
+import { outcomes, type Outcome } from "./decisionOutcomes";
 type SavedRun = { id: string; status: string };
 type Catalog = {
 	definition: Detail;
@@ -48,7 +38,7 @@ type Row = {
 	content_sha256: string;
 };
 type Excerpt = { start: number; end: number; length: number; text: string };
-type Page = SavedRun & {
+export type Page = SavedRun & {
 	compute_state: "COMPLETE" | "NOT_COMPUTED";
 	stage: string;
 	reason: string | null;
@@ -303,6 +293,28 @@ export function AspectDecisions({
 	const definition = catalog?.definition ?? page?.definition;
 	const row = member ? page?.rows[0] : null;
 	const text = page?.evidence;
+	if (
+		query.has("human") &&
+		page?.compute_state === "COMPLETE" &&
+		page.summary
+	) {
+		return (
+			<section className="evidence" style={{ overflowWrap: "anywhere" }}>
+				<Summary counts={page.summary} />
+				<Definition value={page.definition} />
+				<HumanReview
+					workspace={workspace}
+					source={source}
+					snapshot={snapshot}
+					run={run}
+					page={page}
+					search={search}
+					api={api}
+					link={link}
+				/>
+			</section>
+		);
+	}
 	return (
 		<section className="evidence" style={{ overflowWrap: "anywhere" }}>
 			<h2>Оценка аспекта по всему снимку</h2>
@@ -379,6 +391,18 @@ export function AspectDecisions({
 							<a href={link(fresh)}>К запускам этой версии</a>
 							{page.compute_state === "COMPLETE" && (
 								<>
+									<p>
+										<a
+											href={link({
+												human: "queue",
+												decisionOutcome: "",
+												decisionOffset: "",
+												decisionReview: "",
+											})}
+										>
+											Ручная проверка
+										</a>
+									</p>
 									<details>
 										<summary>Происхождение результата</summary>
 										{page.runtime && (

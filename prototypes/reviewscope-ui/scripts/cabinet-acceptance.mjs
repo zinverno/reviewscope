@@ -1,3 +1,4 @@
+import { checkHumanReview } from "./human-review-acceptance.mjs";
 import { checkDecisions } from "./decision-acceptance.mjs";
 import { checkAspects } from "./aspect-acceptance.mjs";
 import {
@@ -106,7 +107,12 @@ async function test(type) {
 		const content = await context.storageState();
 		if (fixture.scenario === "decisions") {
 			const detailURL=await checkDecisions(browser,content,origin+"/cabinet/?"+new URLSearchParams(fixture.decisionScope),media,phase=>{stage=type.name()+" decision "+phase});
-			const detail=await context.newPage();
+			const humanURL = await checkHumanReview(browser, content, detailURL, fixture, media, phase => {stage=type.name()+" human "+phase;});
+            const human = await context.newPage();
+            await human.goto(humanURL);
+            const frozen = human.getByRole("article",{name:"Проверенная редакция"});
+            await frozen.waitFor();
+            const detail=await context.newPage();
 			await detail.goto(detailURL);
 			const article=detail.getByRole("article",{name:"Решение по версии отзыва"});
 			await article.waitFor();
@@ -114,6 +120,8 @@ async function test(type) {
 			await page.getByRole("button",{name:"Выйти"}).click();
 			await detail.bringToFront();
 			await article.waitFor({state:"detached",timeout:15000});
+            await human.bringToFront();
+            await frozen.waitFor({state:"detached",timeout:15000});
 			await context.close();
 			return;
 		}

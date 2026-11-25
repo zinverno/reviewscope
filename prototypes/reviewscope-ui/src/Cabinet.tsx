@@ -135,6 +135,31 @@ function link(changes: Record<string, string>) {
 			"decisionOffset",
 		])
 			u.searchParams.delete(k);
+	if (
+		"view" in changes ||
+		[
+			"workspace",
+			"project",
+			"source",
+			"snapshot",
+			"aspect",
+			"aspectVersion",
+			"decisionRun",
+		].some((k) => k in changes && changes[k] !== u.searchParams.get(k)) ||
+		changes.human === ""
+	) {
+		for (const k of [
+			"human",
+			"reviewMode",
+			"reviewState",
+			"reviewOutcome",
+			"reviewPlan",
+			"reviewPage",
+			"reviewSubpage",
+			"reviewResult",
+		])
+			u.searchParams.delete(k);
+	}
 	if ("candidateRun" in changes || "view" in changes)
 		u.searchParams.delete("rerankRun");
 	if (
