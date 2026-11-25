@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from operational.decision_worker import PROFILE
 from operational.tests.test_access import ORIGIN, ROOT, key, login  # noqa: F401
 from operational.tests.test_aspects import A, create, post
+from operational.tests.test_browser_delivery import importer
 from operational.tests.test_deliveries import call, command, conflicting_json, csv, inputs
 from reviewscope.access.http import create_app
 from reviewscope.access.operator import provision
@@ -84,7 +85,7 @@ def resource_input(directory, name):
 @pytest.mark.parametrize(
     "fixture", SMALL + (LARGE if os.getenv("RS_MEASURE_DECISIONS") == "1" else [])
 )
-def test_decision_profile_resource(db, tmp_path, key, fixture):  # noqa: F811
+def test_decision_profile_resource(db, tmp_path, monkeypatch, key, fixture):  # noqa: F811
     args, _, w, src = command(db, tmp_path)
     payload = resource_input(tmp_path, fixture)
     file = Path(payload[payload.index("--input") + 1])
@@ -110,7 +111,7 @@ def test_decision_profile_resource(db, tmp_path, key, fixture):  # noqa: F811
     provision(db, "decision-resource", secret, key, workspace=w, role="analyst")
     path = f"{ROOT}/workspaces/{w}"
     route = f"{path}/snapshots/{snap}/decisions"
-    with TestClient(create_app(), base_url=ORIGIN) as client:
+    with importer(tmp_path, monkeypatch), TestClient(create_app(), base_url=ORIGIN) as client:
         assert login(client, "decision-resource", secret).status_code == 204
         definition = create(client, f"{path}/projects/{project}/aspects", A)
         run = post(

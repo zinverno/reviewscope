@@ -4,11 +4,13 @@ import ctypes
 import hashlib
 import json
 import os
+import platform
 import signal
 import socket
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from importlib.metadata import version
 from time import monotonic, process_time
 
 from operational import candidate_worker
@@ -60,6 +62,12 @@ def score_batches(params, texts):
         scoring_s += monotonic() - tick
         yield batch
     yield dict(
+        runtime=dict(
+            python=platform.python_version(),
+            numpy=version("numpy"),
+            sklearn=version("scikit-learn"),
+            dtype="float64",
+        ),
         rows=len(texts),
         unique_scored=len(cache),
         load_s=loaded - started,
@@ -174,8 +182,8 @@ def result(conn, claim, info, rows, pulse):
                 "SELECT decision_stage(%s,%s,%s,%s::jsonb)", (*claim, data.decode())
             ).fetchone()[0]
             require(size == len(batch), "ACCESS_REVOKED")
-            done += sum(r["outcome"] != "excluded_blank" for r in batch)
-            heartbeat()
+        done += sum(r["outcome"] != "excluded_blank" for r in batch)
+        heartbeat()
         staged_bytes += len(data)
         stage_s += monotonic() - tick
 
@@ -184,6 +192,7 @@ def result(conn, claim, info, rows, pulse):
     require(done == eligible)
     doc = conn.execute("SELECT decision_manifest(%s,%s,%s)", claim).fetchone()[0]
     require(isinstance(doc, dict) and doc.get("run_id") == str(claim[1]))
+    doc["runtime"] = stats.pop("runtime")
     print(
         json.dumps(
             dict(event="decision_resources", **stats, stage_s=stage_s, staged_bytes=staged_bytes)
