@@ -57,6 +57,7 @@ type Run = History & {
 	};
 };
 type Snapshot = {
+	previous_run_id: string | null;
 	id: string;
 	registered_at: string;
 	coverage: string | null;
@@ -275,15 +276,11 @@ export function Monitors({
 	]);
 	const detail = data?.current,
 		run = data?.run;
-	const snapshot = target || detail?.latest_snapshot_id || "";
-	const previous = data?.history?.rows.find(
-		(row) =>
-			row.version_id === detail?.version_id &&
-			row.status === "succeeded" &&
-			row.snapshot_id !== snapshot,
-	);
-	const predecessor =
-		parent === "auto" ? previous?.run_id || null : parent || null;
+	const snapshots = data?.snapshots?.rows;
+	const selection = snapshots?.find((x) => x.id === target) || snapshots?.[0];
+	const snapshot = selection?.id || "";
+	const previous = selection?.previous_run_id;
+	const predecessor = parent === "auto" ? previous || null : parent || null;
 	const post = async (
 		path: string,
 		body: object | undefined,
@@ -397,9 +394,6 @@ export function Monitors({
 						</p>
 					)}
 					<p>
-						Профиль {detail.payload.profile} · {detail.payload.threshold_set}.
-					</p>
-					<p>
 						Критерий — {detail.payload.event.threshold} машинных упоминаний при
 						выборке от {detail.payload.event.minimum} пригодных отзывов. Событие
 						не вычисляется. QUALITY_GATE_NOT_MET.
@@ -445,7 +439,7 @@ export function Monitors({
 						<select value={parent} onChange={(e) => setParent(e.target.value)}>
 							<option value="auto">
 								{previous
-									? "Предыдущий успешный из истории"
+									? `Предыдущий успешный · ${previous}`
 									: "Первый полный проход"}
 							</option>
 							<option value="">Полный проход без предшественника</option>

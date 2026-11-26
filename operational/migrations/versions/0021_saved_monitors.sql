@@ -432,8 +432,15 @@ BEGIN
    SELECT sn.id,b.id AS delivery_id,b.registered_at,b.received_at,b.coverage,b.input_count,b.accepted_count,sn.manifest_sha256,
           b.file_sha256 FROM snapshot sn JOIN import_batch b ON (b.workspace_id,b.source_id,b.id)=(w,src,sn.batch_id)
    WHERE (sn.workspace_id,sn.source_id)=(w,src) AND monitor_admitted(w,src,sn.id)
+  ), successes AS MATERIALIZED (
+    SELECT rr.id,prior.registered_at,prior.delivery_id FROM monitor_run rr
+    JOIN analysis_run j ON (j.workspace_id,j.id)=(w,rr.decision_id) JOIN matches prior ON prior.id=rr.snapshot_id
+    WHERE section='snapshots' AND rr.version_id=mv.version_id AND j.status='succeeded' AND monitor_job_allowed(w,rr.decision_id)
   ) SELECT (SELECT count(*) FROM matches),(SELECT id FROM matches ORDER BY registered_at DESC,delivery_id DESC LIMIT 1),
-  coalesce(jsonb_agg(to_jsonb(pg) ORDER BY registered_at DESC,delivery_id DESC),'[]') INTO total,latest,items
+  coalesce(jsonb_agg(to_jsonb(pg)||jsonb_build_object('previous_run_id',(
+    SELECT previous.id FROM successes previous WHERE (previous.registered_at,previous.delivery_id)<(pg.registered_at,pg.delivery_id)
+    ORDER BY previous.registered_at DESC,previous.delivery_id DESC LIMIT 1
+  )) ORDER BY pg.registered_at DESC,pg.delivery_id DESC),'[]') INTO total,latest,items
   FROM (SELECT * FROM matches ORDER BY registered_at DESC,delivery_id DESC OFFSET skip LIMIT 25) pg;
   IF section='overview' THEN
     SELECT rr.snapshot_id,j.finished_at INTO choice,last_ok FROM monitor_run rr JOIN analysis_run j ON (j.workspace_id,j.id)=(w,rr.decision_id)
