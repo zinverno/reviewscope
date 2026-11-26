@@ -35,12 +35,12 @@ COVER = dict(
 )
 
 
-def command(db, tmp_path):
+def command(db, tmp_path, *, operator_login="operator"):
     w, project, s = scope(db, source_key="synthetic")
     for place in ("p1", "p2"):
         bind_place(db, w, project, s, place)
     (actor,) = db.execute(
-        "INSERT INTO principal(login,state) VALUES ('operator','active') RETURNING id"
+        "INSERT INTO principal(login,state) VALUES (%s,'active') RETURNING id", (operator_login,)
     ).fetchone()
     db.execute("INSERT INTO workspace_membership VALUES (%s,%s,'analyst','active')", (w, actor))
     root = tmp_path / "objects"

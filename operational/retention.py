@@ -516,6 +516,10 @@ def verify_restore_roles(admin):
             WHERE r.rolname IN ('rs_runtime','rs_worker','rs_upload') AND c.oid IN ('relation_result'::regclass,'relation_pair'::regclass)
             AND (has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') OR has_table_privilege(r.oid,c.oid,'DELETE,TRUNCATE,TRIGGER')))"""),
             "restore_roles_unverified")
+    require(one(admin, """SELECT NOT EXISTS(SELECT FROM pg_roles r,pg_proc f
+        WHERE f.pronamespace='public'::regnamespace AND r.rolname IN ('rs_runtime','rs_worker','rs_upload','rs_retention')
+        AND (f.proname='topic_apply_review' OR (f.proname='topic_confirm_writer' AND r.rolname<>'rs_runtime'))
+        AND has_function_privilege(r.oid,f.oid,'EXECUTE'))"""), "restore_roles_unverified")
     if one(admin, "SELECT to_regclass('public.topic_result') IS NOT NULL"):
         topics = ["topic_result","topic_input","topic_candidate","topic_event","topic_history","topic_request"]
         scoped = [*scoped, *topics]
@@ -545,7 +549,7 @@ def verify_restore_roles(admin):
         (scoped, scoped),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery", "0020_topic_lock_order"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 

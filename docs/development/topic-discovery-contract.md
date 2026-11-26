@@ -61,3 +61,29 @@ python -c 'import json; from reviewscope.access.http import create_app; print(js
 ```
 
 Для браузерной проверки сначала собрать кабинет через npm ci и npm run build, установить Chromium/Firefox Playwright и задать отдельный RS_TEST_BROWSER_OUT для синтетических снимков экрана. Точные зависимости и команды в [workflow](../../.github/workflows/ci.yml). [Качество, нагрузка и результаты](topic-discovery-results.md)
+
+## Подтверждение с созданием аспекта · схема 0020
+
+На исходной ревизии [7da72ed](https://github.com/zinverno/reviewscope/commit/7da72ed01b27cbd69418ee9c212583b83767f75f) воспроизведена инверсия порядка блокировок (`REPRODUCED`). На изолированном PostgreSQL 18.6 два авторизованных пользователя работали с реальным импортом и локальным брокером. Наблюдатель читал виды блокировок и связи ожидания. После регистрации каждого ожидания держатель завершал транзакцию. SQLSTATE `40P01` в этих наблюдениях не возник.
+
+| Путь на 0019 | Что уже удерживала транзакция | Чего ждала | Время до наблюдения |
+|---|---|---|---:|
+| HTTP confirm с новым определением | Workspace SHARE и topic advisory | Workspace UPDATE за другим читателем | 38 мс |
+| Прямой scoped SQL confirm | Workspace SHARE и topic advisory | Тот же UPDATE | 34 мс |
+| Другая команда topic | Workspace SHARE | Topic advisory той же области | 35 мс |
+
+| Порядок на 0020 | Что проверяется или блокируется |
+|---|---|
+| Вход в операцию | В HTTP действует shared gate независимого deletion ledger. Проверяются session proof, workspace, доступ к source, допуск точных байтов и существование immutable result. Первичные проверки SQL выполняют обычное чтение. |
+| Writer authority | До первого scoped read подтверждение с новым определением вызывает PR-20 `job_writer`. Он берёт UPDATE одной строки workspace и SHARE членства. Обычные create/edit/archive аспекта начинают с того же writer. Чужой workspace может публиковать одновременно. |
+| Авторизация и байты | `topic_scope` проверяет snapshot, source, проект, principal, сессию, admission и при наличии PR-22/23 parents. `aspect_scope` проверяет проект. HTTP затем сверяет manifest, SHA и строки через object broker. На GET действует прежний режим чтения. |
+| Команда и публикация | Scoped `topic_review` самостоятельно обеспечивает тот же входной порядок. Затем workspace topic advisory сериализует receipt и проверку открытых родителей. Вложенный `save_aspect` уже владеет workspace UPDATE. В одной транзакции фиксируются aspect, v1, событие со ссылкой и digest, receipt, внешние ключи и финальная проверка полномочий. |
+| Отзыв и восстановление | Изменения admission/session сериализуются с authority SHARE. Retention использует независимый gate и штатную обработку своей области. После обновления оператор фиксирует текущий access seal. Старая каталоговая печать отклоняется. |
+
+В собственной SQL-транзакции, которая объединяет чтение с таким подтверждением, сначала вызывают `topic_confirm_writer` с точной областью. Это же делает HTTP перед `page_data`. Helper доступен только `rs_runtime`, отказ освобождает полученные им блокировки. Исходная реализация действия доступна только владельцу функций. Миграция обновляет функции и ACL, данные сохраняются.
+
+Регрессии останавливают первый запрос непосредственно перед commit и подтверждают фактическое ожидание второго по `pg_blocking_pids`. Проверяются оба порядка конкурирующих действий, точный replay, разные кандидаты, обычный PR-20 CAS, независимые workspace, отзыв и истечение сессии. Отдельные случаи проверяют потерю объекта или witness, недопустимое определение, разрыв соединения и побайтно эквивалентное содержимое сохранённых записей при upgrade. Время относится к синтетическому стенду. [Конкурентные проверки](../../operational/tests/test_topic_discovery_concurrency.py) · [Миграция](../../operational/migrations/versions/0020_topic_lock_order.sql) · [Экспорт, удаление и restore](../../operational/tests/test_decision_storage.py)
+
+```sh
+bash operational/test-isolated.sh -s --tb=short -k 'topic_discovery_confirm'
+```

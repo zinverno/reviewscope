@@ -245,6 +245,13 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
         _: Annotated[Strict, Query()],
     ):
         with session(request, workspace, True) as (cur, actor):
+            if data.action == "confirm" and data.definition is not None:
+                cur.execute(
+                    "SELECT topic_confirm_writer(%s,%s,%s,%s) AS allowed",
+                    (workspace, data.source_id, snapshot, result),
+                )
+                if not cur.fetchone()["allowed"]:
+                    raise HTTPException(404)
             page_data(
                 cur, actor, request, workspace, snapshot, result, Page(source_id=data.source_id)
             )

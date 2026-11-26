@@ -220,7 +220,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
 
     def ready(cur):
         cur.execute("SELECT version_num FROM public.alembic_version")
-        if cur.fetchone()["version_num"] not in {"0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery"}:
+        if cur.fetchone()["version_num"] not in {"0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery", "0020_topic_lock_order"}:
             raise HTTPException(503)
 
     def catalog(cur, workspace, snapshot, binding):
