@@ -22,6 +22,8 @@ jobs:
             artifact: synthetic-cabinet-acceptance
           - check: saved-monitors
             artifact: synthetic-saved-monitors
+          - check: monitor-resources
+            artifact: synthetic-monitor-resources
           - check: topic-discovery
             artifact: synthetic-topic-discovery
           - check: typed-relations
@@ -71,7 +73,10 @@ jobs:
             bash operational/test-isolated.sh -s --tb=short -k 'not (reviewer_context_resource_boundary or reviewer_context_upgrade or decision or test_human or typed_relations or relation_snapshot_profile or topic_discovery or topics or monitor)'
           elif [ "${{ matrix.check }}" = saved-monitors ]; then
             mkdir -p "$RS_TEST_BROWSER_OUT"
-            RS_MEASURE_MONITORS=1 bash operational/test-isolated.sh -s --tb=short --junitxml="$RS_TEST_BROWSER_OUT/monitors.xml" -k monitor
+            bash operational/test-isolated.sh -s --tb=short --junitxml="$RS_TEST_BROWSER_OUT/monitors.xml" -k 'monitor and not test_monitor_resource'
+          elif [ "${{ matrix.check }}" = monitor-resources ]; then
+            mkdir -p "$RS_TEST_BROWSER_OUT"
+            RS_MEASURE_MONITORS=1 bash operational/test-isolated.sh -s --tb=short --junitxml="$RS_TEST_BROWSER_OUT/resources.xml" -k test_monitor_resource
           elif [ "${{ matrix.check }}" = topic-discovery ]; then
             mkdir -p "$RS_TEST_BROWSER_OUT"
             RS_MEASURE_TOPICS=1 bash operational/test-isolated.sh -s --tb=short --junitxml="$RS_TEST_BROWSER_OUT/topics.xml" -k 'topic_discovery or (cabinet_native and topics)'
