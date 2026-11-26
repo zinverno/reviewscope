@@ -144,6 +144,9 @@ def export(conn, rid, root, handoff):
                               topic_candidate="snapshot_id,result_id,id", topic_event="snapshot_id,result_id,id",
                               topic_history="snapshot_id,result_id,id")
                 omissions.append("topic_request_keys")
+            if one(conn, "SELECT to_regclass('public.monitor') IS NOT NULL"):
+                tables.update(monitor="monitor_id", monitor_version="monitor_id,version_no", monitor_archive="monitor_id",
+                              monitor_run="created_at,id", monitor_receipt="run_id", monitor_reuse="run_id,version_id")
             for table, order in tables.items():
                 run_fields = RUN_FIELDS
                 if table == "analysis_run" and one(

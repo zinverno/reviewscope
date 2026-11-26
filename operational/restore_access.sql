@@ -25,12 +25,12 @@ WITH roles AS (
  UNION ALL SELECT jsonb_build_array('aspect_constraint',c.relname,k.conname,pg_get_constraintdef(k.oid))
  FROM pg_constraint k JOIN rels c ON c.oid=k.conrelid
  WHERE c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
- 'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request') OR k.confrelid=to_regclass('public.aspect_version')
+ 'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request','monitor','monitor_version','monitor_archive','monitor_run','monitor_receipt','monitor_reuse') OR k.confrelid=to_regclass('public.aspect_version')
  OR (c.relname='analysis_run' AND strpos(pg_get_constraintdef(k.oid),'bound_')>0)
  UNION ALL SELECT jsonb_build_array('aspect_trigger',c.relname,pg_get_triggerdef(t.oid),t.tgenabled)
  FROM pg_trigger t JOIN rels c ON c.oid=t.tgrelid WHERE NOT t.tgisinternal
  AND (c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
- 'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request') OR t.tgname IN ('verify_aspect_publication','verify_decision_publication','clear_decision_stage'))
+ 'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request','monitor','monitor_version','monitor_archive','monitor_run','monitor_receipt','monitor_reuse') OR t.tgname IN ('verify_aspect_publication','verify_decision_publication','clear_decision_stage','monitor_publish'))
  UNION ALL SELECT jsonb_build_array('aspect_generated',c.relname,a.attname,pg_get_expr(d.adbin,d.adrelid))
  FROM pg_attrdef d JOIN rels c ON c.oid=d.adrelid JOIN pg_attribute a ON (a.attrelid,a.attnum)=(c.oid,d.adnum)
  WHERE a.attgenerated<>'' AND (c.relname='aspect_version' OR c.relname='analysis_run' AND starts_with(a.attname,'bound_'))
@@ -41,11 +41,11 @@ WITH roles AS (
  a.attnotnull,pg_get_expr(d.adbin,d.adrelid))
  FROM rels c JOIN pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_attrdef d ON (d.adrelid,d.adnum)=(c.oid,a.attnum)
  WHERE a.attnum>0 AND NOT a.attisdropped AND (c.relname IN
- ('human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request')
- OR (c.relname='browser_admission' AND a.attname IN ('human_review_allowed','relation_allowed','topic_discovery_allowed')))
+ ('human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request','monitor','monitor_version','monitor_archive','monitor_run','monitor_receipt','monitor_reuse')
+ OR (c.relname='browser_admission' AND a.attname IN ('human_review_allowed','relation_allowed','topic_discovery_allowed','monitor_allowed')))
  UNION ALL SELECT jsonb_build_array('human_index',c.relname,pg_get_indexdef(i.indexrelid),i.indisvalid,i.indisready)
  FROM rels c JOIN pg_index i ON i.indrelid=c.oid WHERE c.relname IN
- ('human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request')
+ ('human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request','monitor','monitor_version','monitor_archive','monitor_run','monitor_receipt','monitor_reuse')
  UNION ALL SELECT jsonb_build_array('decision_outcomes',array_agg(e.enumlabel ORDER BY e.enumsortorder))
  FROM pg_enum e WHERE e.enumtypid=to_regtype('public.decision_outcome') HAVING count(*)>0
  UNION ALL SELECT jsonb_build_array('role',r.rolname,r.rolcanlogin,r.rolsuper,r.rolinherit,r.rolcreaterole,r.rolcreatedb,
