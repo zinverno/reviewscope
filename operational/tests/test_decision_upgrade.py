@@ -202,7 +202,7 @@ def test_decision_upgrade_preserves_saved_runs(tmp_path, monkeypatch, key):  # n
             assert db.execute("SELECT to_regclass('public.human_review_event')").fetchone() == (None,)
             assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0016_aspect_decisions",)
             verify_access_permissions(db, old_seal)
-            subprocess.run([*ALEMBIC, "upgrade", "head"], check=True)
+            subprocess.run([*ALEMBIC, "upgrade", "0017_human_review"], check=True)
             assert db.execute("SELECT retention_access_seal()").fetchone() == prior_business
             assert not db.execute("SELECT bool_or(human_review_allowed) FROM browser_admission").fetchone()[0]
             with pytest.raises(DeliveryError, match="access_review_required"):
@@ -226,6 +226,26 @@ def test_decision_upgrade_preserves_saved_runs(tmp_path, monkeypatch, key):  # n
             assert db.execute("SELECT retention_access_seal()").fetchone() != prior_business
             assert web.get(status + "/human/queue", params=scope).status_code == 200
             assert old_bytes() == saved
+            human_url = status + "/human"
+            event = dict(source_id=str(src), idempotency_key=str(uuid4()), expected_event_id=None, action="dispute",
+                         outcome=None, reason="Для миграционной проверки", spans=[], selection="all")
+            post(web, human_url + "/reviews/" + ref["version_id"] + "/events", event, 201)
+            hr = post(web, human_url + "/results", scope | {"idempotency_key":str(uuid4())}, 201)
+            read_urls.append((human_url + "/results/" + hr["id"],scope))
+            before_18 = old_bytes()
+            business = db.execute("SELECT retention_access_seal()").fetchone()
+            before_seal = capture_access(db)
+            with db.transaction(force_rollback=True):
+                db.execute(MIGRATION.with_name("0018_typed_relations.sql").read_text())
+                assert db.execute("SELECT count(*) FROM relation_result").fetchone() == (0,)
+            assert db.execute("SELECT to_regclass('relation_result')").fetchone() == (None,)
+            subprocess.run([*ALEMBIC,"upgrade","head"],check=True)
+            assert db.execute("SELECT retention_access_seal()").fetchone() == business
+            with pytest.raises(DeliveryError, match="access_review_required"):
+                verify_access_permissions(db,before_seal)
+            verify_access_permissions(db,capture_access(db))
+            assert db.execute("SELECT bool_or(relation_allowed) FROM browser_admission").fetchone() == (False,)
+            assert old_bytes() == before_18
             db.execute(
                 "UPDATE workspace_membership SET role='viewer' WHERE workspace_id=%s AND principal_id=%s",
                 (w, actor),

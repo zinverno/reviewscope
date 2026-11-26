@@ -136,6 +136,9 @@ def export(conn, rid, root, handoff):
                     human_result_member="run_id,result_id,version_id",
                 )
                 omissions.append("human_review_request_keys")
+            if one(conn, "SELECT to_regclass('public.relation_result') IS NOT NULL"):
+                tables.update(relation_result="snapshot_id,id", relation_pair="snapshot_id,result_id,left_id,right_id")
+                omissions.append("relation_request_keys")
             for table, order in tables.items():
                 run_fields = RUN_FIELDS
                 if table == "analysis_run" and one(
@@ -144,6 +147,7 @@ def export(conn, rid, root, handoff):
                 ):
                     run_fields += ",candidate_params"
                 fields = {
+                    "relation_result": "workspace_id,source_id,snapshot_id,id,actor,run_id,revision_id,manifest,digest",
                     "human_review_event": "workspace_id,run_id,version_id,id,sequence,previous_id,actor,created_at,action,outcome,reason,spans,selection,plan_id,machine,content_sha256,text_sha256",
                     "human_review_plan": "workspace_id,run_id,id,actor,created_at,seed,requested,eligible,size,algorithm,digest",
                     "human_plan_member": "workspace_id,run_id,plan_id,version_id,ordinal",

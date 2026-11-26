@@ -20,6 +20,8 @@ jobs:
         include:
           - check: operational
             artifact: synthetic-cabinet-acceptance
+          - check: typed-relations
+            artifact: synthetic-typed-relations
           - check: human-review
             artifact: synthetic-human-review
           - check: aspect-decisions
@@ -41,7 +43,7 @@ jobs:
           cache: npm
           cache-dependency-path: prototypes/reviewscope-ui/package-lock.json
       - name: Build local cabinet and install synthetic acceptance browsers
-        if: matrix.check != 'human-review'
+        if: matrix.check == 'operational' || matrix.check == 'aspect-decisions'
         working-directory: prototypes/reviewscope-ui
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/rs-browsers
@@ -62,7 +64,10 @@ jobs:
           if [ "${{ matrix.check }}" = operational ]; then
             python -m pytest -q tests/test_access.py
             bash operational/test-isolated.sh -s --tb=short -k 'reviewer_context_resource_boundary or reviewer_context_upgrade'
-            bash operational/test-isolated.sh -s --tb=short -k 'not (reviewer_context_resource_boundary or reviewer_context_upgrade or decision or test_human)'
+            bash operational/test-isolated.sh -s --tb=short -k 'not (reviewer_context_resource_boundary or reviewer_context_upgrade or decision or test_human or typed_relations or relation_snapshot_profile)'
+          elif [ "${{ matrix.check }}" = typed-relations ]; then
+            mkdir -p "$RS_TEST_BROWSER_OUT"
+            RS_MEASURE_RELATIONS=1 bash operational/test-isolated.sh -s --tb=short --junitxml="$RS_TEST_BROWSER_OUT/relations.xml" -k 'typed_relations or relation_snapshot_profile'
           elif [ "${{ matrix.check }}" = aspect-decisions ]; then
             bash operational/test-isolated.sh -s --tb=short -k 'decision and not test_human'
           else

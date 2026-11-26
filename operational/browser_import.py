@@ -110,6 +110,7 @@ def read_signals(msg):
         "read_signals": ("signal_object", SCHEMA),
         "read_candidates": ("candidate_object", "candidate-search-1"),
         "read_rerank": ("rerank_object", "candidate-rerank-1"),
+        "relation_snapshot": ("relation_object", "relation-snapshot-1"),
         "read_decisions": ("decision_object", "aspect-decision-1"),
     }[msg["op"]]
     if set(msg) != {"op", "workspace", "source", "snapshot", "run", "actor", "expires", "ticket"}:
@@ -130,6 +131,11 @@ def read_signals(msg):
         certified_space(witness, ids[0], root)
         directory = object_directory(Path(root), ids[0], create=False)
         with open_object(directory, digest) as stream:
+            if msg["op"] == "relation_snapshot":
+                raw = stream.read(size + 1)
+                if len(raw) > size or hashlib.sha256(raw).hexdigest() != digest:
+                    raise UploadError("importer_unavailable")
+                return {"schema": schema, "snapshot_id": str(ids[2]), "manifest": manifest, "sha256": digest}
             raw = stream.read(LIMIT + 1)
         if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
             raise UploadError("importer_unavailable")
@@ -151,7 +157,7 @@ class Handler(socketserver.StreamRequestHandler):
         limit = 4096
         try:
             msg = read_json(self.rfile)
-            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions")
+            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions","relation_snapshot")
             parts = () if signal_read else tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
             if self.rfile.read(1):
                 raise UploadError("invalid_upload")

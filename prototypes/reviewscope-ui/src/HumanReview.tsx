@@ -568,6 +568,16 @@ export function HumanReview({
 					)}
 					{data.kind === "result" && (
 						<>
+							<a
+								href={link({
+									view: "relations",
+									source,
+									relationRun: run,
+									relationRevision: data.id,
+								})}
+							>
+								Отношения по этой редакции
+							</a>
 							<article aria-label="Проверенная редакция">
 								<h4>По меткам человека жалоб — {data.summary.complaints}</h4>
 								<p>

@@ -49,7 +49,7 @@ def runtime(w, proof):
 
 
 @contextmanager
-def cabinet(db, path, signing_key, *, size=None, allow=True, inputs=None):
+def cabinet(db, path, signing_key, *, size=None, allow=True, inputs=None, definition=A):
     args, root, w, src = command(db, path)
     p = query(db, "project_id FROM source WHERE id=%s", (src,))
     if inputs is not None:
@@ -80,7 +80,7 @@ def cabinet(db, path, signing_key, *, size=None, allow=True, inputs=None):
     with TestClient(create_app(), base_url=ORIGIN) as web:
         signed_in = login(web, "annotator", pwd)
         assert signed_in.status_code == 204
-        saved = create(web, f"{ROOT}/workspaces/{w}/projects/{p}/aspects", A)
+        saved = create(web, f"{ROOT}/workspaces/{w}/projects/{p}/aspects", definition)
         proof = session_proof(web.cookies[COOKIE], signing_key)
         with runtime(w, proof) as reader:
             yield (
@@ -341,6 +341,9 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         selected_version = next(row["version_id"] for row in rows if row["outcome"] == "not_mentioned")
         ids = human.write_history(reader, s, run, selected_version)
         neighbor, other_run, other_result = human.neighbor(db, root, web, s, proof, conn, tmp_path)
+        db.execute("UPDATE browser_admission SET relation_allowed=true WHERE source_id=%s", (s[1],))
+        graph = query(reader, "relation_publish(%s,%s,%s,%s,%s,%s)", (*s[:3], run, ids[2], uuid4()))
+        assert graph["code"] == 201
         new_password = secrets.token_urlsafe(32)
         provision(db, "restored-reader", new_password, key, workspace=neighbor, role="analyst")
         old_session = proof
@@ -356,6 +359,9 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         operator("export", "--request", req["id"], "--root", root, "--owner-handoff", out)
         with ZipFile(out / (req["id"] + ".zip")) as z:
             human.assert_owner_export(z, run, ids, doc)
+            relations = [json.loads(x) for x in z.read("rows/relation_result.jsonl").splitlines()]
+            assert len(relations) == 1 and relations[0]["id"] == graph["id"] and "request_key" not in relations[0]
+            assert len(z.read("rows/relation_pair.jsonl").splitlines()) == 15
             bindings = [
                 json.loads(line) for line in z.read("rows/decision_binding.jsonl").splitlines()
             ]
@@ -370,7 +376,7 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
             withheld = ask(web, w, kind, selected, "export")
             operator("export", "--request", withheld["id"], "--root", root, "--owner-handoff", out)
             with ZipFile(out / (withheld["id"] + ".zip")) as z:
-                for table in human.HUMAN_TABLES:
+                for table in (*human.HUMAN_TABLES, "relation_pair", "relation_result"):
                     assert not z.read(f"rows/{table}.jsonl")
                 assert z.read("rows/decision_row.jsonl")
             db.execute("UPDATE browser_admission SET human_review_allowed=true WHERE source_id=%s", (s[1],))
@@ -396,6 +402,7 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         assert query(reader, "human_history(%s,%s,%s,%s,%s,0)", (*s[:3], run, selected_version)) is None
         operator("purge", "--request", req["id"], "--root", root)
         assert query(db, "count(*) FROM decision_row WHERE workspace_id=%s", (w,)) == 0
+        assert query(db, "count(*) FROM relation_result WHERE workspace_id=%s", (w,)) == 0
         human.assert_remaining(db, run, other_run, other_result)
         proof, seal = read_witness()["sha256"], capture_access(db)
         with (
@@ -407,8 +414,10 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
             )
             assert query(target, "count(*) FROM decision_row WHERE workspace_id=%s", (w,)) == 10
             assert query(target, "count(*) FROM human_review_event WHERE run_id=%s", (run,)) == 1
+            assert query(target, "count(*) FROM relation_pair WHERE result_id=%s", (graph["id"],)) == 15
             token = prepare_copy(target, frozen, generation("decisions"), proof, seal)
             recover(target, proof, [token], seal)
+            assert query(target, "count(*) FROM relation_pair WHERE result_id=%s", (graph["id"],)) == 0
             human.assert_remaining(target, run, other_run, other_result)
             neighbor_source, neighbor_snapshot = target.execute(
                 "SELECT source_id,snapshot_id FROM decision_binding WHERE run_id=%s", (other_run,)

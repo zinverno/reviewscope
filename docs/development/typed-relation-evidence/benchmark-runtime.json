@@ -1,0 +1,23 @@
+[
+  {
+    "phase": "calibration",
+    "seconds": 16.0435200209904,
+    "cpu": 14.62182372,
+    "peak_rss_kib": 1679140,
+    "encoding": "rs-embedding-v2:e20694aca8495d2edd51573dd3c373264f4d03e10190e22d1760f1358f4ebfd9"
+  },
+  {
+    "phase": "test",
+    "seconds": 15.015325756990933,
+    "cpu": 14.86526352,
+    "peak_rss_kib": 1601552,
+    "encoding": "rs-embedding-v2:e20694aca8495d2edd51573dd3c373264f4d03e10190e22d1760f1358f4ebfd9"
+  },
+  {
+    "phase": "test",
+    "seconds": 14.102405141995405,
+    "cpu": 14.489761614,
+    "peak_rss_kib": 1602676,
+    "encoding": "rs-embedding-v2:e20694aca8495d2edd51573dd3c373264f4d03e10190e22d1760f1358f4ebfd9"
+  }
+]

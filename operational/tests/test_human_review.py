@@ -43,12 +43,12 @@ def submit(client, url, data, status=201):
 
 
 @contextmanager
-def oracle(db, tmp_path, signing_key, monkeypatch, *, inputs=None):
+def oracle(db, tmp_path, signing_key, monkeypatch, *, inputs=None, definition=None):
     if inputs is None:
         rows = [{"id": str(i), "text": f"🍒e\u0301\r\nОжидание {min(i, 6)}"} for i in range(8)]
         inputs = [*rows, {"id": "blank", "text": " "}, rows[0], False, 42]
     with (
-        cabinet(db, tmp_path, signing_key, inputs=inputs) as (s, reader, _, root, web, project),
+        cabinet(db, tmp_path, signing_key, inputs=inputs, **({"definition": definition} if definition else {})) as (s, reader, _, root, web, project),
         worker.connect() as conn,
         importer(tmp_path, monkeypatch),
     ):

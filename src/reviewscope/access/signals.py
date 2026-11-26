@@ -185,6 +185,24 @@ def read_artifact(
     job = store.job_status(cur, workspace, run=run)
     if job["job_kind"] != kind or job["snapshot_id"] != snapshot or not job["artifact_id"]:
         raise HTTPException(404)
+    doc, ids = broker_receipt(cur, actor, workspace, snapshot, source, run, request, cookie, key, ticket_kind, op)
+    if not isinstance(doc, dict) or doc.get("schema") != schema:
+        raise HTTPException(503)
+    if [doc.get(k) for k in ("workspace_id", "source_id", "snapshot_id", "run_id")] != ids[:4]:
+        raise HTTPException(503)
+    raw = (
+        json.dumps(
+            doc, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode()
+        + b"\n"
+    )
+    if hashlib.sha256(raw).hexdigest() != job["sha256"]:
+        raise HTTPException(503)
+    return doc, job["sha256"]
+
+
+
+def broker_receipt(cur, actor, workspace, snapshot, source, run, request, cookie, key, ticket_kind, op):
     cur.execute("SELECT floor(extract(epoch FROM statement_timestamp()))::bigint+25 AS expires")
     expires = cur.fetchone()["expires"]
     ids = list(map(str, (workspace, source, snapshot, run, actor)))
@@ -200,16 +218,4 @@ def read_artifact(
         raise HTTPException(503) from None
     if isinstance(doc, dict) and doc.get("error") == "scope_denied":
         raise HTTPException(404)
-    if not isinstance(doc, dict) or doc.get("schema") != schema:
-        raise HTTPException(503)
-    if [doc.get(k) for k in ("workspace_id", "source_id", "snapshot_id", "run_id")] != ids[:4]:
-        raise HTTPException(503)
-    raw = (
-        json.dumps(
-            doc, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
-        ).encode()
-        + b"\n"
-    )
-    if hashlib.sha256(raw).hexdigest() != job["sha256"]:
-        raise HTTPException(503)
-    return doc, job["sha256"]
+    return doc, ids

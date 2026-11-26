@@ -262,6 +262,50 @@ export async function checkHumanReview(
 			)
 			.waitFor();
 		await resultPage.close();
+		stage("canonical pairs from the frozen human revision");
+		await page
+			.getByRole("link", { name: "Отношения по этой редакции" })
+			.press("Enter");
+		await page
+			.getByRole("button", { name: "Построить прямые пары" })
+			.press("Enter");
+		const pairs = page.getByRole("table");
+		await pairs.getByRole("link").first().waitFor();
+		await page
+			.getByRole("link", { name: "Только совпадающие тексты" })
+			.press("Enter");
+		await page.getByRole("link", { name: "Все отобранные пары" }).waitFor();
+		await checkWidths();
+		await pairs.getByRole("link").first().press("Enter");
+		await page.getByRole("link", { name: "К странице пар" }).waitFor();
+		await page.locator("article.evidence-detail").first().waitFor();
+		await checkWidths();
+		await page
+			.locator("article.evidence-detail")
+			.first()
+			.scrollIntoViewIfNeeded();
+		if (media)
+			await page.screenshot({
+				path: join(
+					media,
+					"typed-pair-" + browser.browserType().name() + ".png",
+				),
+			});
+		await page.goBack();
+		await page.getByRole("link", { name: "Следующие 10 пар" }).waitFor();
+		await page.goForward();
+		await page.getByRole("link", { name: "К странице пар" }).waitFor();
+		await admission("human_revoked");
+		try {
+			await page
+				.getByText(/CANONICAL_GRAPH_NOT_AVAILABLE/)
+				.waitFor({ timeout: 16000 });
+			assert.equal(await page.locator("article.evidence-detail").count(), 0);
+		} finally {
+			await admission("ready");
+		}
+		await page.goto(second);
+		await frozen.waitFor();
 		stage("viewport keyboard and synthetic aggregate media");
 		await checkWidths();
 		if (media) {
