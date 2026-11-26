@@ -1,0 +1,153 @@
+{
+  "a": {
+    "event": "NOT_EVALUATED",
+    "run_id": "ca2a0e24-d8be-4bec-8c6b-b8540003f6aa",
+    "schema": "monitor-receipt-1",
+    "quality": "QUALITY_GATE_NOT_MET",
+    "runtime": {
+      "dtype": "float64",
+      "numpy": "2.5.3",
+      "python": "3.14.7",
+      "sklearn": "1.9.1"
+    },
+    "accepted": 5,
+    "eligible": 4,
+    "categories": {
+      "initial_observed": 5
+    },
+    "monitor_id": "d80adc46-ceac-4b54-be4a-f5ec3e6214a6",
+    "reuse_mode": "FULL",
+    "file_sha256": "e57bea916bf8c408369b6702dba3ee13dac4a5e58313e4f4edf0627c168d6d1a",
+    "rows_sha256": "7373aa8be376d72f05396f5550f8b80e383baee866e344385fe6f2db093e1229",
+    "snapshot_id": "d7d726a9-177d-496d-b60e-bb78c94251e0",
+    "change_state": "INITIAL_DELIVERY",
+    "delta_sha256": "6f2508d0fab1c38547d18988b39ad036eb1d6bd5e20c13b46a89075cd6534c0d",
+    "reused_blank": 0,
+    "parent_run_id": null,
+    "excluded_blank": 1,
+    "monitor_digest": "824213209f5997e545952df3a6ab5ad08d9e5e2a0f59f59b37c0485971696963",
+    "decision_run_id": "799bff0a-9b1d-4088-8b26-c97cec29e2a6",
+    "manifest_sha256": "40ba9722066a5ab78fe79fc595d0864ba8e7e2d55910b60a7c34b5dc079ca90c",
+    "reused_eligible": 0,
+    "snapshot_sha256": "44e79b61bdeeb4c13600edb86cbcc96313ef27e183144214b4f85c66ef329db1",
+    "removal_evidence": "SOURCE_REMOVAL_EVIDENCE_UNAVAILABLE",
+    "computed_eligible": 4,
+    "provenance_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "monitor_version_id": "641f062d-f189-4518-b803-f38170e89453",
+    "parent_file_sha256": null,
+    "parent_rows_sha256": null,
+    "parent_snapshot_id": null,
+    "parent_artifact_sha256": null,
+    "parent_decision_run_id": null,
+    "parent_manifest_sha256": null,
+    "confirmed_source_removals": 0
+  },
+  "b": {
+    "event": "NOT_EVALUATED",
+    "run_id": "4d5ca130-6c49-4aa0-99a9-ad1bd59bce0e",
+    "schema": "monitor-receipt-1",
+    "quality": "QUALITY_GATE_NOT_MET",
+    "runtime": {
+      "dtype": "float64",
+      "numpy": "2.5.3",
+      "python": "3.14.7",
+      "sklearn": "1.9.1"
+    },
+    "accepted": 5,
+    "eligible": 4,
+    "categories": {
+      "newly_observed": 1,
+      "changed_version": 1,
+      "unchanged_version": 2,
+      "unlinked_observation": 1,
+      "unlinked_predecessor": 1,
+      "not_observed_in_target": 1
+    },
+    "monitor_id": "d80adc46-ceac-4b54-be4a-f5ec3e6214a6",
+    "reuse_mode": "EXACT_VERSION",
+    "file_sha256": "9ae14f9f010f30b1cdcf7d4acdc74312aada519f387a9009b7d36549363f5eb4",
+    "rows_sha256": "75dbe9d6ddea8f679596b94b5f619e0dcaa385505f4660d770f7e14586bb0e44",
+    "snapshot_id": "5b092105-494f-402a-8061-4b9ba21415c6",
+    "change_state": "OBSERVED_CHANGES",
+    "delta_sha256": "3b5cfdbbb7aeed2a62403a099e4ae4cc3d67726385d58d0d2d5635914ca91194",
+    "reused_blank": 1,
+    "parent_run_id": "ca2a0e24-d8be-4bec-8c6b-b8540003f6aa",
+    "excluded_blank": 1,
+    "monitor_digest": "824213209f5997e545952df3a6ab5ad08d9e5e2a0f59f59b37c0485971696963",
+    "decision_run_id": "85cac1ad-d224-4dd5-91a1-d56801c17f7b",
+    "manifest_sha256": "24191543a58fc21137e55d2288603a138c9dd6fed9aaea2483536cbf3f641c6a",
+    "reused_eligible": 1,
+    "snapshot_sha256": "85913f93847f9eb91774b6ca2316c4cbdd634cca45a9ea0426061c0526087e81",
+    "removal_evidence": "SOURCE_REMOVAL_EVIDENCE_UNAVAILABLE",
+    "computed_eligible": 3,
+    "provenance_sha256": "cf32d1887b64d9e322072c37626fd241069a1cd8178ff8b1c3632f4806a0a427",
+    "monitor_version_id": "641f062d-f189-4518-b803-f38170e89453",
+    "parent_file_sha256": "e57bea916bf8c408369b6702dba3ee13dac4a5e58313e4f4edf0627c168d6d1a",
+    "parent_rows_sha256": "7373aa8be376d72f05396f5550f8b80e383baee866e344385fe6f2db093e1229",
+    "parent_snapshot_id": "d7d726a9-177d-496d-b60e-bb78c94251e0",
+    "parent_artifact_sha256": "b5a3f4e525a67849a203ebbe14ceb1366281a8c531ca1abc77c5df565ef08e46",
+    "parent_decision_run_id": "799bff0a-9b1d-4088-8b26-c97cec29e2a6",
+    "parent_manifest_sha256": "40ba9722066a5ab78fe79fc595d0864ba8e7e2d55910b60a7c34b5dc079ca90c",
+    "confirmed_source_removals": 0
+  },
+  "control_rows_sha256": "75dbe9d6ddea8f679596b94b5f619e0dcaa385505f4660d770f7e14586bb0e44",
+  "control_decision_id": "0ead519a-6ea8-48ff-9e25-d3cf2aa8f42a",
+  "delta": [
+    {
+      "category": "changed_version",
+      "identity_id": "5f0a6299-5584-49ec-b0e5-0b3412b346f7",
+      "parent_row_sha": null,
+      "parent_decision": null,
+      "target_version_id": "7e6384bb-8760-4aa4-8553-331063c86088",
+      "previous_version_id": "8ce26884-3542-4ed1-83bc-bb827226a2a2"
+    },
+    {
+      "category": "unchanged_version",
+      "identity_id": "8df5434e-fdea-49ed-b3d8-4b97b83e9d00",
+      "parent_row_sha": "cea1c8fddc5faaa2369628586a22f1c7e0ddd02b5dbd1e8bc46b1a8c0650fa7e",
+      "parent_decision": "799bff0a-9b1d-4088-8b26-c97cec29e2a6",
+      "target_version_id": "821b6edc-91b5-4dfe-9c86-1e97f7c1dbcd",
+      "previous_version_id": "821b6edc-91b5-4dfe-9c86-1e97f7c1dbcd"
+    },
+    {
+      "category": "unlinked_observation",
+      "identity_id": "a7a7479d-49ea-4b61-b56f-fb553bf7a79b",
+      "parent_row_sha": null,
+      "parent_decision": null,
+      "target_version_id": "37d41b78-9dd5-4c8e-b9aa-44ebdaf045be",
+      "previous_version_id": null
+    },
+    {
+      "category": "unchanged_version",
+      "identity_id": "bf481d59-fcb4-46b2-a426-46c9c06a8bd8",
+      "parent_row_sha": "450afccca7afd20ffacc9d9fc68503adf7c212b478a532b37824917c362005a2",
+      "parent_decision": "799bff0a-9b1d-4088-8b26-c97cec29e2a6",
+      "target_version_id": "4dc45d2c-ee11-4685-b542-818fbb9e7d5f",
+      "previous_version_id": "4dc45d2c-ee11-4685-b542-818fbb9e7d5f"
+    },
+    {
+      "category": "not_observed_in_target",
+      "identity_id": "c75e6309-16b5-469b-a66d-fdd2af2fbe6c",
+      "parent_row_sha": null,
+      "parent_decision": null,
+      "target_version_id": null,
+      "previous_version_id": "76385d84-b664-4539-9c35-bd5733e89698"
+    },
+    {
+      "category": "newly_observed",
+      "identity_id": "ca76c36e-11fb-4e21-91f1-06c1e6e31f94",
+      "parent_row_sha": null,
+      "parent_decision": null,
+      "target_version_id": "2d2fefa5-65b3-43fe-9b54-ae971fe1d882",
+      "previous_version_id": null
+    },
+    {
+      "category": "unlinked_predecessor",
+      "identity_id": "eb816113-cce7-46cc-a276-d2e232469ea8",
+      "parent_row_sha": null,
+      "parent_decision": null,
+      "target_version_id": null,
+      "previous_version_id": "a2664268-53c6-412c-8eac-fe0ea8fbc1e3"
+    }
+  ]
+}
