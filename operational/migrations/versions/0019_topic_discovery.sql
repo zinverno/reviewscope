@@ -124,9 +124,10 @@ BEGIN
  SELECT max(octet_length(v.text_content)),sum(octet_length(v.text_content)),
  encode(sha256(convert_to(coalesce(string_agg(v.id::text||':'||v.content_sha256||':'||
  coalesce(encode(sha256(convert_to(v.text_content,'UTF8')),'hex'),'-')||chr(10),'' ORDER BY v.id),''),'UTF8')),'hex'),
- coalesce(array_agg(v.id ORDER BY v.id),'{}') INTO largest,total,row_hash,ids FROM snapshot_member m
- JOIN review_version v ON (v.workspace_id,v.source_id,v.id)=(w,src,m.version_id) WHERE (m.workspace_id,m.snapshot_id)=(w,s);
- IF frozen.version_ids IS DISTINCT FROM ids OR frozen.manifest_sha256 IS DISTINCT FROM snapshot_digest(w,src,frozen.batch_id,frozen.duckdb_sha256,frozen.filters,ids)
+ coalesce(array_agg(v.id ORDER BY v.id),'{}') INTO largest,total,row_hash,ids FROM review_version v
+ WHERE (v.workspace_id,v.source_id)=(w,src) AND v.id=ANY(frozen.version_ids);
+ IF frozen.version_ids IS DISTINCT FROM ids OR ids IS DISTINCT FROM ARRAY(SELECT m.version_id FROM snapshot_member m WHERE (m.workspace_id,m.source_id,m.snapshot_id)=(w,src,s) ORDER BY m.version_id)
+ OR frozen.manifest_sha256 IS DISTINCT FROM snapshot_digest(w,src,frozen.batch_id,frozen.duckdb_sha256,frozen.filters,ids)
  OR ids IS DISTINCT FROM ARRAY(SELECT i.version_id FROM import_row i WHERE (i.workspace_id,i.source_id,i.batch_id)=(w,src,frozen.batch_id) AND status='accepted' ORDER BY i.version_id)
  THEN RAISE EXCEPTION 'invalid_topic_snapshot'; END IF;
  END IF;

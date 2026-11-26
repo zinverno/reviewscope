@@ -182,12 +182,22 @@ def test_topic_discovery_holdout_and_history(db, tmp_path, key, monkeypatch):  #
         cand = next(x for x in data["rows"] if x["term"] == "крышка стакана")
 
         def check(historical):
+            started = monotonic()
             submit(
                 web,
                 url + "/history-checks",
                 operation(src, candidate_id=cand["id"], historical_snapshot=historical),
             )
-            return page(candidate_id=cand["id"], historical_snapshot=historical)["history"][0]
+            result = page(candidate_id=cand["id"], historical_snapshot=historical)["history"][0]
+            receipt = result["receipt"]
+            print(
+                "TOPIC_HISTORY",
+                receipt["state"],
+                receipt["N_searched"],
+                len(receipt["hits"]),
+                round(monotonic() - started, 4),
+            )
+            return result
 
         old = check(hist2)
         assert old["receipt"]["state"] == "HISTORY_CHECKED" and old["receipt"]["N_searched"] == 2

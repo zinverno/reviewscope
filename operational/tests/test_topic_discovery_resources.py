@@ -124,6 +124,8 @@ def test_topic_discovery_capacity(db, tmp_path, key, monkeypatch, case):  # noqa
                     m["N_blank"],
                     m["status"],
                 ) == (5, 1, 6, "NO_ELIGIBLE_TEXTS")
+        report["parent_hwm_kib"] = linux_peak_kib("self")
+        report["external_staging_bytes"] = 0  # No worker or staged artifact in this profile.
         print("TOPIC_CAPACITY", json.dumps(report, sort_keys=True))
 
 
