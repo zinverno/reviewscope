@@ -1,4 +1,4 @@
-"""Acceptance fixture on admitted PR-10/22 data. The reuse experiment has no runtime entry point."""
+"""Sealed PR-10 delivery delta, independent PR-22 control and authenticated monitor workflow."""
 
 import hashlib
 import json
@@ -272,6 +272,7 @@ def test_saved_monitor_manual_cycle(db, tmp_path, key, monkeypatch):  # noqa: F8
             assert resp.status_code == 200, (resp.status_code, resp.text)
             return resp.json()
 
+        post(base, new | {"selection": "unknown"}, 422)
         saved = post(base, new, 201)
         url = base + "/" + saved["monitor_id"]
         assert get(url)["state"] == "NO_SNAPSHOT"
@@ -292,6 +293,10 @@ def test_saved_monitor_manual_cycle(db, tmp_path, key, monkeypatch):  # noqa: F8
             )
             accepted = post(url + "/runs", body, 202)
             assert post(url + "/runs", body, 200)["run_id"] == accepted["run_id"]
+            assert enqueue(reader, (w, src, s, aspect, version), body["idempotency_key"]) == (
+                409,
+                None,
+            )
             job = conn.execute("SELECT * FROM claim_job()").fetchone()
             assert str(job[1]) == accepted["decision_run_id"]
             outcome = worker.process(conn, job, Event())
@@ -319,6 +324,30 @@ def test_saved_monitor_manual_cycle(db, tmp_path, key, monkeypatch):  # noqa: F8
                       VALUES(%s,%s,%s,true,true,true,true)""",
             (w, src, hashlib.sha256((tmp_path / "data").read_bytes()).hexdigest()),
         )
+        physical = (
+            root
+            / str(w)
+            / "sha256"
+            / page(reader, scope, first["decision_run_id"])["artifact_sha256"]
+        )
+        parked = tmp_path / "isolated-parent-artifact"
+        physical.rename(parked)
+        try:
+            assert web.get(url + "/runs/" + first["run_id"], params=src_args).status_code == 503
+            post(
+                url + "/runs",
+                src_args
+                | {
+                    "version_id": v,
+                    "snapshot_id": b,
+                    "parent_run_id": first["run_id"],
+                    "idempotency_key": str(uuid4()),
+                },
+                503,
+            )
+            assert get(url + "/history")["total"] == 1
+        finally:
+            parked.rename(physical)
         second, two = start(b, first["run_id"])
         receipt = two["receipt"]
         assert (
@@ -340,6 +369,20 @@ def test_saved_monitor_manual_cycle(db, tmp_path, key, monkeypatch):  # noqa: F8
         for field in ("rows", "summary", "rows_sha256", "runtime"):
             assert actual[field] == full[field]
         assert get(url + "/runs/" + second["run_id"] + "/delta")["total"] == 7
+        print(
+            json.dumps(
+                {
+                    "monitor_acceptance": {
+                        "a": one["receipt"],
+                        "b": two["receipt"],
+                        "control_rows_sha256": full["rows_sha256"],
+                        "control_decision_id": str(full["id"]),
+                        "delta": get(url + "/runs/" + second["run_id"] + "/delta")["rows"],
+                    }
+                }
+            ),
+            flush=True,
+        )
         assert get(url + "/history")["total"] == 2
         assert get(url + "/history", offset=2)["rows"] == []
         updated = post(url + "/versions", new | {"expected_version_id": v}, 201)
@@ -347,6 +390,34 @@ def test_saved_monitor_manual_cycle(db, tmp_path, key, monkeypatch):  # noqa: F8
         _, fresh = start(b, mon_version=updated["version_id"])
         assert (
             fresh["receipt"]["computed_eligible"] == 4 and fresh["receipt"]["reused_eligible"] == 0
+        )
+        post(url + "/versions", new | {"expected_version_id": v}, 409)
+        from operational.tests.test_aspects import create
+
+        custom = create(
+            web,
+            base.rsplit("/", 1)[0] + "/aspects",
+            definitions()["queue"] | {"name": "Проверенное вручную определение"},
+        )
+        unsupported = post(
+            base,
+            new | {"aspect_id": custom["aspect_id"], "aspect_version_id": custom["version_id"]},
+            201,
+        )
+        custom_url = base + "/" + unsupported["monitor_id"]
+        assert get(custom_url)["state"] == "UNSUPPORTED_DEFINITION"
+        assert (
+            post(
+                custom_url + "/runs",
+                src_args
+                | {
+                    "version_id": unsupported["version_id"],
+                    "snapshot_id": b,
+                    "idempotency_key": str(uuid4()),
+                },
+                422,
+            )["error"]
+            == "UNSUPPORTED_DEFINITION"
         )
         post(url + "/archive", src_args | {"expected_version_id": updated["version_id"]}, 200)
         assert get(url)["state"] == "ARCHIVED"

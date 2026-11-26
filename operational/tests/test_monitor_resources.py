@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from threading import Event
 from time import monotonic, process_time
@@ -16,6 +17,61 @@ from operational.tests.test_access import key  # noqa: F401
 from operational.tests.test_decision_storage import cabinet, enqueue, page
 from operational.tests.test_deliveries import call
 from reviewscope.aspect_decisions import definitions
+
+
+def explain_delta(db, w, src, a, b, profile):
+    # Inspect the deployed body. EXPLAIN of the function call alone hides its joins.
+    body = db.execute(
+        "SELECT prosrc FROM pg_proc WHERE oid='monitor_delta_rows(uuid,uuid,uuid,uuid)'::regprocedure"
+    ).fetchone()[0]
+    for number, arg in enumerate(("w", "src", "pre", "tgt"), 1):
+        body = re.sub(r"\b" + arg + r"\b", "$" + str(number), body)
+    db.execute("PREPARE delta_plan(uuid,uuid,uuid,uuid) AS " + body)
+    args = (w, src, a, b)
+    from psycopg import sql
+
+    stmt = sql.SQL("EXPLAIN (ANALYZE,BUFFERS,SETTINGS,FORMAT JSON) EXECUTE delta_plan({})").format(
+        sql.SQL(",").join(map(sql.Literal, args))
+    )
+    for analyzed in (False, True):
+        if analyzed:
+            db.execute("ANALYZE snapshot,snapshot_member,review_version,review_identity,import_row")
+        for mode in ("force_generic_plan", "force_custom_plan"):
+            with db.transaction():
+                db.execute("SET LOCAL statement_timeout=10000")
+                db.execute("SET LOCAL random_page_cost=20")
+                db.execute("SET LOCAL plan_cache_mode=" + mode)
+                result = db.execute(stmt).fetchone()[0][0]
+            todo = [result["Plan"]]
+            scans = []
+            while todo:
+                node = todo.pop()
+                todo.extend(node.get("Plans", []))
+                if "Relation Name" in node:
+                    scans.append(
+                        [
+                            node["Relation Name"],
+                            node["Node Type"],
+                            node["Actual Rows"],
+                            node["Actual Loops"],
+                        ]
+                    )
+                    if node["Node Type"] == "Seq Scan":
+                        assert node["Actual Loops"] <= 2, scans
+            assert result["Execution Time"] < 10000
+            print(
+                json.dumps(
+                    dict(
+                        monitor_plan=profile,
+                        analyzed=analyzed,
+                        mode=mode,
+                        ms=result["Execution Time"],
+                        blocks=result["Plan"]["Shared Hit Blocks"],
+                        scans=scans,
+                    )
+                ),
+                flush=True,
+            )
 
 
 @pytest.mark.parametrize(
@@ -34,6 +90,14 @@ def test_monitor_resource(db, tmp_path, key, profile):  # noqa: F811
 
             inputs = [csv("a"), csv("b")]
         else:
+            for table in (
+                "snapshot",
+                "snapshot_member",
+                "review_version",
+                "review_identity",
+                "import_row",
+            ):
+                db.execute(f"ALTER TABLE {table} SET (autovacuum_enabled=false)")
             inputs = list(resource_pair(tmp_path, profile))
         args = [
             "--workspace",
@@ -61,7 +125,13 @@ def test_monitor_resource(db, tmp_path, key, profile):  # noqa: F811
             )
             return result["snapshot_id"]
 
-        a, b = map(admit, inputs)
+        a = admit(inputs[0])
+        c_args = inputs[0].copy()
+        c_args[c_args.index("--delivery-id") + 1] = str(uuid4())
+        c = admit(c_args)
+        b = admit(inputs[1])
+        if profile != "small":
+            explain_delta(db, w, src, a, b, profile)
         samples = []
 
         def execute(snap, tag, parent=None, ordinary=False):
@@ -101,6 +171,13 @@ def test_monitor_resource(db, tmp_path, key, profile):  # noqa: F811
                     wall_s=wall,
                     parent_cpu_s=process_time() - cpu,
                     rows_sha=first["rows_sha256"],
+                    evaluated=first["summary"]["N_evaluated"],
+                    provenance_bytes=int(
+                        db.execute(
+                            "SELECT coalesce(sum(pg_column_size(h)),0) FROM monitor_reuse h WHERE run_id=%s",
+                            (did,),
+                        ).fetchone()[0]
+                    ),
                     accepted=first["summary"]["N_accepted"],
                     eligible=first["summary"]["N_eligible"],
                     page_seconds_bytes=latency,
@@ -115,9 +192,6 @@ def test_monitor_resource(db, tmp_path, key, profile):  # noqa: F811
         _, control = execute(b, "independent-full-B", ordinary=True)
         rid, inc = execute(b, "incremental-B", first_id)
         assert inc["rows_sha256"] == control["rows_sha256"] and inc["summary"] == control["summary"]
-        c_args = inputs[0].copy()
-        c_args[c_args.index("--delivery-id") + 1] = str(uuid4())
-        c = admit(c_args)
         _, identical = execute(c, "stable-repeat", first_id)
         assert identical["rows_sha256"] == first["rows_sha256"]
         if profile != "small":

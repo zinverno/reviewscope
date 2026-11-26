@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Api } from "./Aspects";
+import type { Api, Detail } from "./Aspects";
 
 type Page<T> = { rows: T[]; total: number; offset: number };
 type Aspect = {
@@ -24,6 +24,7 @@ type Overview = {
 	state: string;
 	payload: Spec;
 	last_success_at: string | null;
+	last_attempt: { at: string; status: string; reason: string | null } | null;
 	latest_snapshot_id: string | null;
 };
 type History = {
@@ -49,6 +50,8 @@ type Run = History & {
 		change_state: string;
 		reused_eligible: number;
 		computed_eligible: number;
+		accepted: number;
+		eligible: number;
 		excluded_blank: number;
 		categories: Record<string, number>;
 	};
@@ -68,6 +71,7 @@ type Delta = {
 type Data = {
 	catalog?: Page<{ monitor_id: string; name: string; archived: boolean }>;
 	aspects: Aspect[];
+	aspectCount: number;
 	current?: Overview;
 	versions?: Page<{ version_id: string; version_no: number }>;
 	snapshots?: Page<Snapshot>;
@@ -117,6 +121,8 @@ export function Monitors({
 		id = q.get("monitor") || "",
 		v = q.get("monitorVersion") || "",
 		r = q.get("monitorRun") || "";
+	const aspect = q.get("aspect"),
+		aspectVersion = q.get("aspectVersion");
 	const base = `/workspaces/${workspace}/projects/${project}/monitors`,
 		url = base + (id ? "/" + id : "");
 	const [data, setData] = useState<Data>(),
@@ -163,7 +169,8 @@ export function Monitors({
 					`/workspaces/${workspace}/projects/${project}/aspects?offset=${pages.aspects}`,
 					opts,
 				);
-				let next: Data = { aspects };
+				const aspectCount = aspects.length;
+				let next: Data = { aspects, aspectCount };
 				if (!id) next.catalog = await api(base + query(pages.catalog), opts);
 				else {
 					const [current, versions, snapshots, history, run] =
@@ -180,12 +187,42 @@ export function Monitors({
 							api<Page<History>>(url + "/history" + query(pages.history), opts),
 							r ? api<Run>(url + "/runs/" + r + query("0"), opts) : undefined,
 						]);
-					next = { aspects, current, versions, snapshots, history, run };
+					next = {
+						aspects,
+						aspectCount,
+						current,
+						versions,
+						snapshots,
+						history,
+						run,
+					};
 					if (run?.receipt)
 						next.delta = await api<Page<Delta>>(
 							url + "/runs/" + r + "/delta" + query(pages.delta),
 							opts,
 						);
+				}
+				const pinned = next.current?.payload;
+				const a = pinned?.aspect_id || aspect,
+					v = pinned?.aspect_version_id || aspectVersion;
+				if (
+					a &&
+					v &&
+					!aspects.some((x) => x.aspect_id === a && x.version_id === v)
+				) {
+					const exact = await api<Detail>(
+						`/workspaces/${workspace}/projects/${project}/aspects/${a}/versions/${v}`,
+						opts,
+					);
+					next.aspects = [
+						...aspects,
+						{
+							aspect_id: exact.aspect_id,
+							version_id: exact.version_id,
+							name: exact.payload.name,
+							archived: exact.archived,
+						},
+					];
 				}
 				if (live && !control.signal.aborted) {
 					setData(next);
@@ -232,6 +269,8 @@ export function Monitors({
 		pages.snapshots,
 		pages.history,
 		pages.delta,
+		aspect,
+		aspectVersion,
 		pages.aspects,
 	]);
 	const detail = data?.current,
@@ -247,7 +286,7 @@ export function Monitors({
 		parent === "auto" ? previous?.run_id || null : parent || null;
 	const post = async (
 		path: string,
-		body: object,
+		body: object | undefined,
 		after?: (x: {
 			monitor_id: string;
 			version_id: string;
@@ -264,7 +303,7 @@ export function Monitors({
 				run_id: string;
 			}>(path, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: body ? { "Content-Type": "application/json" } : undefined,
 				body: JSON.stringify(body),
 			});
 			if (alive.current) {
@@ -351,6 +390,15 @@ export function Monitors({
 					>
 						Открыть точное определение аспекта
 					</a>
+					{detail.last_attempt && (
+						<p>
+							Последняя попытка {detail.last_attempt.at} ·{" "}
+							{states[detail.last_attempt.status]} {detail.last_attempt.reason}
+						</p>
+					)}
+					<p>
+						Профиль {detail.payload.profile} · {detail.payload.threshold_set}.
+					</p>
 					<p>
 						Критерий — {detail.payload.event.threshold} машинных упоминаний при
 						выборке от {detail.payload.event.minimum} пригодных отзывов. Событие
@@ -376,6 +424,7 @@ export function Monitors({
 					<label>
 						Поставка{" "}
 						<select
+							aria-label="Поставка"
 							value={snapshot}
 							onChange={(e) => {
 								setTarget(e.target.value);
@@ -488,7 +537,7 @@ export function Monitors({
 							onClick={() =>
 								void post(
 									`/workspaces/${workspace}/runs/${run.decision_run_id}/cancel`,
-									{},
+									undefined,
 								)
 							}
 						>
@@ -513,6 +562,15 @@ export function Monitors({
 								. Пригодных переиспользовано {run.receipt.reused_eligible},
 								рассчитано {run.receipt.computed_eligible}. Пустых{" "}
 								{run.receipt.excluded_blank}.
+							</p>
+							<p>
+								Принято {run.receipt.accepted}, пригодно {run.receipt.eligible}.
+								{Object.entries(run.receipt.categories).map(([key, count]) => (
+									<span key={key}>
+										{" "}
+										{states[key] || key} · {count}.
+									</span>
+								))}
 							</p>
 							<p>
 								Отсутствие в поставке не подтверждает удаление у источника.
@@ -640,6 +698,30 @@ export function Monitors({
 									))}
 							</select>
 						</label>
+						<nav aria-label="Страницы аспектов">
+							{Number(pages.aspects) > 0 && (
+								<a
+									href={link({
+										aspectPage: String(Math.max(0, Number(pages.aspects) - 25)),
+									})}
+								>
+									Предыдущие аспекты
+								</a>
+							)}{" "}
+							{data.aspectCount === 25 && (
+								<a
+									href={link({
+										aspectPage: String(Number(pages.aspects) + 25),
+									})}
+								>
+									Следующие аспекты
+								</a>
+							)}
+						</nav>
+						<p>
+							Выборка включает все принятые позиции выбранной поставки одного
+							источника.
+						</p>
 						<label>
 							Порог упоминаний{" "}
 							<input

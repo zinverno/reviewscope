@@ -302,14 +302,15 @@ def create_app():
                 ):
                     raise HTTPException(422)
                 human_write = changing and ("/human/" in request.url.path or request.url.path.endswith("/relations"))
-                if body and (topic_write or aspect_write or human_write or request.url.path.endswith(("/candidates", "/decisions"))):
+                monitor_write = changing and "/monitors" in request.url.path
+                if body and (topic_write or aspect_write or human_write or monitor_write or request.url.path.endswith(("/candidates", "/decisions"))):
                     def unique_fields(pairs):
                         fields = dict(pairs)
                         if len(fields) != len(pairs):
                             raise ValueError("duplicate_field")
                         return fields
                     try:
-                        json.loads(body.decode("utf-8") if human_write or topic_write else body, object_pairs_hook=unique_fields)
+                        json.loads(body.decode("utf-8") if human_write or topic_write or monitor_write else body, object_pairs_hook=unique_fields)
                     except (ValueError, RecursionError):
                         raise HTTPException(422) from None
                 request._body = bytes(body)

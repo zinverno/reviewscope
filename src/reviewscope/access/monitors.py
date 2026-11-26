@@ -1,7 +1,8 @@
 """Manual, version-bound monitor commands in the authenticated cabinet."""
 
 import json
-from typing import Annotated, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, Query, Request, Response
@@ -41,6 +42,61 @@ class Start(Scope):
     snapshot_id: UUID
     parent_run_id: UUID | None = None
     idempotency_key: UUID
+
+
+class Saved(aspects.Strict):
+    code: int
+    monitor_id: UUID
+    version_id: UUID
+
+
+class Started(aspects.Strict):
+    code: int
+    run_id: UUID
+    decision_run_id: UUID
+
+
+class Page(aspects.Strict):
+    total: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    rows: list[dict[str, Any]] = Field(max_length=25)
+
+
+class Overview(aspects.Strict):
+    monitor_id: UUID
+    version_id: UUID
+    version_no: int
+    payload: dict[str, Any]
+    digest: str
+    created_by: UUID
+    created_at: datetime
+    archived: bool
+    state: str
+    latest_snapshot_id: UUID | None
+    last_success_at: datetime | None
+    last_attempt: dict[str, Any] | None
+    schedule: Literal["MANUAL_ONLY"]
+
+
+class Run(aspects.Strict):
+    run_id: UUID
+    monitor_version_id: UUID
+    decision_run_id: UUID
+    snapshot_id: UUID
+    source_id: UUID
+    manifest_sha256: str
+    file_sha256: str
+    parent_run_id: UUID | None
+    status: str
+    stage: str
+    reason: str | None
+    processed: int
+    total: int | None
+    registered_at: datetime
+    observed_at: Any
+    coverage_passport: dict[str, Any] | None
+    receipt_sha256: str | None
+    receipt: dict[str, Any] | None
 
 
 def install(app, authenticated, key, cookie, local, read_contract, write_contract, errors):
@@ -95,17 +151,44 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
 
     def verify_run(cur, actor, request, w, src, data):
         s = UUID(data["snapshot_id"])
-        if verify_snapshot(cur, actor, request, w, src, s)["manifest"] != data["manifest_sha256"]:
-            raise HTTPException(503)
+        if data["status"] != "succeeded":
+            if (
+                verify_snapshot(cur, actor, request, w, src, s)["manifest"]
+                != data["manifest_sha256"]
+            ):
+                raise HTTPException(503)
+            return
         receipt = data["receipt"]
-        if data["status"] == "succeeded":
-            doc, _ = signals.read_artifact(
+        doc, _ = signals.read_artifact(
+            cur,
+            actor,
+            w,
+            s,
+            src,
+            data["decision_run_id"],
+            request,
+            cookie,
+            key,
+            "snapshot_aspect_decision_v1",
+            "aspect-decision-1",
+            "read_decisions",
+            "aspect-decision-1",
+        )
+        if (
+            not receipt
+            or doc.get("manifest_sha256") != data["manifest_sha256"]
+            or doc.get("rows_sha256") != receipt["rows_sha256"]
+        ):
+            raise HTTPException(503)
+        if receipt["parent_snapshot_id"]:
+            parent_snapshot = UUID(receipt["parent_snapshot_id"])
+            parent, digest = signals.read_artifact(
                 cur,
                 actor,
                 w,
-                s,
+                parent_snapshot,
                 src,
-                data["decision_run_id"],
+                receipt["parent_decision_run_id"],
                 request,
                 cookie,
                 key,
@@ -114,35 +197,12 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                 "read_decisions",
                 "aspect-decision-1",
             )
-            if not receipt or doc.get("rows_sha256") != receipt["rows_sha256"]:
+            if (
+                digest != receipt["parent_artifact_sha256"]
+                or parent.get("manifest_sha256") != receipt["parent_manifest_sha256"]
+                or parent.get("rows_sha256") != receipt["parent_rows_sha256"]
+            ):
                 raise HTTPException(503)
-            if receipt["parent_snapshot_id"]:
-                parent_snapshot = UUID(receipt["parent_snapshot_id"])
-                if (
-                    verify_snapshot(cur, actor, request, w, src, parent_snapshot)["manifest"]
-                    != receipt["parent_manifest_sha256"]
-                ):
-                    raise HTTPException(503)
-                parent, digest = signals.read_artifact(
-                    cur,
-                    actor,
-                    w,
-                    parent_snapshot,
-                    src,
-                    receipt["parent_decision_run_id"],
-                    request,
-                    cookie,
-                    key,
-                    "snapshot_aspect_decision_v1",
-                    "aspect-decision-1",
-                    "read_decisions",
-                    "aspect-decision-1",
-                )
-                if (
-                    digest != receipt["parent_artifact_sha256"]
-                    or parent.get("rows_sha256") != receipt["parent_rows_sha256"]
-                ):
-                    raise HTTPException(503)
 
     def listing(request, w, p, q, m, section, run=None):
         with authenticated(request) as (cur, actor):
@@ -154,11 +214,11 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
                     return detail
             return page(cur, w, p, q.source_id, m, q.version_id, section, q.offset, run)
 
-    @app.get(base, **read)
+    @app.get(base, response_model=Page, **read)
     def catalog(workspace: UUID, project: UUID, request: Request, q: Annotated[Selection, Query()]):
         return listing(request, workspace, project, q, None, "catalog")
 
-    @app.get(base + "/{monitor}", **read)
+    @app.get(base + "/{monitor}", response_model=Overview, **read)
     def overview(
         workspace: UUID,
         project: UUID,
@@ -168,7 +228,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     ):
         return listing(request, workspace, project, q, monitor, "overview")
 
-    @app.get(base + "/{monitor}/runs/{run}", **read)
+    @app.get(base + "/{monitor}/runs/{run}", response_model=Run, **read)
     def detail(
         workspace: UUID,
         project: UUID,
@@ -179,7 +239,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     ):
         return listing(request, workspace, project, q, monitor, "run", run)
 
-    @app.get(base + "/{monitor}/runs/{run}/delta", **read)
+    @app.get(base + "/{monitor}/runs/{run}/delta", response_model=Page, **read)
     def delta(
         workspace: UUID,
         project: UUID,
@@ -190,7 +250,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     ):
         return listing(request, workspace, project, q, monitor, "delta", run)
 
-    @app.get(base + "/{monitor}/{section}", **read)
+    @app.get(base + "/{monitor}/{section}", response_model=Page, **read)
     def pages(
         workspace: UUID,
         project: UUID,
@@ -222,7 +282,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
             ).fetchone()["data"]
             return command(response, result)
 
-    @app.post(base, status_code=201, **write)
+    @app.post(base, status_code=201, response_model=Saved, **write)
     def create(
         workspace: UUID,
         project: UUID,
@@ -233,7 +293,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     ):
         return save(workspace, project, None, request, response, data, False)
 
-    @app.post(base + "/{monitor}/versions", status_code=201, **write)
+    @app.post(base + "/{monitor}/versions", status_code=201, response_model=Saved, **write)
     def edit(
         workspace: UUID,
         project: UUID,
@@ -245,7 +305,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     ):
         return save(workspace, project, monitor, request, response, data, False)
 
-    @app.post(base + "/{monitor}/archive", **write)
+    @app.post(base + "/{monitor}/archive", response_model=Saved, **write)
     def archive(
         workspace: UUID,
         project: UUID,
@@ -257,7 +317,7 @@ def install(app, authenticated, key, cookie, local, read_contract, write_contrac
     ):
         return save(workspace, project, monitor, request, response, data, True)
 
-    @app.post(base + "/{monitor}/runs", status_code=202, **write)
+    @app.post(base + "/{monitor}/runs", status_code=202, response_model=Started, **write)
     def start(
         workspace: UUID,
         project: UUID,

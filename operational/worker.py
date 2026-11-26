@@ -385,6 +385,10 @@ def process(conn, job, stopping):
                 if info.get("monitor"):
                     from operational import monitor_worker
 
+                    for key, limit in (("snapshot_sha256", 64 * 1024**2), ("file_sha256", MAX_BYTES)):
+                        read_source(directory, info[key], limit, lambda: None)
+                    for key in ("mapping_sha256", "passport_sha256", "coverage_sha256"):
+                        read_source(directory, info["delivery"][key], MAX_CONFIG, lambda: None)
                     monitor_worker.checked_parent(conn, claim, info, directory, lambda: None)
                 if info["kind"] == rerank_worker.KIND:
                     from reviewscope.access import PRIVATE_BINDS_SAFE

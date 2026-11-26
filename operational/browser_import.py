@@ -133,11 +133,18 @@ def read_signals(msg):
         root, digest, size, manifest, *extra = row
         certified_space(witness, ids[0], root)
         directory = object_directory(Path(root), ids[0], create=False)
+        inputs = []
         if msg["op"] == "monitor_snapshot":
-            for checksum, limit in [(digest, size), *zip(extra[0], [MAX_BYTES, MAX_CONFIG, MAX_CONFIG, MAX_CONFIG], strict=True)]:
-                with open_object(directory, checksum) as blob:
-                    if os.fstat(blob.fileno()).st_size > limit or hashlib.file_digest(blob, "sha256").hexdigest() != checksum:
-                        raise UploadError("importer_unavailable")
+            inputs = [(digest, size), *zip(extra[0], (MAX_BYTES, MAX_CONFIG, MAX_CONFIG, MAX_CONFIG), strict=True)]
+        elif msg["op"] == "read_decisions" and cur.execute(
+            "SELECT to_regprocedure('monitor_decision_files(uuid,uuid,uuid,uuid,uuid,bigint,text)') IS NOT NULL"
+        ).fetchone()[0]:
+            inputs = cur.execute("SELECT * FROM monitor_decision_files(%s,%s,%s,%s,%s,%s,%s)", (*ids,msg["expires"],msg["ticket"])).fetchall()
+        for checksum, limit in inputs:
+            with open_object(directory, checksum) as blob:
+                if os.fstat(blob.fileno()).st_size > limit or hashlib.file_digest(blob, "sha256").hexdigest() != checksum:
+                    raise UploadError("importer_unavailable")
+        if msg["op"] == "monitor_snapshot":
             return {"schema": schema, "snapshot_id":str(ids[2]), "sha256":digest, "manifest":manifest}
         if msg["op"] == "topic_snapshot":
             for parent in set(extra[0]):

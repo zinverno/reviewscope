@@ -47,24 +47,27 @@ CREATE TABLE monitor_version (
  payload jsonb NOT NULL, digest text GENERATED ALWAYS AS (topic_hash(payload)) STORED,
  created_by uuid NOT NULL REFERENCES principal, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(workspace_id,project_id,source_id,monitor_id,version_id), UNIQUE(version_id),
- UNIQUE(monitor_id,version_no),
+ UNIQUE(monitor_id,version_no), UNIQUE(version_id,aspect_version_id),
  FOREIGN KEY(workspace_id,project_id,source_id,monitor_id) REFERENCES monitor ON DELETE CASCADE,
- FOREIGN KEY(workspace_id,project_id,aspect_id,aspect_version_id,aspect_digest) REFERENCES aspect_version(workspace_id,project_id,aspect_id,version_id,digest)
+ FOREIGN KEY(workspace_id,project_id,aspect_id,aspect_version_id,aspect_digest) REFERENCES aspect_version(workspace_id,project_id,aspect_id,version_id,digest) DEFERRABLE INITIALLY DEFERRED
 );
 CREATE TABLE monitor_archive (
  workspace_id uuid NOT NULL, project_id uuid NOT NULL, source_id uuid NOT NULL, monitor_id uuid NOT NULL,
  version_id uuid NOT NULL, created_by uuid NOT NULL REFERENCES principal, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(monitor_id), FOREIGN KEY(workspace_id,project_id,source_id,monitor_id,version_id) REFERENCES monitor_version ON DELETE CASCADE
 );
+ALTER TABLE decision_binding ADD UNIQUE(workspace_id,run_id,version_id);
 CREATE TABLE monitor_run (
  workspace_id uuid NOT NULL, project_id uuid NOT NULL, source_id uuid NOT NULL, monitor_id uuid NOT NULL,
  version_id uuid NOT NULL, id uuid NOT NULL DEFAULT gen_random_uuid(), decision_id uuid NOT NULL,
- snapshot_id uuid NOT NULL, parent uuid, snapshot_sha sha256_hex NOT NULL, manifest_sha sha256_hex NOT NULL,
+ aspect_version_id uuid NOT NULL, snapshot_id uuid NOT NULL, parent uuid, snapshot_sha sha256_hex NOT NULL, manifest_sha sha256_hex NOT NULL,
  file_sha sha256_hex NOT NULL, parent_artifact sha256_hex, parent_rows sha256_hex,
  created_by uuid NOT NULL REFERENCES principal, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(id), UNIQUE(workspace_id,decision_id), UNIQUE(workspace_id,project_id,source_id,monitor_id,version_id,id),
  CHECK(num_nonnulls(parent,parent_artifact,parent_rows) IN (0,3)),
  FOREIGN KEY(workspace_id,project_id,source_id,monitor_id,version_id) REFERENCES monitor_version ON DELETE CASCADE,
+ FOREIGN KEY(version_id,aspect_version_id) REFERENCES monitor_version(version_id,aspect_version_id) ON DELETE CASCADE,
+ FOREIGN KEY(workspace_id,decision_id,aspect_version_id) REFERENCES decision_binding(workspace_id,run_id,version_id) ON DELETE CASCADE,
  FOREIGN KEY(workspace_id,decision_id,snapshot_id,source_id) REFERENCES decision_binding(workspace_id,run_id,snapshot_id,source_id) ON DELETE CASCADE,
  FOREIGN KEY(workspace_id,project_id,source_id,monitor_id,version_id,parent) REFERENCES monitor_run(workspace_id,project_id,source_id,monitor_id,version_id,id) DEFERRABLE INITIALLY DEFERRED
 );
@@ -166,6 +169,20 @@ BEGIN
  RETURN jsonb_build_object('code',201,'monitor_id',saved,'version_id',next_id);
 END $$;
 
+-- Only the monitor entry point can replay a monitor-bound request.
+ALTER FUNCTION enqueue_decision(uuid,uuid,uuid,uuid,uuid,uuid,text) RENAME TO pre_monitor_enqueue_decision;
+REVOKE ALL ON FUNCTION pre_monitor_enqueue_decision(uuid,uuid,uuid,uuid,uuid,uuid,text) FROM PUBLIC,rs_runtime;
+CREATE FUNCTION enqueue_decision(w uuid,src uuid,s uuid,a uuid,v uuid,k uuid,model text)
+RETURNS TABLE(code integer,run_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result record;
+BEGIN
+ SELECT * INTO STRICT result FROM pre_monitor_enqueue_decision(w,src,s,a,v,k,model);
+ IF result.code=200 AND EXISTS(SELECT FROM monitor_run WHERE (workspace_id,decision_id)=(w,result.run_id))
+ THEN RETURN QUERY SELECT 409,NULL::uuid; ELSE RETURN QUERY SELECT result.code,result.run_id; END IF;
+END $$;
+REVOKE ALL ON FUNCTION enqueue_decision(uuid,uuid,uuid,uuid,uuid,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION enqueue_decision(uuid,uuid,uuid,uuid,uuid,uuid,text) TO rs_runtime;
+
 CREATE FUNCTION monitor_start(w uuid,p uuid,src uuid,m uuid,v uuid,s uuid,parent_id uuid,k uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE perm int:=job_writer(w); mv monitor_version; old monitor_run; replay monitor_run; sn snapshot;
@@ -198,7 +215,7 @@ BEGIN
  IF FOUND THEN
    IF (replay.monitor_id,replay.version_id,replay.snapshot_id,replay.parent,replay.created_by) IS DISTINCT FROM (m,v,s,parent_id,access_actor())
    THEN RETURN jsonb_build_object('code',409); END IF;
-   SELECT code=200 INTO ok FROM enqueue_decision(w,src,s,mv.aspect_id,mv.aspect_version_id,k,mv.payload->>'profile');
+   SELECT code=200 INTO ok FROM pre_monitor_enqueue_decision(w,src,s,mv.aspect_id,mv.aspect_version_id,k,mv.payload->>'profile');
    IF ok IS NOT TRUE THEN RETURN jsonb_build_object('code',409); END IF;
    RETURN jsonb_build_object('code',200,'run_id',replay.id,'decision_run_id',replay.decision_id);
  END IF;
@@ -208,11 +225,11 @@ BEGIN
  IF EXISTS(SELECT FROM monitor_run rr JOIN analysis_run j ON (j.workspace_id,j.id)=(w,rr.decision_id)
  WHERE rr.version_id=v AND (j.status IN ('queued','running') OR rr.snapshot_id=s AND j.status='succeeded'))
  THEN RETURN jsonb_build_object('code',409,'reason','ALREADY_REQUESTED'); END IF;
- SELECT * INTO job FROM enqueue_decision(w,src,s,mv.aspect_id,mv.aspect_version_id,k,mv.payload->>'profile');
+ SELECT * INTO job FROM pre_monitor_enqueue_decision(w,src,s,mv.aspect_id,mv.aspect_version_id,k,mv.payload->>'profile');
  IF job.code<>202 THEN RETURN jsonb_build_object('code',job.code); END IF;
- INSERT INTO monitor_run(workspace_id,project_id,source_id,monitor_id,version_id,decision_id,snapshot_id,parent,
+ INSERT INTO monitor_run(workspace_id,project_id,source_id,monitor_id,version_id,decision_id,aspect_version_id,snapshot_id,parent,
  snapshot_sha,manifest_sha,file_sha,parent_artifact,parent_rows,created_by)
- VALUES(w,p,src,m,v,job.run_id,s,parent_id,sn.duckdb_sha256,sn.manifest_sha256,b.file_sha256,pa.checksum,pb.manifest->>'rows_sha256',access_actor())
+ VALUES(w,p,src,m,v,job.run_id,mv.aspect_version_id,s,parent_id,sn.duckdb_sha256,sn.manifest_sha256,b.file_sha256,pa.checksum,pb.manifest->>'rows_sha256',access_actor())
  RETURNING id INTO new_id;
  RETURN jsonb_build_object('code',202,'run_id',new_id,'decision_run_id',job.run_id);
 END $$;
@@ -281,20 +298,28 @@ END $$;
 CREATE FUNCTION monitor_delta_rows(w uuid,src uuid,pre uuid,tgt uuid) RETURNS TABLE(identity_id uuid,previous_version_id uuid,target_version_id uuid,category text) LANGUAGE sql STABLE
 SET search_path=pg_catalog,public,pg_temp AS $$
 WITH selected AS MATERIALIZED (
-    SELECT s.id FROM snapshot s
-    WHERE s.workspace_id = w AND s.source_id = src
-      AND s.id IN (pre, tgt)
-      AND s.filters->>'selection' = 'accepted_in_delivery'
+    SELECT s.id,s.batch_id FROM snapshot s
+    WHERE s.workspace_id=w AND s.source_id=src AND s.id IN (pre,tgt)
+      AND s.filters->>'selection'='accepted_in_delivery'
+), members AS MATERIALIZED (
+    SELECT s.id AS snapshot_id,m.version_id FROM selected s
+    CROSS JOIN LATERAL (SELECT version_id FROM snapshot_member
+        WHERE (workspace_id,source_id,snapshot_id)=(w,src,s.id) OFFSET 0) m
+), positions AS MATERIALIZED (
+    SELECT s.id AS snapshot_id,r.identity_id,r.version_id FROM selected s
+    CROSS JOIN LATERAL (SELECT identity_id,version_id FROM import_row
+        WHERE (workspace_id,source_id,batch_id)=(w,src,s.batch_id) AND status='accepted' OFFSET 0) r
 ), observation AS MATERIALIZED (
-    SELECT m.snapshot_id, v.identity_id, v.id AS version_id, i.external_review_id IS NOT NULL AS stable
-    FROM snapshot_member m
-    JOIN selected s ON s.id = m.snapshot_id
-    JOIN review_version v ON (v.workspace_id, v.source_id, v.id) =
-                             (m.workspace_id, m.source_id, m.version_id)
-    JOIN review_identity i ON (i.workspace_id, i.source_id, i.id) =
-                              (v.workspace_id, v.source_id, v.identity_id)
-    WHERE m.workspace_id = w AND m.source_id = src
-      AND m.snapshot_id IN (pre, tgt)
+    -- Preserve hash/merge eligibility before statistics exist, as in revision 0013.
+    -- Canonical anonymous identities have their own batch/position foreign key.
+    SELECT matched.snapshot_id,matched.identity_id,matched.version_id,
+           matched.identity_id NOT IN (
+             SELECT i.id FROM review_identity i WHERE (i.workspace_id,i.source_id)=(w,src)
+               AND i.external_review_id IS NULL AND i.observation_batch_id IN (SELECT batch_id FROM selected)
+           ) AS stable
+    FROM (SELECT m.snapshot_id,m.version_id,r.identity_id FROM members m
+          FULL JOIN positions r USING(snapshot_id,version_id) OFFSET 0) matched
+    WHERE matched.snapshot_id IS NOT NULL AND matched.identity_id IS NOT NULL
 ), previous AS (
     SELECT * FROM observation WHERE snapshot_id = pre
 ), target AS (
@@ -326,7 +351,11 @@ BEGIN
  summary:=b.manifest->'summary';
  IF summary IS NULL OR b.manifest#>>'{runtime,dtype}' IS DISTINCT FROM 'float64' OR b.manifest->>'manifest_sha256'<>m.manifest_sha OR b.manifest->>'snapshot_sha256'<>m.snapshot_sha THEN RAISE EXCEPTION 'monitor_manifest_mismatch'; END IF;
  IF old.id IS NOT NULL THEN
-   SELECT manifest->'runtime' INTO STRICT prev_runtime FROM decision_binding WHERE (workspace_id,run_id)=(w,old.decision_id);
+   SELECT parent.manifest->'runtime' INTO STRICT prev_runtime FROM decision_binding parent
+   JOIN analysis_run j ON (j.workspace_id,j.id)=(w,old.decision_id)
+   JOIN artifact a ON (a.workspace_id,a.id,a.run_id)=(w,j.output_artifact_id,j.id)
+   WHERE (parent.workspace_id,parent.run_id)=(w,old.decision_id) AND j.status='succeeded'
+   AND a.checksum=m.parent_artifact AND parent.manifest->>'rows_sha256'=m.parent_rows;
  END IF;
  WITH changes AS MATERIALIZED (SELECT * FROM monitor_delta_rows(w,m.source_id,old.snapshot_id,m.snapshot_id))
  SELECT (SELECT jsonb_object_agg(category,n) FROM (SELECT category,count(*) n FROM changes GROUP BY category) g),
@@ -416,7 +445,11 @@ BEGIN
      WHEN latest IS NULL THEN 'NO_SNAPSHOT' WHEN latest=choice THEN 'NO_NEW_DELIVERY' ELSE 'NEW_DELIVERY_AVAILABLE' END;
     RETURN jsonb_build_object('monitor_id',m,'version_id',mv.version_id,'version_no',mv.version_no,'payload',mv.payload,
      'digest',mv.digest,'created_by',mv.created_by,'created_at',mv.created_at,'archived',archived,'state',state,
-     'latest_snapshot_id',latest,'last_success_at',last_ok,'schedule','MANUAL_ONLY');
+     'latest_snapshot_id',latest,'last_success_at',last_ok,
+     'last_attempt',(SELECT jsonb_build_object('run_id',rr.id,'at',rr.created_at,'status',j.status,'reason',j.reason)
+       FROM monitor_run rr JOIN analysis_run j ON (j.workspace_id,j.id)=(w,rr.decision_id)
+       WHERE rr.version_id=mv.version_id AND monitor_job_allowed(w,rr.decision_id) ORDER BY rr.created_at DESC,rr.id LIMIT 1),
+     'schedule','MANUAL_ONLY');
   END IF;
  ELSIF section='history' THEN
   WITH matches AS MATERIALIZED (
@@ -432,7 +465,7 @@ BEGIN
   IF section='run' THEN
    SELECT jsonb_build_object('run_id',mr.id,'monitor_version_id',mr.version_id,'decision_run_id',mr.decision_id,'snapshot_id',mr.snapshot_id,
     'source_id',src,'manifest_sha256',mr.manifest_sha,'file_sha256',mr.file_sha,'parent_run_id',mr.parent,'status',j.status,'stage',j.stage,'reason',j.reason,'processed',j.processed,'total',j.total,
-    'registered_at',b.registered_at,'observed_at',sn.filters->'observed_at','coverage_passport',b.delivery->'coverage_passport','receipt',doc)
+    'registered_at',b.registered_at,'observed_at',sn.filters->'observed_at','coverage_passport',b.delivery->'coverage_passport', 'receipt_sha256',(SELECT digest FROM monitor_receipt WHERE (workspace_id,run_id)=(w,mr.decision_id)),'receipt',doc)
    INTO result FROM analysis_run j JOIN snapshot sn ON (sn.workspace_id,sn.id)=(w,mr.snapshot_id)
    JOIN import_batch b ON (b.workspace_id,b.source_id,b.id)=(w,src,sn.batch_id) WHERE (j.workspace_id,j.id)=(w,mr.decision_id);
    RETURN result;
@@ -478,6 +511,24 @@ SET search_path=pg_catalog,public,pg_temp AS $$
  AND x.expires_at>statement_timestamp() AND encode(sha256(x.token_hash || sha256(convert_to(
  concat_ws('|','aspect-decision-1',w,src,s,r,actor,expires),'UTF8'))),'hex')=ticket)
 $$;
+
+-- The broker checks these immutable inputs even when the caller opens the PR-22 evidence URL directly.
+CREATE FUNCTION monitor_decision_files(w uuid,src uuid,s uuid,r uuid,actor uuid,expires bigint,ticket text)
+RETURNS TABLE(checksum text, max_bytes bigint) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH bound AS MATERIALIZED (
+  SELECT m.* FROM monitor_run m WHERE (m.workspace_id,m.source_id,m.snapshot_id,m.decision_id)=(w,src,s,r)
+  AND EXISTS(SELECT FROM decision_object(w,src,s,r,actor,expires,ticket))
+ ), parents AS (
+  SELECT snapshot_id FROM bound UNION SELECT p.snapshot_id FROM bound m JOIN monitor_run p ON p.id=m.parent
+ )
+ SELECT x.h,x.cap FROM parents JOIN snapshot sn ON (sn.workspace_id,sn.source_id,sn.id)=(w,src,parents.snapshot_id)
+ JOIN import_batch i ON (i.workspace_id,i.source_id,i.id)=(w,src,sn.batch_id)
+ CROSS JOIN LATERAL (VALUES (sn.duckdb_sha256::text,67108864),(i.file_sha256::text,4194304),
+ (i.delivery->>'mapping_sha256',32768),(i.delivery->>'passport_sha256',32768),(i.delivery->>'coverage_sha256',32768)) x(h,cap)
+ UNION SELECT parent_artifact::text,65536 FROM bound WHERE parent IS NOT NULL
+$$;
+REVOKE ALL ON FUNCTION monitor_decision_files(uuid,uuid,uuid,uuid,uuid,bigint,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION monitor_decision_files(uuid,uuid,uuid,uuid,uuid,bigint,text) TO rs_upload;
 
 CREATE OR REPLACE FUNCTION decision_catalog(w uuid,src uuid,s uuid,a uuid,v uuid) RETURNS jsonb LANGUAGE sql SECURITY DEFINER
 SET search_path=pg_catalog,public,pg_temp AS $$
@@ -544,7 +595,11 @@ CREATE FUNCTION monitor_intact(w uuid,r uuid) RETURNS boolean LANGUAGE sql STABL
  SELECT EXISTS(SELECT FROM monitor_run m JOIN analysis_run j ON (j.workspace_id,j.id)=(w,r)
  LEFT JOIN monitor_receipt z ON (z.workspace_id,z.run_id)=(w,r) JOIN monitor_version v ON v.version_id=m.version_id
  JOIN decision_binding b ON (b.workspace_id,b.run_id)=(w,r)
- WHERE (m.workspace_id,m.decision_id)=(w,r) AND (v.aspect_id,v.aspect_version_id,v.aspect_digest)=(b.aspect_id,b.version_id,b.digest)
+ JOIN snapshot sn ON (sn.workspace_id,sn.source_id,sn.id)=(w,m.source_id,m.snapshot_id)
+ JOIN import_batch input ON (input.workspace_id,input.source_id,input.id)=(w,m.source_id,sn.batch_id)
+ WHERE (m.workspace_id,m.decision_id)=(w,r)
+ AND (sn.duckdb_sha256,sn.manifest_sha256,input.file_sha256)=(m.snapshot_sha,m.manifest_sha,m.file_sha)
+ AND (v.aspect_id,v.aspect_version_id,v.aspect_digest)=(b.aspect_id,b.version_id,b.digest)
  AND CASE WHEN j.status='succeeded' THEN z.document=monitor_document(w,r) ELSE z.document IS NULL END)
 $$;
 
@@ -602,7 +657,7 @@ CREATE FUNCTION monitor_roles_safe() RETURNS boolean LANGUAGE sql STABLE SECURIT
  AND has_function_privilege(u.oid,f.oid,'EXECUTE') AND NOT (
  (u.rolname='rs_worker' AND f.proname IN ('monitor_parent','monitor_reuse_batch'))
  OR (u.rolname='rs_runtime' AND f.proname IN ('monitor_page','monitor_save','monitor_start'))
- OR (u.rolname='rs_upload' AND f.proname='monitor_object')
+ OR (u.rolname='rs_upload' AND f.proname IN ('monitor_object','monitor_decision_files'))
  OR (u.rolname='rs_retention' AND f.proname IN ('monitor_export_sources','monitor_export_runs','monitor_intact'))))
 $$;
 REVOKE ALL ON FUNCTION monitor_roles_safe() FROM PUBLIC;
