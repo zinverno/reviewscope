@@ -139,6 +139,11 @@ def export(conn, rid, root, handoff):
             if one(conn, "SELECT to_regclass('public.relation_result') IS NOT NULL"):
                 tables.update(relation_result="snapshot_id,id", relation_pair="snapshot_id,result_id,left_id,right_id")
                 omissions.append("relation_request_keys")
+            if one(conn, "SELECT to_regclass('public.topic_result') IS NOT NULL"):
+                tables.update(topic_result="snapshot_id,result_id", topic_input="snapshot_id,result_id,version_id",
+                              topic_candidate="snapshot_id,result_id,id", topic_event="snapshot_id,result_id,id",
+                              topic_history="snapshot_id,result_id,id")
+                omissions.append("topic_request_keys")
             for table, order in tables.items():
                 run_fields = RUN_FIELDS
                 if table == "analysis_run" and one(

@@ -578,6 +578,18 @@ export function HumanReview({
 							>
 								Отношения по этой редакции
 							</a>
+							<p>
+								<a
+									href={link({
+										view: "topic-discovery",
+										source,
+										topicRun: run,
+										topicRevision: data.id,
+									})}
+								>
+									Исследовать темы по этой редакции
+								</a>
+							</p>
 							<article aria-label="Проверенная редакция">
 								<h4>По меткам человека жалоб — {data.summary.complaints}</h4>
 								<p>

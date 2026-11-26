@@ -350,6 +350,18 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         _, unfinished = enqueue(reader, s)
         other = conn.execute("SELECT * FROM claim_job()").fetchone()[:3]
         assert stage(conn, other, rows[:2]) == 2
+        from operational.tests.test_topic_discovery import dated_snapshot
+        db.execute("UPDATE browser_admission SET topic_discovery_allowed=true WHERE source_id=%s",(s[1],))
+        topic_args = ["--workspace",str(w),"--source",str(s[1]),"--object-root",str(root),
+                      "--coverage-passport",str(tmp_path/"coverage")]
+        historical = dated_snapshot(db,tmp_path,topic_args,w,s[1],"02",["Ранее упоминали похожую сцену."])
+        topics = query(reader,"topic_publish(%s,%s,%s,NULL,NULL,%s)",(*s[:3],uuid4()))["id"]
+        candidate = query(db,"id FROM topic_candidate WHERE result_id=%s",(topics,))
+        check = query(reader,"topic_history_check(%s,%s,%s,%s,%s,%s,%s,NULL,NULL,NULL)",(*s[:3],topics,candidate,historical,uuid4()))
+        assert check["code"] == 201
+        event = query(reader,"topic_review(%s,%s,%s,%s,%s,'confirm',%s,'Границы проверены',NULL,%s,%s,NULL)",
+                      (*s[:3],topics,uuid4(),[candidate],s[3],s[4]))
+        assert event["code"] == 201
         selected = {"source": s[1], "project": p, "workspace": w}[kind]
         req = ask(web, w, kind, selected, "export")
         if kind == "source":
@@ -359,6 +371,9 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
         operator("export", "--request", req["id"], "--root", root, "--owner-handoff", out)
         with ZipFile(out / (req["id"] + ".zip")) as z:
             human.assert_owner_export(z, run, ids, doc)
+            assert "rows/topic_request.jsonl" not in z.namelist()
+            assert [json.loads(line)["id"] for line in z.read("rows/topic_history.jsonl").splitlines()] == [check["id"]]
+            assert [json.loads(line)["id"] for line in z.read("rows/topic_event.jsonl").splitlines()] == [event["id"]]
             relations = [json.loads(x) for x in z.read("rows/relation_result.jsonl").splitlines()]
             assert len(relations) == 1 and relations[0]["id"] == graph["id"] and "request_key" not in relations[0]
             assert len(z.read("rows/relation_pair.jsonl").splitlines()) == 15
@@ -415,9 +430,13 @@ def test_decision_retention(db, tmp_path, monkeypatch, key, kind):  # noqa: F811
             assert query(target, "count(*) FROM decision_row WHERE workspace_id=%s", (w,)) == 10
             assert query(target, "count(*) FROM human_review_event WHERE run_id=%s", (run,)) == 1
             assert query(target, "count(*) FROM relation_pair WHERE result_id=%s", (graph["id"],)) == 15
+            assert query(target,"count(*) FROM topic_history WHERE id=%s",(check["id"],)) == 1
+            assert query(target,"topic_intact(%s,%s,%s)",(w,s[2],topics))
             token = prepare_copy(target, frozen, generation("decisions"), proof, seal)
             recover(target, proof, [token], seal)
             assert query(target, "count(*) FROM relation_pair WHERE result_id=%s", (graph["id"],)) == 0
+            assert query(target,"count(*) FROM topic_history WHERE id=%s",(check["id"],)) == 0
+            assert query(target,"count(*) FROM topic_event WHERE id=%s",(event["id"],)) == 0
             human.assert_remaining(target, run, other_run, other_result)
             neighbor_source, neighbor_snapshot = target.execute(
                 "SELECT source_id,snapshot_id FROM decision_binding WHERE run_id=%s", (other_run,)

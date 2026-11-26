@@ -224,7 +224,7 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
             assert recovered_api.get(evidence_url).status_code == recovered_api.get(context_url).status_code == 401
 
 
-@pytest.mark.parametrize("scenario", ["cabinet", "decisions"])
+@pytest.mark.parametrize("scenario", ["cabinet", "decisions", "topics"])
 def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
     """Drive the built cabinet against the TLS launcher, live broker and bounded worker."""
     import json
@@ -345,6 +345,15 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
             "candidate_allowed,decision_allowed,human_review_allowed,relation_allowed) VALUES (%s,%s,%s,true,true,true,true,true)",
             (aw, source, hashlib.sha256((decisions / "data").read_bytes()).hexdigest()),
         )
+    topic_snapshots = {}
+    if scenario == "topics":
+        from operational.tests.test_topic_discovery import dated_snapshot
+        topic_snapshots["history"] = dated_snapshot(db,tmp_path,registration,w,s,"02",["Бумажная крышка стакана распалась.","Чай хороший."])
+        for browser in ("chromium","firefox"):
+            topic_snapshots[browser] = dated_snapshot(db,tmp_path,registration,w,s,"03",[
+                "Крышка стакана течёт.","Крышка стакана мокрая.","Упала крышка стакана.",
+                "Звонок двери сломан.","Оторван звонок двери.","Звонок двери заклинило.",
+            ])
     author_snapshot, author_versions = reviewer_fixture(db, tmp_path / "ctx", registration, w, s)
     cert, tls = tmp_path / "cert.pem", tmp_path / "tls.pem"
     ca, ca_key = tmp_path / "ca.pem", tmp_path / "ca.key"
@@ -487,6 +496,7 @@ with tempfile.TemporaryFile() as stage:
             env["RS_FIXTURE_CERT"] = str(cert)
             inputs = dict(
                 scenario=scenario,
+                topicSnapshots=topic_snapshots,
                 account="cabinet-owner",
                 emptyWorkspace=str(empty),
                 pollControl=str(control),
@@ -582,6 +592,8 @@ with tempfile.TemporaryFile() as stage:
     expected = initial + ([(28, 28, 0, 0)] if scenario == "decisions" else [
         (3, 3, 0, 0), (6, 6, 0, 0), (12, 6, 5, 1),
     ])
+    if scenario == "topics":
+        expected = initial + [(2, 2, 0, 0), (6, 6, 0, 0), (6, 6, 0, 0)]
     assert sorted(
         db.execute(
             "SELECT input_count,accepted_count,rejected_count,confirmed_duplicate_count FROM import_batch"

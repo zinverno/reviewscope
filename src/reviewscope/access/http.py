@@ -30,6 +30,7 @@ from . import (
     reviewer_context,
     signals,
     store,
+    topic_discovery,
     uploads,
 )
 from .security import normalize, password_proof, server_key, session_proof
@@ -278,11 +279,15 @@ def create_app():
                     r"/api/v1/workspaces/[0-9a-fA-F-]+/projects/[0-9a-fA-F-]+/aspects(?:/[0-9a-fA-F-]+/(?:versions|archive))?",
                     request.url.path,
                 )
+                topic_write = changing and re.fullmatch(
+                    r"/api/v1/workspaces/[0-9a-fA-F-]+/snapshots/[0-9a-fA-F-]+/topic-discovery(?:/[0-9a-fA-F-]+/(?:actions|history-checks))?",
+                    request.url.path,
+                )
                 body = bytearray()
                 size = 0
                 async for chunk in request.stream():
                     size += len(chunk)
-                    if size > (65536 if aspect_write else 4096):
+                    if size > (65536 if aspect_write or topic_write else 4096):
                         raise HTTPException(413)
                     if chunk and (
                         not changing or request.url.path.endswith(("/logout", "/cancel"))
@@ -296,14 +301,14 @@ def create_app():
                 ):
                     raise HTTPException(422)
                 human_write = changing and ("/human/" in request.url.path or request.url.path.endswith("/relations"))
-                if body and (aspect_write or human_write or request.url.path.endswith(("/candidates", "/decisions"))):
+                if body and (topic_write or aspect_write or human_write or request.url.path.endswith(("/candidates", "/decisions"))):
                     def unique_fields(pairs):
                         fields = dict(pairs)
                         if len(fields) != len(pairs):
                             raise ValueError("duplicate_field")
                         return fields
                     try:
-                        json.loads(body.decode("utf-8") if human_write else body, object_pairs_hook=unique_fields)
+                        json.loads(body.decode("utf-8") if human_write or topic_write else body, object_pairs_hook=unique_fields)
                     except (ValueError, RecursionError):
                         raise HTTPException(422) from None
                 request._body = bytes(body)
@@ -528,7 +533,7 @@ def create_app():
             revision = cur.fetchone()["version_num"]
             projection = {"metrics": None, "context": None}
             if revision != "0006_retention" and job["artifact_id"] is not None:
-                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations"} else "metrics"
+                columns = "metrics, context" if revision in {"0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery"} else "metrics"
                 cur.execute(
                     f"SELECT {columns} FROM browser_summary WHERE workspace_id=%s AND run_id=%s AND artifact_id=%s",
                     (workspace, job["id"], job["artifact_id"]),
@@ -650,6 +655,7 @@ def create_app():
     uploads.install(app, authenticated, key, cookie, local)
     aspects.install(app, authenticated, local, read_contract, write_contract, errors)
     decisions.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
+    topic_discovery.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
     relations.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
     human_reviews.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)
     candidate_search.install(app, authenticated, key, cookie, local, read_contract, write_contract, errors)

@@ -1,4 +1,5 @@
 import { checkHumanReview } from "./human-review-acceptance.mjs";
+import { checkTopics } from "./topic-acceptance.mjs";
 import { checkDecisions } from "./decision-acceptance.mjs";
 import { checkAspects } from "./aspect-acceptance.mjs";
 import {
@@ -105,6 +106,12 @@ async function test(type) {
 		await page.getByLabel("Рабочая область").selectOption(fixture.w);
 		await page.getByLabel("Источник", { exact: true }).selectOption(fixture.s);
 		const content = await context.storageState();
+		if (fixture.scenario === "topics") {
+			const scope = new URLSearchParams({workspace:fixture.w,source:fixture.s,snapshot:fixture.topicSnapshots[type.name()],view:"topic-discovery"});
+			await checkTopics(page,origin+"/cabinet/?"+scope,fixture.topicSnapshots.history,type.name(),media,phase=>{stage=type.name()+" topic "+phase;});
+			await context.close();
+			return;
+		}
 		if (fixture.scenario === "decisions") {
 			const detailURL=await checkDecisions(browser,content,origin+"/cabinet/?"+new URLSearchParams(fixture.decisionScope),media,phase=>{stage=type.name()+" decision "+phase});
 			const humanURL = await checkHumanReview(browser, content, detailURL, fixture, media, phase => {stage=type.name()+" human "+phase;});

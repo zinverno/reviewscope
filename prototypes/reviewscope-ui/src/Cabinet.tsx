@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import "./tokens.css";
 import "./cabinet.css";
 import { SnapshotOverview, LegacyOverview } from "./Overview";
+import { TopicDiscovery } from "./TopicDiscovery";
 import { TypedRelations } from "./TypedRelations";
 import { CanonicalGraph, LegacyGraph, demoGraphHref } from "./DuplicateGraph";
 import { PublicSignals, CanonicalSignals, signalKind } from "./Signals";
@@ -124,6 +125,14 @@ function link(changes: Record<string, string>) {
 	) {
 		for (const k of [
 			"relation",
+			"topicResult",
+			"topicCandidate",
+			"topicDigest",
+			"topicHistory",
+			"topicEvidence",
+			"topicPage",
+			"topicRun",
+			"topicRevision",
 			"relationDigest",
 			"left",
 			"right",
@@ -882,6 +891,20 @@ function Cabinet() {
 						) : (
 							<p>Нет доступа к сигналам выбранного снимка.</p>
 						)
+					) : query.get("view") === "topic-discovery" ? (
+						canWrite && snapshot && source ? (
+							<TopicDiscovery
+								key={workspace + search}
+								workspace={w}
+								source={source}
+								snapshot={snapshot}
+								api={api}
+								link={link}
+								search={search}
+							/>
+						) : (
+							<p>Выберите доступный источник и снимок.</p>
+						)
 					) : query.get("view") === "relations" ? (
 						<TypedRelations
 							key={workspace + search}
@@ -1291,6 +1314,14 @@ function Cabinet() {
 								<a href="/cabinet/?view=legacy">Обзор публичной синтетики</a>
 								{snapshot && (
 									<p>
+										{canWrite && source && (
+											<>
+												<a href={link({ view: "topic-discovery" })}>
+													Кандидаты тем выбранного снимка
+												</a>
+												{" · "}
+											</>
+										)}
 										<a href={link({ view: "graph" })}>
 											Повторы выбранного снимка
 										</a>
