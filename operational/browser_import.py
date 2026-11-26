@@ -24,6 +24,7 @@ from operational.signals import LIMIT, SCHEMA
 from reviewscope.access.ledger import certified_space, publishing
 from reviewscope.access.restore import sha
 from reviewscope.access.upload_wire import UploadError, read_json, sizes, socket_path, write_json
+from reviewscope.import_preview.contract import MAX_BYTES, MAX_CONFIG
 
 UNKNOWN = encoded(
     dict(
@@ -110,6 +111,7 @@ def read_signals(msg):
         "read_signals": ("signal_object", SCHEMA),
         "read_candidates": ("candidate_object", "candidate-search-1"),
         "read_rerank": ("rerank_object", "candidate-rerank-1"),
+        "monitor_snapshot": ("monitor_object", "monitor-snapshot-1"),
         "topic_snapshot": ("topic_object", "topic-snapshot-1"),
         "relation_snapshot": ("relation_object", "relation-snapshot-1"),
         "read_decisions": ("decision_object", "aspect-decision-1"),
@@ -131,6 +133,19 @@ def read_signals(msg):
         root, digest, size, manifest, *extra = row
         certified_space(witness, ids[0], root)
         directory = object_directory(Path(root), ids[0], create=False)
+        inputs = []
+        if msg["op"] == "monitor_snapshot":
+            inputs = [(digest, size), *zip(extra[0], (MAX_BYTES, MAX_CONFIG, MAX_CONFIG, MAX_CONFIG), strict=True)]
+        elif msg["op"] == "read_decisions" and cur.execute(
+            "SELECT to_regprocedure('monitor_decision_files(uuid,uuid,uuid,uuid,uuid,bigint,text)') IS NOT NULL"
+        ).fetchone()[0]:
+            inputs = cur.execute("SELECT * FROM monitor_decision_files(%s,%s,%s,%s,%s,%s,%s)", (*ids,msg["expires"],msg["ticket"])).fetchall()
+        for checksum, limit in inputs:
+            with open_object(directory, checksum) as blob:
+                if os.fstat(blob.fileno()).st_size > limit or hashlib.file_digest(blob, "sha256").hexdigest() != checksum:
+                    raise UploadError("importer_unavailable")
+        if msg["op"] == "monitor_snapshot":
+            return {"schema": schema, "snapshot_id":str(ids[2]), "sha256":digest, "manifest":manifest}
         if msg["op"] == "topic_snapshot":
             for parent in set(extra[0]):
                 with open_object(directory, parent) as blob:
@@ -177,7 +192,7 @@ class Handler(socketserver.StreamRequestHandler):
         limit = 4096
         try:
             msg = read_json(self.rfile)
-            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions","relation_snapshot","topic_snapshot")
+            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions","relation_snapshot","topic_snapshot","monitor_snapshot")
             parts = () if signal_read else tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
             if self.rfile.read(1):
                 raise UploadError("invalid_upload")

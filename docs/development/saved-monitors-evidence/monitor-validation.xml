@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites>
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="10" time="104.614">
+    <testcase classname="operational.tests.test_monitor_history" name="test_monitor_history_differential" time="12.615" />
+    <testcase classname="operational.tests.test_monitor_history" name="test_monitor_delta_on_original_deliveries" time="1.460" />
+    <testcase classname="operational.tests.test_monitor_history" name="test_saved_monitor_manual_cycle" time="10.897" />
+    <testcase classname="operational.tests.test_monitor_import_order" name="test_import_waits_before_source_lock" time="2.079" />
+    <testcase classname="operational.tests.test_monitor_import_order" name="test_monitor_browser_import_waits_before_source_lock" time="4.623" />
+    <testcase classname="operational.tests.test_monitor_lifecycle" name="test_monitor_retention[source]" time="11.191" />
+    <testcase classname="operational.tests.test_monitor_lifecycle" name="test_monitor_retention[project]" time="10.455" />
+    <testcase classname="operational.tests.test_monitor_lifecycle" name="test_monitor_retention[workspace]" time="10.914" />
+    <testcase classname="operational.tests.test_monitor_lifecycle" name="test_monitor_populated_upgrade" time="7.506" />
+    <testcase classname="operational.tests.test_monitor_recovery" name="test_monitor_replay_and_worker_loss" time="29.136" />
+  </testsuite>
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="60.065">
+    <testcase classname="operational.tests.test_browser_delivery" name="test_cabinet_native[monitors]" time="55.151" />
+  </testsuite>
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="6.572">
+    <testcase classname="operational.tests.test_monitor_recovery" name="test_monitor_edit_and_topic_confirmation_order" time="4.023" />
+  </testsuite>
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="3" time="474.288">
+    <testcase classname="operational.tests.test_monitor_resources" name="test_monitor_resource[small]" time="13.918" />
+    <testcase classname="operational.tests.test_monitor_resources" name="test_monitor_resource[repeated-10k]" time="172.739" />
+    <testcase classname="operational.tests.test_monitor_resources" name="test_monitor_resource[diverse-4mib-10k]" time="283.526" />
+  </testsuite>
+</testsuites>

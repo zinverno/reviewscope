@@ -70,11 +70,11 @@ def connect():
             AND NOT has_table_privilege(current_user,'analysis_run','INSERT,UPDATE')
             AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
                 AND c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
-                    'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member')
+                    'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','monitor','monitor_version','monitor_archive','monitor_run','monitor_receipt','monitor_reuse')
                     AND (NOT row_security_active(c.oid)
                 OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')
                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER')))
-            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions','0017_human_review','0018_typed_relations','0019_topic_discovery','0020_topic_lock_order')
+            AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions','0017_human_review','0018_typed_relations','0019_topic_discovery','0020_topic_lock_order','0021_saved_monitors')
             FROM pg_roles r WHERE rolname=current_user""").fetchone()
         require(ready, "ACCESS_REVOKED")
         with conn.transaction(), conn.cursor() as cur:
@@ -232,6 +232,10 @@ def summarize(conn, claim, info, directory, pulse):
                     projected.append(item)
                 n += 1
         require(not stream.read(1) and actual.hexdigest() == info["snapshot_sha256"])
+    if is_decision and info.get("monitor"):
+        from operational import monitor_worker
+
+        return monitor_worker.result(conn, claim, info, projected, directory, pulse)
     if is_decision:
         return decision_worker.result(conn, claim, info, projected, pulse)
     exclusions["missing_reviewer"] = counts["unknown_author"]
@@ -378,6 +382,14 @@ def process(conn, job, stopping):
             elif info["kind"] in (candidate_worker.KIND,rerank_worker.KIND,decision_worker.KIND):
                 outcome = step("WORKER_STOPPED" if stopping.is_set() else None)
             if outcome == "running":
+                if info.get("monitor"):
+                    from operational import monitor_worker
+
+                    for key, limit in (("snapshot_sha256", 64 * 1024**2), ("file_sha256", MAX_BYTES)):
+                        read_source(directory, info[key], limit, lambda: None)
+                    for key in ("mapping_sha256", "passport_sha256", "coverage_sha256"):
+                        read_source(directory, info["delivery"][key], MAX_CONFIG, lambda: None)
+                    monitor_worker.checked_parent(conn, claim, info, directory, lambda: None)
                 if info["kind"] == rerank_worker.KIND:
                     from reviewscope.access import PRIVATE_BINDS_SAFE
 

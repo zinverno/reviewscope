@@ -224,7 +224,7 @@ def verify_browser_lifecycle(db, web, tmp_path, monkeypatch, root, w, s, draft_u
             assert recovered_api.get(evidence_url).status_code == recovered_api.get(context_url).status_code == 401
 
 
-@pytest.mark.parametrize("scenario", ["cabinet", "decisions", "topics"])
+@pytest.mark.parametrize("scenario", ["cabinet", "decisions", "topics", "monitors"])
 def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
     """Drive the built cabinet against the TLS launcher, live broker and bounded worker."""
     import json
@@ -345,6 +345,12 @@ def test_cabinet_native(db, tmp_path, monkeypatch, key, scenario):  # noqa: F811
             "candidate_allowed,decision_allowed,human_review_allowed,relation_allowed) VALUES (%s,%s,%s,true,true,true,true,true)",
             (aw, source, hashlib.sha256((decisions / "data").read_bytes()).hexdigest()),
         )
+    monitor_definition = None
+    if scenario == "monitors":
+        monitor_definition = json.loads(Path("src/reviewscope/resources/decision-definitions.json").read_bytes())["queue"]
+        for name in ("a", "b"):
+            checksum = hashlib.sha256((FIX / (name+".csv")).read_bytes()).hexdigest()
+            db.execute("UPDATE browser_admission SET candidate_allowed=true,decision_allowed=true,monitor_allowed=true WHERE (workspace_id,source_id,checksum)=(%s,%s,%s)", (w,s,checksum))
     topic_snapshots = {}
     if scenario == "topics":
         from operational.tests.test_topic_discovery import dated_snapshot
@@ -496,6 +502,8 @@ with tempfile.TemporaryFile() as stage:
             env["RS_FIXTURE_CERT"] = str(cert)
             inputs = dict(
                 scenario=scenario,
+                monitorDefinition=monitor_definition,
+                monitorProject=str(db.execute("SELECT project_id FROM source WHERE id=%s",(s,)).fetchone()[0]),
                 topicSnapshots=topic_snapshots,
                 account="cabinet-owner",
                 emptyWorkspace=str(empty),
@@ -538,7 +546,13 @@ with tempfile.TemporaryFile() as stage:
                 while native.poll() is None:
                     mode = control.read_text()
                     if mode != previous:
-                        assert mode in {"pause", "ready", "revoked", "ledger", "human_revoked"}
+                        assert mode in {"pause", "ready", "revoked", "ledger", "human_revoked", "monitor_denied"}
+                        if scenario == "monitors" and mode in ("monitor_denied","ready"):
+                            db.execute("UPDATE browser_admission SET monitor_allowed=%s WHERE workspace_id=%s AND decision_allowed",
+                                       (mode != "monitor_denied", w))
+                            if mode == "monitor_denied":
+                                subprocess.run([sys.executable,"-m","operational.worker","--once"],env=worker_env,check=True,capture_output=True)
+                                assert db.execute("SELECT EXISTS(SELECT FROM analysis_run WHERE workspace_id=%s AND status='failed' AND reason='ACCESS_REVOKED')",(w,)).fetchone()[0]
                         if scenario == "decisions":
                             db.execute(
                                 "UPDATE browser_admission SET human_review_allowed=%s WHERE workspace_id=%s AND decision_allowed",
@@ -561,7 +575,7 @@ with tempfile.TemporaryFile() as stage:
                     if db.execute(
                         """SELECT (%s OR EXISTS(SELECT FROM analysis_run WHERE status='cancelled'))
                                AND EXISTS(SELECT FROM analysis_run WHERE status='queued')""",
-                        (scenario == "decisions",),
+                        (scenario in ("decisions","monitors"),),
                     ).fetchone()[0]:
                         subprocess.run(
                             [sys.executable, "-m", "operational.worker", "--once"],
@@ -570,14 +584,14 @@ with tempfile.TemporaryFile() as stage:
                             capture_output=True,
                         )
                     time.sleep(0.12)
-                if native.returncode and scenario == "decisions":
+                if native.returncode and scenario in ("decisions", "monitors"):
                     # Only categorical state for the disposable runs; never log payloads, URLs or sessions.
                     diagnostics = db.execute(
                         """SELECT j.status,j.stage,j.reason,j.processed,j.total,
                             b.manifest IS NOT NULL,a.storage_state IS NOT NULL
                            FROM analysis_run j JOIN decision_binding b ON (b.workspace_id,b.run_id)=(j.workspace_id,j.id)
                            LEFT JOIN artifact a ON (a.workspace_id,a.run_id,a.id)=(j.workspace_id,j.id,j.output_artifact_id)
-                           WHERE j.workspace_id=%s ORDER BY j.created_at""", (aw,),
+                           WHERE j.workspace_id=%s ORDER BY j.created_at""", (w if scenario == "monitors" else aw,),
                     ).fetchall()
                     pytest.fail(f"{native.stderr.read()} decision states {diagnostics}")
                 assert native.returncode == 0, native.stderr.read()
@@ -592,6 +606,8 @@ with tempfile.TemporaryFile() as stage:
     expected = initial + ([(28, 28, 0, 0)] if scenario == "decisions" else [
         (3, 3, 0, 0), (6, 6, 0, 0), (12, 6, 5, 1),
     ])
+    if scenario == "monitors":
+        expected = initial + [(3,3,0,0),(6,6,0,0)] * 2
     if scenario == "topics":
         expected = initial + [(2, 2, 0, 0), (6, 6, 0, 0), (6, 6, 0, 0)]
     assert sorted(

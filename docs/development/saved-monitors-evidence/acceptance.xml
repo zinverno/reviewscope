@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests">
+  <testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="19.922">
+    <testcase classname="operational.tests.test_monitor_history" name="test_monitor_history_differential" time="14.060" />
+    <testcase classname="operational.tests.test_monitor_history" name="test_monitor_delta_on_original_deliveries" time="1.754" />
+    <testcase classname="operational.tests.test_monitor_import_order" name="test_import_waits_before_source_lock" time="1.985">
+      <failure message="AssertionError: import already owns source UPDATE while waiting for workspace&#10;assert False">The importer holds the source row while waiting for workspace; audit probe received SQLSTATE 55P03.</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -19,6 +19,7 @@ import {
 	privateUuid,
 } from "./SnapshotReviewerContext";
 import { AspectDecisions } from "./AspectDecisions";
+import { Monitors } from "./Monitors";
 import { Aspects } from "./Aspects";
 import { CandidateSearch } from "./CandidateSearch";
 import { ReviewEvidence, evidenceFields } from "./ReviewEvidence";
@@ -117,6 +118,24 @@ const jsonPost = (value: unknown): RequestInit => ({
 });
 function link(changes: Record<string, string>) {
 	const u = new URL(window.location.href);
+	if (
+		"view" in changes ||
+		["workspace", "project", "source"].some(
+			(k) => k in changes && changes[k] !== u.searchParams.get(k),
+		)
+	) {
+		for (const k of [
+			"monitor",
+			"monitorVersion",
+			"monitorRun",
+			"monitorPage",
+			"deliveryPage",
+			"historyPage",
+			"deltaPage",
+			"versionPage",
+		])
+			u.searchParams.delete(k);
+	}
 	if (
 		"view" in changes ||
 		["source", "workspace", "snapshot"].some(
@@ -946,6 +965,20 @@ function Cabinet() {
 						)
 					) : query.get("view") === "legacy" ? (
 						<LegacyOverview search={search} workspace={w} />
+					) : query.get("view") === "monitors" ? (
+						canWrite && project && (source || sources[0]) ? (
+							<Monitors
+								key={workspace + search}
+								workspace={w}
+								project={project}
+								source={source || sources[0].source_id}
+								api={api}
+								link={link}
+								search={search}
+							/>
+						) : (
+							<p>Выберите допущенный источник.</p>
+						)
 					) : query.get("view") === "aspects" ? (
 						canWrite ? (
 							<Aspects
@@ -1016,6 +1049,19 @@ function Cabinet() {
 							{canWrite ? (
 								<section>
 									<h2>Поставка</h2>
+									{project && (source || sources[0]) && (
+										<p>
+											<a
+												href={link({
+													view: "monitors",
+													project,
+													source: source || sources[0].source_id,
+												})}
+											>
+												Сохранённые мониторы
+											</a>
+										</p>
+									)}
 									{project && (
 										<a href={link({ view: "aspects", project })}>
 											Определения аспектов проекта

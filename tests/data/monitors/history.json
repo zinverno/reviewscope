@@ -1,0 +1,29 @@
+{
+  "definition": "queue",
+  "A": [
+    {"id": "R1", "text": "До кассы стояли в очереди двадцать минут."},
+    {"id": "R2", "text": "За столом было светло."},
+    {"id": "R3", "text": "За окном рос клён."},
+    {"id": "R4", "text": null},
+    {"text": "На подоконнике цветок."}
+  ],
+  "B": [
+    {"id": "R1", "text": "До кассы стояли в очереди двадцать минут."},
+    {"id": "R2", "text": "Касса закрыта, долго ждали в очереди."},
+    {"id": "R4", "text": null},
+    {"id": "R5", "text": "Рядом со входом скамья."},
+    {"text": "На подоконнике цветок."},
+    {"id": "R5", "text": "Рядом со входом скамья."},
+    false
+  ],
+  "stable_C": ["R1", "R2", "R4", "R5"],
+  "expected": {
+    "A": {"input": 5, "accepted": 5, "eligible": 4, "unique_scored": 4},
+    "B": {"input": 7, "accepted": 5, "duplicate": 1, "quarantine": 1, "eligible": 4,
+          "unchanged": ["R1", "R4"], "changed": ["R2"], "new": ["R5"], "unlinked": 1,
+          "missing_stable": ["R3"], "missing_unlinked": 1, "confirmed_removals": 0,
+          "reused_eligible": 1, "computed_eligible": 3, "unique_scored": 3,
+          "full_comparison": "Equal ordered version IDs, content/text SHA, outcomes, both spans, scores, reasons, rows_sha256 and all summary fields."},
+    "C_repeat": {"input": 4, "accepted": 4, "eligible": 3, "unchanged": 4, "unique_scored": 0}
+  }
+}

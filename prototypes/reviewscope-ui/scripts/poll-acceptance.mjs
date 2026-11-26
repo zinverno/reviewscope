@@ -2,18 +2,19 @@ import assert from "node:assert/strict";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
-export async function checkPoll(page, fixture) {
-	const control = fixture.pollControl;
-	async function mode(value) {
-		await writeFile(control + ".next", value);
-		await rename(control + ".next", control);
-		for (let i = 0; i < 150; i++) {
-			if ((await readFile(control + ".ack", "utf8").catch(() => "")) === value)
-				return;
-			await delay(60);
-		}
-		throw new Error("fixture_timeout");
+export async function setFixtureMode(control, value) {
+	await writeFile(control + ".next", value);
+	await rename(control + ".next", control);
+	for (let i = 0; i < 150; i++) {
+		if ((await readFile(control + ".ack", "utf8").catch(() => "")) === value)
+			return;
+		await delay(60);
 	}
+	throw new Error("fixture_timeout");
+}
+
+export async function checkPoll(page, fixture) {
+	const mode = (value) => setFixtureMode(fixture.pollControl, value);
 	const last = page.getByRole("link", { name: "Последняя успешная проверка" });
 	const retry = page.getByRole("button", { name: "Повторить проверку" });
 	const disconnected = page.getByText(/Связь прервана/);

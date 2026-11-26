@@ -478,6 +478,13 @@ def verify_catalog(conn):
         require(not one(conn, HUMAN_CATALOG_INVALID), "human_catalog_mismatch")
 
 
+    if one(conn, "SELECT to_regclass('public.monitor') IS NOT NULL"):
+        require(not one(conn, """SELECT EXISTS(SELECT FROM monitor_run WHERE
+            monitor_intact(workspace_id,decision_id) IS NOT TRUE)"""), "monitor_catalog_mismatch")
+        require(not one(conn, """SELECT EXISTS(SELECT FROM monitor m LEFT JOIN LATERAL
+            (SELECT count(*) AS n,max(version_no) AS tip FROM monitor_version v WHERE v.monitor_id=m.monitor_id) v ON true
+            WHERE v.n=0 OR v.n IS DISTINCT FROM v.tip::bigint)"""), "monitor_catalog_mismatch")
+
     if one(conn, "SELECT to_regclass('public.topic_result') IS NOT NULL"):
         require(not one(conn, """SELECT EXISTS(SELECT FROM topic_result
             WHERE topic_intact(workspace_id,snapshot_id,result_id) IS NOT TRUE)"""), "topic_catalog_mismatch")
@@ -520,6 +527,9 @@ def verify_restore_roles(admin):
         WHERE f.pronamespace='public'::regnamespace AND r.rolname IN ('rs_runtime','rs_worker','rs_upload','rs_retention')
         AND (f.proname='topic_apply_review' OR (f.proname='topic_confirm_writer' AND r.rolname<>'rs_runtime'))
         AND has_function_privilege(r.oid,f.oid,'EXECUTE'))"""), "restore_roles_unverified")
+    if one(admin, "SELECT to_regclass('public.monitor') IS NOT NULL"):
+        scoped = [*scoped, "monitor", "monitor_version", "monitor_archive", "monitor_run", "monitor_receipt", "monitor_reuse"]
+        require(one(admin, "SELECT monitor_roles_safe()"), "restore_roles_unverified")
     if one(admin, "SELECT to_regclass('public.topic_result') IS NOT NULL"):
         topics = ["topic_result","topic_input","topic_candidate","topic_event","topic_history","topic_request"]
         scoped = [*scoped, *topics]
@@ -549,7 +559,7 @@ def verify_restore_roles(admin):
         (scoped, scoped),
     ).fetchone()[0]
     require(allowed, "restore_roles_unverified")
-    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery", "0020_topic_lock_order"}:
+    if one(admin, "SELECT version_num FROM alembic_version") in {"0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery", "0020_topic_lock_order", "0021_saved_monitors"}:
         require(one(admin, "SELECT browser_role_safe()"), "restore_roles_unverified")
 
 

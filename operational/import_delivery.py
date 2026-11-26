@@ -78,20 +78,31 @@ def coverage_passport(data):
 
 
 def authorize(conn, args, witness):
+    # Materialize the permitted workspace SHARE before the outer query can lock the source.
     row = conn.execute(
         """
+        WITH locked_workspace AS MATERIALIZED (
+            SELECT ws.id,ws.delivery_object_root
+            FROM workspace ws JOIN delivery_authorization a ON a.workspace_id=ws.id
+            JOIN workspace_membership m ON (m.workspace_id,m.principal_id)=(a.workspace_id,a.principal_id)
+            JOIN principal p ON p.id=m.principal_id
+            WHERE (ws.id,a.source_id)=(%s,%s) AND ws.state='active'
+              AND a.operator_login=session_user AND current_user=session_user AND current_user<>'rs_runtime'
+              AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
+            FOR SHARE OF ws
+        )
         SELECT coalesce(s.external_source_id,s.source_key),w.delivery_object_root,a.principal_id
         FROM delivery_authorization a JOIN source s ON (s.workspace_id,s.id)=(a.workspace_id,a.source_id)
-        JOIN workspace w ON w.id=a.workspace_id
+        JOIN locked_workspace w ON w.id=a.workspace_id
         JOIN workspace_membership m ON (m.workspace_id,m.principal_id)=(a.workspace_id,a.principal_id)
         JOIN principal p ON p.id=m.principal_id
         WHERE a.workspace_id=%s AND a.source_id=%s AND current_user=session_user
           AND a.operator_login=session_user AND current_user<>'rs_runtime'
-          AND w.state='active' AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
-          AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions','0017_human_review','0018_typed_relations','0019_topic_discovery','0020_topic_lock_order')
-        FOR UPDATE OF s FOR SHARE OF a,w,m,p
+          AND m.state='active' AND m.role IN ('owner','analyst') AND p.state='active'
+          AND (SELECT version_num FROM alembic_version) IN ('0006_retention','0007_browser_delivery','0008_review_evidence','0009_overview','0010_signals','0011_reviewer_context','0012_candidate_search','0013_reviewer_context_plan','0014_aspects','0015_rerank','0016_aspect_decisions','0017_human_review','0018_typed_relations','0019_topic_discovery','0020_topic_lock_order','0021_saved_monitors')
+        FOR UPDATE OF s FOR SHARE OF a,m,p
     """,
-        (args.workspace, args.source),
+        (args.workspace, args.source, args.workspace, args.source),
     ).fetchone()
     if row is None or str(args.object_root) != row[1]:
         raise DeliveryError("scope_denied")

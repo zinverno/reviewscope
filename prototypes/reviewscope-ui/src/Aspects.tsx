@@ -272,8 +272,11 @@ export function Aspects({
 						<>
 							<Definition value={detail} />
 							<a href={link({ ...change, proposal: "" })}>К списку аспектов</a>{" "}
-							{q.get("snapshot") && (
-								<a href={link({ view: "decisions" })}>Оценка по всему снимку</a>
+							{!detail.archived && q.get("source") && (
+                                <a href={link({view:"monitors",aspect:detail.aspect_id,aspectVersion:detail.version_id})}>Создать монитор для этой версии</a>
+                            )}{" "}
+                            {q.get("snapshot") && (
+                                <a href={link({ view: "decisions" })}>Оценка по всему снимку</a>
 							)}{" "}
 							{!detail.archived && q.get("snapshot") && (
 								<a
