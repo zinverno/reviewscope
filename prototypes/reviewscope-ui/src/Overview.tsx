@@ -278,10 +278,23 @@ export function SnapshotOverview({
 				)}{" "}
 				<a href={link({ view: "graph" })}>Повторы выбранного снимка</a>
 			</p>
-			<h3>Темы и динамика</h3>
+			{canRead && (source || ctx?.source_id) && (
+				<p>
+					<a
+						href={link({
+							view: "topic-discovery",
+							source: source || ctx?.source_id || "",
+							run: "",
+						})}
+					>
+						Исследовать кандидаты тем всего снимка
+					</a>
+				</p>
+			)}
+			<h3>Динамика</h3>
 			<p>
 				ANALYSIS_NOT_AVAILABLE. Worker проверяет целостность и пригодность. Для
-				сравнения периодов и выделения тем в этом снимке нет аналитического
+				сравнения динамики по периодам в этом снимке нет аналитического
 				результата.
 			</p>
 			<a href="/cabinet/?view=legacy">

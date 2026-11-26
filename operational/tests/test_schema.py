@@ -64,7 +64,7 @@ def seal(conn, w, s, batch, ids, *, digest=None):
 
 
 def run(conn, w, snap):
-    if conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {"0005_background_jobs", "0006_retention", "0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations"}:
+    if conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {"0005_background_jobs", "0006_retention", "0007_browser_delivery", "0008_review_evidence", "0009_overview", "0010_signals", "0011_reviewer_context", "0012_candidate_search", "0013_reviewer_context_plan", "0014_aspects", "0015_rerank", "0016_aspect_decisions", "0017_human_review", "0018_typed_relations", "0019_topic_discovery", "0020_topic_lock_order"}:
         return conn.execute("""INSERT INTO analysis_run(workspace_id,snapshot_id,job_kind,engine_version,model_version,definition_version)
             VALUES (%s,%s,'legacy_manual_v1','engine-1','frozen-demo','definition-1') RETURNING id""",(w,snap)).fetchone()[0]
     return conn.execute("""INSERT INTO analysis_run(workspace_id,snapshot_id,engine_version,model_version,definition_version)
@@ -84,7 +84,7 @@ def test_revision_scope_nulls_and_history(db):
     _, _, s2 = scope(db, workspace=w, project=project)
     for binding in ((w, project, s), (w, project, s2), (other_w, other_project, other_s)):
         bind_place(db, *binding)
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0018_typed_relations",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0020_topic_lock_order",)
     with pytest.raises(psycopg.errors.ForeignKeyViolation):
         scope(db, workspace=other_w, project=project)
     actor, = db.execute("INSERT INTO principal(login,state) VALUES ('fixture','active') RETURNING id").fetchone()
@@ -132,7 +132,7 @@ def test_revision_scope_nulls_and_history(db):
         db.execute("TRUNCATE snapshot_member")
     for sql in ("UPDATE review_version SET text_content='edit'", "DELETE FROM review_version",
                 "UPDATE review_identity SET external_review_id=NULL", "DELETE FROM snapshot_member",
-                "UPDATE snapshot SET version_ids='{}'", "TRUNCATE snapshot_member, relation_pair"):
+                "UPDATE snapshot SET version_ids='{}'", "TRUNCATE snapshot_member, relation_pair, topic_input"):
         with pytest.raises(psycopg.errors.CheckViolation):
             db.execute(sql)
 
@@ -167,7 +167,7 @@ def test_revision_scope_nulls_and_history(db):
     assert db.execute(history).fetchall() == before
     rejected = subprocess.run([*ALEMBIC, "downgrade", "base"], capture_output=True)
     assert rejected.returncode != 0
-    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0018_typed_relations",)
+    assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0020_topic_lock_order",)
 
 
 def test_concurrent_identity(db):

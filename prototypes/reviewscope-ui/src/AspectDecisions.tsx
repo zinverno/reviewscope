@@ -403,6 +403,17 @@ export function AspectDecisions({
 											Ручная проверка
 										</a>
 									</p>
+									<p>
+										<a
+											href={link({
+												view: "topic-discovery",
+												source,
+												topicRun: run,
+											})}
+										>
+											Исследовать неясные исходы этой версии
+										</a>
+									</p>
 									<details>
 										<summary>Происхождение результата</summary>
 										{page.runtime && (

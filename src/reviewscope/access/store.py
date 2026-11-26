@@ -49,7 +49,7 @@ def transaction(engine):
                     AND NOT has_schema_privilege(current_user,'public','CREATE')
                     AND NOT has_database_privilege(current_user,current_database(),'CREATE,TEMP')
                     AND (SELECT array_agg(version_num) FROM public.alembic_version)
-                        IN (ARRAY['0006_retention']::varchar[], ARRAY['0007_browser_delivery']::varchar[], ARRAY['0008_review_evidence']::varchar[], ARRAY['0009_overview']::varchar[], ARRAY['0010_signals']::varchar[], ARRAY['0011_reviewer_context']::varchar[], ARRAY['0012_candidate_search']::varchar[], ARRAY['0013_reviewer_context_plan']::varchar[], ARRAY['0014_aspects']::varchar[], ARRAY['0015_rerank']::varchar[], ARRAY['0016_aspect_decisions']::varchar[], ARRAY['0017_human_review']::varchar[], ARRAY['0018_typed_relations']::varchar[])
+                        IN (ARRAY['0006_retention']::varchar[], ARRAY['0007_browser_delivery']::varchar[], ARRAY['0008_review_evidence']::varchar[], ARRAY['0009_overview']::varchar[], ARRAY['0010_signals']::varchar[], ARRAY['0011_reviewer_context']::varchar[], ARRAY['0012_candidate_search']::varchar[], ARRAY['0013_reviewer_context_plan']::varchar[], ARRAY['0014_aspects']::varchar[], ARRAY['0015_rerank']::varchar[], ARRAY['0016_aspect_decisions']::varchar[], ARRAY['0017_human_review']::varchar[], ARRAY['0018_typed_relations']::varchar[], ARRAY['0019_topic_discovery']::varchar[], ARRAY['0020_topic_lock_order']::varchar[])
                     AND (SELECT bool_and(row_security_active(t::regclass)) FROM unnest(%s::text[]) t)
                     AND (to_regclass('public.browser_delivery') IS NULL OR
                         (row_security_active(to_regclass('public.browser_delivery'))
@@ -61,10 +61,12 @@ def transaction(engine):
                         AND NOT has_any_column_privilege(current_user,'public.import_row','SELECT')))
                     AND NOT EXISTS(SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
                         AND c.relname IN ('aspect','aspect_version','decision_binding','decision_row',
-                    'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair')
+                    'human_review_event','human_review_plan','human_plan_member','human_review_result','human_result_member','relation_result','relation_pair','topic_result','topic_input','topic_event','topic_candidate','topic_history','topic_request')
                     AND (NOT row_security_active(c.oid)
                         OR has_any_column_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')
                     OR has_table_privilege(current_user,c.oid,'DELETE,TRUNCATE,TRIGGER')))
+                    AND NOT EXISTS(SELECT FROM pg_proc f WHERE f.pronamespace='public'::regnamespace
+                        AND f.proname='topic_apply_review' AND has_function_privilege(current_user,f.oid,'EXECUTE'))
                     AND NOT EXISTS(SELECT FROM pg_attribute a WHERE a.attrelid='analysis_run'::regclass
                         AND a.attname='candidate_params' AND has_column_privilege(current_user,a.attrelid,a.attnum,'SELECT'))
                     AND to_regclass('public.password_credential') IS NOT NULL

@@ -110,6 +110,7 @@ def read_signals(msg):
         "read_signals": ("signal_object", SCHEMA),
         "read_candidates": ("candidate_object", "candidate-search-1"),
         "read_rerank": ("rerank_object", "candidate-rerank-1"),
+        "topic_snapshot": ("topic_object", "topic-snapshot-1"),
         "relation_snapshot": ("relation_object", "relation-snapshot-1"),
         "read_decisions": ("decision_object", "aspect-decision-1"),
     }[msg["op"]]
@@ -127,15 +128,34 @@ def read_signals(msg):
         ).fetchone()
         if row is None:
             raise UploadError("scope_denied")
-        root, digest, size, manifest = row
+        root, digest, size, manifest, *extra = row
         certified_space(witness, ids[0], root)
         directory = object_directory(Path(root), ids[0], create=False)
+        if msg["op"] == "topic_snapshot":
+            for parent in set(extra[0]):
+                with open_object(directory, parent) as blob:
+                    data = blob.read(size + 1)
+                    if len(data) > size or hashlib.sha256(data).hexdigest() != parent:
+                        raise UploadError("importer_unavailable")
         with open_object(directory, digest) as stream:
-            if msg["op"] == "relation_snapshot":
+            if msg["op"] in ("relation_snapshot", "topic_snapshot"):
                 raw = stream.read(size + 1)
                 if len(raw) > size or hashlib.sha256(raw).hexdigest() != digest:
                     raise UploadError("importer_unavailable")
-                return {"schema": schema, "snapshot_id": str(ids[2]), "manifest": manifest, "sha256": digest}
+                receipt = {"schema": schema, "snapshot_id": str(ids[2]), "manifest": manifest, "sha256": digest}
+                if msg["op"] == "topic_snapshot":
+                    header, *rows = raw.splitlines()
+                    scope = json.loads(header)
+                    if (scope["workspace"], scope["source"], scope["format"]) != (str(ids[0]), str(ids[1]), "canonical-json-v1"):
+                        raise UploadError("importer_unavailable")
+                    checksum = hashlib.sha256()
+                    for line in rows:
+                        version = json.loads(line)
+                        text = version["text"]
+                        text_sha = hashlib.sha256(text.encode()).hexdigest() if text is not None else "-"
+                        checksum.update(f"{version['version_id']}:{version['content_sha256']}:{text_sha}\n".encode())
+                    receipt["source_rows_sha256"] = checksum.hexdigest()
+                return receipt
             raw = stream.read(LIMIT + 1)
         if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
             raise UploadError("importer_unavailable")
@@ -157,7 +177,7 @@ class Handler(socketserver.StreamRequestHandler):
         limit = 4096
         try:
             msg = read_json(self.rfile)
-            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions","relation_snapshot")
+            signal_read = isinstance(msg, dict) and msg.get("op") in ("read_signals","read_candidates","read_rerank","read_decisions","relation_snapshot","topic_snapshot")
             parts = () if signal_read else tuple(self.rfile.read(n) for n in sizes(msg["sizes"]))
             if self.rfile.read(1):
                 raise UploadError("invalid_upload")

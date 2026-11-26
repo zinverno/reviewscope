@@ -239,13 +239,28 @@ def test_decision_upgrade_preserves_saved_runs(tmp_path, monkeypatch, key):  # n
                 db.execute(MIGRATION.with_name("0018_typed_relations.sql").read_text())
                 assert db.execute("SELECT count(*) FROM relation_result").fetchone() == (0,)
             assert db.execute("SELECT to_regclass('relation_result')").fetchone() == (None,)
-            subprocess.run([*ALEMBIC,"upgrade","head"],check=True)
+            subprocess.run([*ALEMBIC,"upgrade","0018_typed_relations"],check=True)
             assert db.execute("SELECT retention_access_seal()").fetchone() == business
             with pytest.raises(DeliveryError, match="access_review_required"):
                 verify_access_permissions(db,before_seal)
             verify_access_permissions(db,capture_access(db))
             assert db.execute("SELECT bool_or(relation_allowed) FROM browser_admission").fetchone() == (False,)
             assert old_bytes() == before_18
+            db.execute("UPDATE browser_admission SET relation_allowed=true WHERE source_id=%s",(src,))
+            graph = post(web, base+"/relations", scope | {"idempotency_key":str(uuid4())}, 201)
+            read_urls.append((base+"/relations/"+graph["id"],scope))
+            before_19 = old_bytes()
+            seal_18 = capture_access(db)
+            grants_18 = db.execute("SELECT retention_access_seal()").fetchone()
+            subprocess.run([*ALEMBIC,"upgrade","head"],check=True)
+            assert db.execute("SELECT retention_access_seal()").fetchone() == grants_18
+            assert db.execute("SELECT bool_or(topic_discovery_allowed) FROM browser_admission").fetchone() == (False,)
+            assert web.get(base+"/topic-discovery",params=scope).status_code == 404
+            with pytest.raises(DeliveryError,match="access_review_required"):
+                verify_access_permissions(db,seal_18)
+            verify_access_permissions(db,capture_access(db))
+            assert old_bytes() == before_19
+            assert all(obj.read_bytes() == frozen for obj,frozen in objects)
             db.execute(
                 "UPDATE workspace_membership SET role='viewer' WHERE workspace_id=%s AND principal_id=%s",
                 (w, actor),
