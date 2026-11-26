@@ -15,7 +15,7 @@ from operational.tests.test_deliveries import COVER, call, csv, json_input
 from reviewscope.aspect_decisions import definitions
 
 FIXTURE = Path("tests/data/monitors/history.json")
-DELTA = Path("operational/monitor_delta.sql").read_text()
+DELTA = "SELECT * FROM monitor_delta_rows(%(workspace)s,%(source)s,%(previous)s,%(target)s)"
 
 
 def decision(conn, reader, scope):
@@ -230,3 +230,130 @@ def test_monitor_delta_on_original_deliveries(db, tmp_path):
         "newly_observed": 2,
         "unlinked_observation": 1,
     }
+
+
+def test_saved_monitor_manual_cycle(db, tmp_path, key, monkeypatch):  # noqa: F811
+    from operational.tests.test_access import CSRF, ROOT
+    from operational.tests.test_browser_delivery import importer
+
+    fixture = json.loads(FIXTURE.read_bytes())
+    with (
+        cabinet(db, tmp_path, key, inputs=fixture["A"], definition=definitions()["queue"]) as (
+            scope,
+            reader,
+            _,
+            root,
+            web,
+            project,
+        ),
+        importer(tmp_path, monkeypatch),
+        worker.connect() as conn,
+    ):
+        w, src, a, aspect, version = scope
+        src_args = {"source_id": str(src)}
+        base = f"{ROOT}/workspaces/{w}/projects/{project}/monitors"
+        new = dict(
+            **src_args,
+            name="Проверка очереди",
+            aspect_id=aspect,
+            aspect_version_id=version,
+            min_eligible=1,
+            threshold_count=1,
+            selection="accepted_in_delivery",
+        )
+
+        def post(path, body, code):
+            resp = web.post(path, json=body, headers=CSRF)
+            assert resp.status_code == code, (resp.status_code, resp.text)
+            return resp.json()
+
+        def get(path, **params):
+            resp = web.get(path, params=src_args | params)
+            assert resp.status_code == 200, (resp.status_code, resp.text)
+            return resp.json()
+
+        saved = post(base, new, 201)
+        url = base + "/" + saved["monitor_id"]
+        assert get(url)["state"] == "NO_SNAPSHOT"
+        db.execute(
+            "UPDATE browser_admission SET monitor_allowed=true WHERE workspace_id=%s AND source_id=%s",
+            (w, src),
+        )
+        assert get(url)["state"] == "NEW_DELIVERY_AVAILABLE"
+        v = saved["version_id"]
+
+        def start(s, parent=None, mon_version=v):
+            body = dict(
+                **src_args,
+                version_id=mon_version,
+                snapshot_id=s,
+                idempotency_key=str(uuid4()),
+                parent_run_id=parent,
+            )
+            accepted = post(url + "/runs", body, 202)
+            assert post(url + "/runs", body, 200)["run_id"] == accepted["run_id"]
+            job = conn.execute("SELECT * FROM claim_job()").fetchone()
+            assert str(job[1]) == accepted["decision_run_id"]
+            outcome = worker.process(conn, job, Event())
+            assert outcome == "succeeded", db.execute(
+                "SELECT status,reason FROM analysis_run WHERE id=%s", (job[1],)
+            ).fetchone()
+            return accepted, get(url + "/runs/" + accepted["run_id"])
+
+        first, one = start(a)
+        assert one["receipt"]["computed_eligible"] == 4
+        assert get(url)["state"] == "NO_NEW_DELIVERY"
+        args = [
+            "--workspace",
+            str(w),
+            "--source",
+            str(src),
+            "--object-root",
+            str(root),
+            "--coverage-passport",
+            str(tmp_path / "coverage"),
+        ]
+        b = call([*args, *json_input(tmp_path, fixture["B"], FIELDS), "--apply"])["snapshot_id"]
+        db.execute(
+            """INSERT INTO browser_admission(workspace_id,source_id,checksum,evidence_allowed,candidate_allowed,decision_allowed,monitor_allowed)
+                      VALUES(%s,%s,%s,true,true,true,true)""",
+            (w, src, hashlib.sha256((tmp_path / "data").read_bytes()).hexdigest()),
+        )
+        second, two = start(b, first["run_id"])
+        receipt = two["receipt"]
+        assert (
+            receipt["computed_eligible"],
+            receipt["reused_eligible"],
+            receipt["reused_blank"],
+        ) == (3, 1, 1)
+        assert receipt["categories"] == {
+            "unchanged_version": 2,
+            "changed_version": 1,
+            "newly_observed": 1,
+            "unlinked_observation": 1,
+            "unlinked_predecessor": 1,
+            "not_observed_in_target": 1,
+        }
+        assert get(url + "/runs/" + first["run_id"]) == one
+        actual = page(reader, (w, src, b, aspect, version), second["decision_run_id"])
+        _, full = decision(conn, reader, (w, src, b, aspect, version))
+        for field in ("rows", "summary", "rows_sha256", "runtime"):
+            assert actual[field] == full[field]
+        assert get(url + "/runs/" + second["run_id"] + "/delta")["total"] == 7
+        assert get(url + "/history")["total"] == 2
+        assert get(url + "/history", offset=2)["rows"] == []
+        updated = post(url + "/versions", new | {"expected_version_id": v}, 201)
+        assert get(url)["state"] == "NEW_DELIVERY_AVAILABLE"
+        _, fresh = start(b, mon_version=updated["version_id"])
+        assert (
+            fresh["receipt"]["computed_eligible"] == 4 and fresh["receipt"]["reused_eligible"] == 0
+        )
+        post(url + "/archive", src_args | {"expected_version_id": updated["version_id"]}, 200)
+        assert get(url)["state"] == "ARCHIVED"
+        db.execute(
+            "UPDATE browser_admission SET monitor_allowed=false WHERE checksum=%s",
+            (one["file_sha256"],),
+        )
+        assert web.get(url + "/runs/" + second["run_id"], params=src_args).status_code == 404
+        assert page(reader, (w, src, b, aspect, version), second["decision_run_id"]) is None
+        assert get(url + "/history")["total"] == 1
