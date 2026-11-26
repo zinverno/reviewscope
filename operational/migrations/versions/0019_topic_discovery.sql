@@ -171,6 +171,12 @@ LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
  LEFT JOIN groups g ON g.norm=d.norm AND selection NOT LIKE 'excluded%' AND selection NOT IN ('blank','missing_decision')
 $$;
 
+CREATE FUNCTION topic_method() RETURNS jsonb LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('method_sha256',topic_hash(jsonb_build_array(pg_get_functiondef('topic_projection(uuid,uuid,uuid,uuid,uuid)'::regprocedure),pg_get_functiondef('topic_features(text)'::regprocedure))),
+ 'runtime',current_setting('server_version_num'),'icu_version',pg_collation_actual_version('"und-x-icu"'::regcollation),
+ 'min_support',3,'unit','full_review','selection_version','all-or-single-frozen-1')
+$$;
+
 CREATE FUNCTION topic_replay(w uuid,k uuid,sig text) RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE prev topic_request;
 BEGIN
@@ -210,8 +216,7 @@ BEGIN
  OR sn.version_ids IS DISTINCT FROM ARRAY(SELECT i.version_id FROM import_row i WHERE (i.workspace_id,i.source_id,i.batch_id)=(w,src,sn.batch_id) AND status='accepted' ORDER BY i.version_id)
  OR (r IS NOT NULL AND sn.version_ids IS DISTINCT FROM ARRAY(SELECT d.version_id FROM decision_row d WHERE (d.workspace_id,d.source_id,d.snapshot_id,d.run_id)=(w,src,s,r) ORDER BY d.version_id))
  THEN RAISE EXCEPTION 'invalid_topic_population'; END IF;
- scope:=(cap-'reason')||jsonb_build_object('mode',CASE WHEN r IS NULL THEN 'all' ELSE 'selected_definition' END,
- 'method_sha256',topic_hash(jsonb_build_array(pg_get_functiondef('topic_projection(uuid,uuid,uuid,uuid,uuid)'::regprocedure),pg_get_functiondef('topic_features(text)'::regprocedure))),
+ scope:=(cap-'reason')||topic_method()||jsonb_build_object('mode',CASE WHEN r IS NULL THEN 'all' ELSE 'selected_definition' END,
  'decision_run',r,'human_revision',h);
  IF r IS NOT NULL THEN
  SELECT scope||jsonb_build_object('aspect_id',b.aspect_id,'version_id',b.version_id,'definition_sha256',b.digest,
@@ -340,7 +345,8 @@ BEGIN
  'version_id',witness,'check_sha256',base.digest,'candidate_id',c,'history_id',hs);
  ELSE
  current_period:=topic_period(w,src,s); historical:=topic_period(w,src,hs);
- IF (historical->>'known_dates')::int=0 OR (current_period->>'known_dates')::int=0 THEN state:='HISTORY_NOT_AVAILABLE';
+ IF NOT saved.binding @> topic_method() THEN state:='HISTORY_NOT_COMPARABLE';
+ ELSIF (historical->>'known_dates')::int=0 OR (current_period->>'known_dates')::int=0 THEN state:='HISTORY_NOT_AVAILABLE';
  ELSIF (historical->>'last_day')::date >= (current_period->>'first_day')::date
  OR (historical->'filter_digest',historical->'basis_digest',historical->'mode') IS DISTINCT FROM (current_period->'filter_digest',current_period->'basis_digest',current_period->'mode')
  OR (historical->>'until')::timestamptz>(current_period->>'from')::timestamptz THEN state:='HISTORY_NOT_COMPARABLE';
@@ -364,7 +370,7 @@ BEGIN
  INTO hits,checked FROM ranked JOIN docs d USING(id);
  END IF;
  doc:=jsonb_build_object('state',state,'current_period',current_period,'historical_period',historical,'method','representative-overlap-1',
- 'N_searched',checked,'hits',hits,'candidate_key',cand.content_key,'candidate_id',c,'history_id',hs);
+ 'compatible_profile',saved.binding @> topic_method(),'N_searched',checked,'hits',hits,'candidate_key',cand.content_key,'candidate_id',c,'history_id',hs);
  END IF;
  INSERT INTO topic_history(workspace_id,snapshot_id,result_id,id,candidate_id,source_id,history_id,prior,actor,receipt,digest)
  VALUES(w,s,res,rid,c,src,hs,prior_id,access_actor(),doc,topic_hash(doc));
@@ -400,6 +406,7 @@ BEGIN
  ELSE
  SELECT * INTO cand FROM topic_candidate WHERE (workspace_id,snapshot_id,result_id,id)=(w,s,res,c);
  IF NOT FOUND THEN RETURN NULL; END IF;
+ IF cand.content_key<>topic_key(saved.binding,cand.members) THEN RAISE EXCEPTION 'invalid_topic_candidate'; END IF;
  total:=cardinality(cand.members);
  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.version_id),'[]') INTO items FROM (
  SELECT i.version_id,i.text_sha,i.group_sha,i.state,0 AS start,i.chars AS end FROM topic_input i WHERE (workspace_id,snapshot_id,result_id)=(w,s,res)
@@ -413,6 +420,8 @@ BEGIN
  SELECT coalesce(jsonb_agg(p.id ORDER BY p.id),'[]') INTO children FROM topic_candidate p JOIN topic_event e
  ON (e.workspace_id,e.snapshot_id,e.result_id,e.id)=(w,s,res,p.origin_event) WHERE (p.workspace_id,p.snapshot_id,p.result_id)=(w,s,res) AND c=ANY(e.parents);
  IF hs IS NOT NULL THEN
+ IF EXISTS(SELECT FROM topic_history WHERE (workspace_id,snapshot_id,result_id,candidate_id,history_id)=(w,s,res,c,hs)
+ AND digest<>topic_hash(receipt)) THEN RAISE EXCEPTION 'invalid_topic_check'; END IF;
  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.created_at DESC,x.id),'[]') INTO history FROM
  (SELECT id,prior,actor,created_at,receipt,digest FROM topic_history WHERE (workspace_id,snapshot_id,result_id,candidate_id,history_id)=(w,s,res,c,hs)
  ORDER BY created_at DESC,id OFFSET skip LIMIT 5) x;

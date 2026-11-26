@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 
 export async function checkTopics(page, start, historical, browser, media, mark) {
+ await page.emulateMedia({reducedMotion:"reduce"});
  await page.goto(start);
- await page.getByRole("button",{name:"Исследовать все пригодные тексты"}).click();
+ await page.getByRole("button",{name:"Исследовать все пригодные тексты"}).press("Enter");
  await page.getByRole("link",{name:"крышка стакана",exact:true}).click();
  const initial = page.url();
  await page.getByRole("heading",{name:"Репрезентативные версии"}).waitFor();
@@ -17,7 +18,11 @@ export async function checkTopics(page, start, historical, browser, media, mark)
  assert.match(await page.locator("blockquote").innerText(),/бумажная крышка стакана/i);
  await page.getByRole("button",{name:"Подтвердить аналогию"}).first().click();
  await page.getByText("Проблема наблюдалась в выбранной истории",{exact:true}).waitFor();
- if(media)await page.screenshot({path:join(media,"topic-history-"+browser+".png")});
+ for(const width of [320,390,1366,1920]){
+  await page.setViewportSize({width,height:850});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  if(media)await page.screenshot({path:join(media,"topic-history-"+browser+"-"+width+".png")});
+ }
  mark("merge and split");
  await page.goto(initial);
  await page.getByRole("link",{name:"Все кандидаты результата"}).click();
@@ -53,4 +58,12 @@ export async function checkTopics(page, start, historical, browser, media, mark)
  assert.equal(await page.getByRole("heading",{name:"Репрезентативные версии"}).count(),1);
  if(media)await page.screenshot({path:join(media,"topic-lineage-"+browser+".png")});
  await page.goto(list);
+ await page.getByRole("link",{name:"крышка стакана",exact:true}).click();
+ const control=await page.context().newPage();
+ await control.goto(start);
+ await control.getByRole("button",{name:"Выйти"}).click();
+ await page.bringToFront();
+ await page.getByText("Выбранная область или свидетельство недоступны.",{exact:false}).waitFor({timeout:15000});
+ assert.equal(await page.getByRole("heading",{name:"Репрезентативные версии"}).count(),0);
+ await control.close();
 }

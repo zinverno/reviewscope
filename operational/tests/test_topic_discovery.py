@@ -240,6 +240,19 @@ def test_topic_discovery_holdout_and_history(db, tmp_path, key, monkeypatch):  #
         )
         later = dated_snapshot(db, tmp_path, args, w, src, "05", ["Крышка стакана намокла."])
         assert check(later)["receipt"]["state"] == "HISTORY_NOT_COMPARABLE"
+        method_sql = db.execute(
+            "SELECT pg_get_functiondef('topic_method()'::regprocedure)"
+        ).fetchone()[0]
+        db.execute("""CREATE OR REPLACE FUNCTION topic_method() RETURNS jsonb LANGUAGE sql STABLE
+                      SET search_path=pg_catalog,public,pg_temp AS $$SELECT '{"profile":"changed-test-profile"}'::jsonb$$""")
+        try:
+            incompatible = check(hist2)["receipt"]
+            assert (
+                incompatible["state"] == "HISTORY_NOT_COMPARABLE"
+                and incompatible["compatible_profile"] is False
+            )
+        finally:
+            db.execute(method_sql)
         partial = dated_snapshot(
             db, tmp_path, args, w, src, "01", ["Промокла крышка стакана."], "partial"
         )

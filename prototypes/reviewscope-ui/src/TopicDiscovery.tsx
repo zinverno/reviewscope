@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { privateUuid } from "./SnapshotReviewerContext";
+
 type Props = {
 	workspace: string;
 	source: string;
@@ -385,7 +387,9 @@ export function TopicDiscovery({
 					{m.status !== "COMPLETE" && <p>{getName(m.status)}</p>}
 					<details>
 						<summary>Состав поставки и параметры</summary>
-						<pre>{JSON.stringify(m, null, 2)}</pre>
+						<pre style={{ whiteSpace: "pre-wrap" }}>
+							{JSON.stringify(m, null, 2)}
+						</pre>
 					</details>
 					{!candidate ? (
 						<>
@@ -665,7 +669,7 @@ export function TopicDiscovery({
 									<option key={s} value={s} />
 								))}
 							</datalist>
-							{past && past !== history && (
+							{privateUuid(past) && past !== history && (
 								<a href={href({ topicHistory: past })}>
 									Открыть выбранную историю
 								</a>
